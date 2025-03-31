@@ -11,13 +11,14 @@ import {
 import {
   metaMaskWallet,
   coinbaseWallet,
-  walletConnectWallet,
 } from '@rainbow-me/rainbowkit/wallets';
 import '@rainbow-me/rainbowkit/styles.css';
 import './App.css';
 
 // Import pages
 import HomePage from './pages/Home';
+import LaunchPage from './pages/Launch';
+import TransferPage from './pages/Transfer';
 // Import Layout
 import Layout from './components/layout/Layout';
 
@@ -41,9 +42,6 @@ const zetaChainAthens = {
   testnet: true,
 };
 
-// Get WalletConnect Project ID from environment variables
-const projectId = process.env.REACT_APP_WALLET_CONNECT_PROJECT_ID || 'YOUR_WALLET_CONNECT_PROJECT_ID';
-
 // Configure Chains
 const { chains, publicClient } = configureChains(
   [mainnet, sepolia, zetaChainAthens],
@@ -55,9 +53,8 @@ const connectors = connectorsForWallets([
   {
     groupName: 'Recommended',
     wallets: [
-      metaMaskWallet({ projectId, chains }),
+      metaMaskWallet({ chains }),
       coinbaseWallet({ appName: 'Universal Token Launcher', chains }),
-      walletConnectWallet({ projectId, chains }),
     ],
   },
 ]);
@@ -84,6 +81,8 @@ function App() {
         <Router>
           <Routes>
             <Route path="/" element={<Layout><HomePage /></Layout>} />
+            <Route path="/launch" element={<Layout><LaunchPage /></Layout>} />
+            <Route path="/transfer" element={<Layout><TransferPage /></Layout>} />
             {/* Add more routes as needed */}
           </Routes>
         </Router>
