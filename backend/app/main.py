@@ -3,20 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from app.core.config import settings
-from app.api import auth, tokens, transfers, distributions
-from app.models import Base
-from app.models.database import engine
+from app.api import tokens, transfers, distributions, auth
+from app.db.session import engine
+from app.db.base import Base
 
 # Create database tables if they don't exist
 Base.metadata.create_all(bind=engine)
 
 # Create the FastAPI app
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    description="API for launching universal tokens across multiple chains using ZetaChain.",
-    version=settings.VERSION,
-    debug=settings.DEBUG,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    title="Universal Token Launcher",
+    version="1.0.0",
+    description="API for deploying and managing universal tokens across multiple chains"
 )
 
 # Add CORS middleware
@@ -29,10 +27,10 @@ app.add_middleware(
 )
 
 # Include API routers
-app.include_router(auth.router)
-app.include_router(tokens.router)
-app.include_router(transfers.router)
-app.include_router(distributions.router)
+app.include_router(auth.router, prefix="/api", tags=["auth"])
+app.include_router(tokens.router, prefix="/api", tags=["tokens"])
+app.include_router(transfers.router, prefix="/api", tags=["transfers"])
+app.include_router(distributions.router, prefix="/api", tags=["distributions"])
 
 # Create upload directory for local file storage if it doesn't exist
 os.makedirs("./uploads/csv", exist_ok=True)
@@ -46,8 +44,8 @@ async def root():
     """
     return {
         "status": "healthy",
-        "version": settings.VERSION,
-        "name": settings.PROJECT_NAME
+        "version": "1.0.0",
+        "name": "Universal Token Launcher"
     }
 
 

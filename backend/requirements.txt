@@ -1,11 +1,11 @@
 # FastAPI and dependencies
-fastapi==0.109.2
+fastapi==0.110.0
 uvicorn==0.27.1
 sqlalchemy==2.0.27
 alembic==1.13.1
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
-pydantic==2.4.2
+pydantic==2.6.3
 pydantic-settings==2.0.3
 
 # Environment and security
@@ -16,7 +16,10 @@ python-multipart==0.0.9
 bcrypt==4.1.2
 
 # Web3 dependencies
-web3==6.15.0
+web3==6.15.1
+eth-account==0.11.0
+eth-typing==4.0.0
+eth-utils==2.3.1
 
 # Cloud Storage
 google-cloud-storage==2.14.0

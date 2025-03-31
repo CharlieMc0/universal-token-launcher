@@ -4,10 +4,12 @@ from web3 import Web3
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from decimal import Decimal
+import asyncio
 
 from app.models.token import TokenConfiguration, TokenDistribution, DeploymentLog
 from app.core.config import settings
 from app.models.schemas import TokenCreationRequest, TokenDistributionEntry
+from app.services.contract_service import contract_service
 
 
 class TokenService:
@@ -123,10 +125,47 @@ class TokenService:
         db.commit()
         db.refresh(token_config)
         
-        # In a real implementation, this would trigger an async task to deploy 
-        # contracts on the selected chains
+        # Get deployment logs for selected chains
+        deployment_logs = db.query(DeploymentLog).filter(
+            DeploymentLog.token_config_id == token_id
+        ).all()
+        
+        # Start async deployment process
+        asyncio.create_task(self._deploy_token_contracts(db, token_config, deployment_logs))
         
         return token_config
+    
+    async def _deploy_token_contracts(
+        self,
+        db: Session,
+        token_config: TokenConfiguration,
+        deployment_logs: List[DeploymentLog]
+    ):
+        """
+        Deploy token contracts on all selected chains and distribute tokens.
+        """
+        try:
+            # Deploy contracts on each chain
+            for log in deployment_logs:
+                # Deploy contract
+                contract_address = await contract_service.deploy_token_contract(
+                    db, token_config, log.chain_id
+                )
+                
+                if contract_address:
+                    # Distribute tokens
+                    await contract_service.distribute_tokens(
+                        db, token_config, log.chain_id
+                    )
+            
+            # Update overall deployment status
+            token_config.deployment_status = "completed"
+            db.commit()
+            
+        except Exception as e:
+            print(f"Error in deployment process: {str(e)}")
+            token_config.deployment_status = "failed"
+            db.commit()
     
     def get_token_configuration(
         self, 
