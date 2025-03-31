@@ -27,46 +27,55 @@ class TokenService:
         icon_url: Optional[str] = None
     ) -> TokenConfiguration:
         """Create a new token configuration record."""
-        # Create token configuration
-        token_config = TokenConfiguration(
-            creator_wallet=creator_wallet,
-            token_name=token_request.token_name,
-            token_symbol=token_request.token_symbol,
-            icon_url=icon_url,
-            decimals=token_request.decimals,
-            total_supply=token_request.total_supply,
-            csv_data=json.dumps([dist.dict() for dist in token_request.distributions]),
-            deployment_status="pending"
-        )
-        
-        db.add(token_config)
-        db.commit()
-        db.refresh(token_config)
-        
-        # Create distribution records
-        for dist in token_request.distributions:
-            distribution = TokenDistribution(
-                token_config_id=token_config.id,
-                recipient_address=dist.recipient_address,
-                chain_id=dist.chain_id,
-                token_amount=dist.token_amount,
-                status="pending"
+        try:
+            # Create token configuration
+            token_config = TokenConfiguration(
+                creator_wallet=creator_wallet,
+                token_name=token_request.token_name,
+                token_symbol=token_request.token_symbol,
+                icon_url=icon_url,
+                decimals=token_request.decimals,
+                total_supply=token_request.total_supply,
+                csv_data=json.dumps([dist.dict() for dist in token_request.distributions]),
+                deployment_status="pending"
             )
-            db.add(distribution)
-        
-        # Create deployment logs for selected chains
-        for chain_id in token_request.selected_chains:
-            chain_name = settings.CHAIN_NAMES.get(int(chain_id), f"Chain {chain_id}")
-            deployment_log = DeploymentLog(
-                token_config_id=token_config.id,
-                chain_name=chain_name,
-                chain_id=chain_id,
-                status="pending"
-            )
-            db.add(deployment_log)
-        
-        db.commit()
-        return token_config
+            
+            db.add(token_config)
+            db.commit()
+            db.refresh(token_config)
+            
+            # Create distribution records
+            for dist in token_request.distributions:
+                distribution = TokenDistribution(
+                    token_config_id=token_config.id,
+                    recipient_address=dist.recipient_address,
+                    chain_id=dist.chain_id,
+                    token_amount=dist.token_amount,
+                    status="pending"
+                )
+                db.add(distribution)
+            
+            # Create deployment logs for selected chains
+            for chain_id in token_request.selected_chains:
+                # Handle string conversion if needed
+                chain_id_str = str(chain_id)
+                chain_name = settings.CHAIN_NAMES.get(chain_id_str, f"Chain {chain_id_str}")
+                
+                deployment_log = DeploymentLog(
+                    token_config_id=token_config.id,
+                    chain_name=chain_name,
+                    chain_id=chain_id_str,
+                    status="pending"
+                )
+                db.add(deployment_log)
+            
+            db.commit()
+            return token_config
+            
+        except Exception as e:
+            db.rollback()
+            print(f"Error creating token configuration: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to create token: {str(e)}")
     
     def verify_fee_payment(self, tx_hash: str) -> bool:
         """

@@ -45,6 +45,17 @@ class Settings(BaseSettings):
 
     # Chain RPC URLs
     CHAIN_RPC_URLS: Dict[str, str]
+    
+    # Chain Names
+    CHAIN_NAMES: Dict[str, str] = {
+        "1": "Ethereum",
+        "56": "BSC",
+        "137": "Polygon",
+        "42161": "Arbitrum",
+        "10": "Optimism",
+        "100": "Gnosis",
+        "7000": "ZetaChain"
+    }
 
     # Deployer Wallet
     DEPLOYER_WALLET: str

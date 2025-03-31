@@ -11,7 +11,7 @@ def token_id(client):
         "token_symbol": "TEST",
         "decimals": 18,
         "total_supply": "1000000",
-        "creator_wallet": "0x1234567890123456789012345678901234567890"
+        "creator_wallet": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63"
     }
     
     response = client.post("/api/v1/tokens/", json=token_data)

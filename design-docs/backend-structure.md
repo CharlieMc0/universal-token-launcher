@@ -24,12 +24,14 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - `id` (SERIAL, PRIMARY KEY)
   - `creator_wallet` (TEXT, NOT NULL) – The wallet address of the token creator.
   - `token_name` (VARCHAR, NOT NULL)
-  - `icon_url` (TEXT) – URL or file path for the token’s icon.
-  - `decimals` (INTEGER, NOT NULL)
+  - `token_symbol` (VARCHAR, NOT NULL)
+  - `icon_url` (TEXT) – URL or file path for the token's icon.
+  - `decimals` (INTEGER, NOT NULL, default 18)
   - `total_supply` (NUMERIC, NOT NULL)
-  - `csv_data` (JSONB) – Raw or parsed CSV data for distribution; alternatively, use a separate table.
+  - `distributions_json` (JSONB) – Parsed distribution data with addresses and amounts.
+  - `selected_chains` (JSONB) – Array of selected chain IDs for deployment.
   - `fee_paid_tx` (VARCHAR) – Transaction hash of the fee payment.
-  - `deployment_status` (VARCHAR) – e.g., 'pending', 'success', 'failure'.
+  - `deployment_status` (VARCHAR) – e.g., 'pending', 'completed', 'failed'.
   - `created_at` (TIMESTAMP WITH TIME ZONE, default NOW())
   - `updated_at` (TIMESTAMP WITH TIME ZONE)
 - **Indexes & Constraints:**
@@ -133,19 +135,31 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 ### 4.2. Main Endpoints
 
 #### 4.2.1. Token Configuration & Deployment
-- **POST /api/tokens**
+- **POST /api/v1/tokens**
   - **Description:** Create a new token configuration.
-  - **Request Body:** JSON payload containing token details (name, decimals, total supply), CSV metadata (or file reference), and selected chains.
-  - **Response:** Token configuration ID, initial status.
+  - **Request Body:** Multipart form data containing:
+    - `token_name` (string, required)
+    - `token_symbol` (string, required)
+    - `decimals` (integer, default 18)
+    - `total_supply` (numeric, required)
+    - `icon` (file, required) - Token icon image
+    - `selected_chains` (JSON string, required) - Array of chain IDs
+    - `distributions_json` (JSON string, required) - Array of {address, amount} objects
+  - **Response:** Token configuration ID and initial status.
   
-- **GET /api/tokens/{id}**
+- **GET /api/v1/tokens/{id}**
   - **Description:** Retrieve status and details for a token configuration.
-  - **Response:** Token details, deployment status, contract addresses (if deployed), and distribution status.
+  - **Response:** Token details including name, symbol, supply, deployment status, and contract addresses.
 
-- **POST /api/tokens/{id}/deploy**
+- **POST /api/v1/tokens/{id}/deploy**
   - **Description:** Trigger the deployment process after fee payment.
-  - **Request Body:** Fee payment transaction hash and any additional metadata.
-  - **Response:** Deployment progress and eventual success/error messages.
+  - **Request Body:** JSON payload with:
+    - `fee_paid_tx` (string, required) - Transaction hash of the ZETA fee payment
+  - **Response:** Initial deployment status and details.
+
+- **GET /api/v1/tokens/{id}/deployments**
+  - **Description:** Get deployment logs for a specific token.
+  - **Response:** Array of deployment logs with chain-specific status and contract addresses.
 
 #### 4.2.2. Bridge Transactions
 - **POST /api/bridge**
@@ -166,7 +180,7 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 - **Standardized Error Format:**  
   - Return HTTP status codes with JSON payloads containing an error code and message.
 - **Validation:**  
-  - Use FastAPI’s Pydantic models for input validation.
+  - Use FastAPI's Pydantic models for input validation.
   - Return 400 Bad Request for invalid inputs, 401 Unauthorized for missing/invalid JWTs, and 500 for unexpected errors.
 
 ---
@@ -177,7 +191,7 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 - **In Transit:**  
   - Enforce HTTPS for all API endpoints.
 - **At Rest:**  
-  - Use PostgreSQL’s built-in encryption and secure configurations.
+  - Use PostgreSQL's built-in encryption and secure configurations.
   - Sensitive configuration data (e.g., API keys) should be stored in environment variables or a secrets manager.
   
 ### 5.2. Sensitive Data Handling
@@ -195,16 +209,26 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 ### 6.1. Modular Architecture
 - **Service Layer:**  
   - Separate core functionalities into distinct modules or services:
-    - **Deployment Service:** Handles fee verification, contract deployment, and token distribution.
+    - **Token Service:** Handles token configuration, fee verification, and deployment coordination.
+    - **Deployment Service:** Manages contract deployment and status tracking per chain.
+    - **Distribution Service:** Handles initial token distribution validation and execution.
     - **Bridge Service:** Manages bridge transactions (burn/mint operations).
     - **User/Session Service:** Manages wallet authentication and JWT session management.
 - **Asynchronous Processing:**  
-  - Use task queues (e.g., Celery with Redis) for long-running operations like blockchain interactions.
+  - Use task queues (e.g., Celery with Redis) for long-running operations:
+    - Contract deployment tasks per chain
+    - Initial token distribution tasks
+    - Status polling and updates
   
 ### 6.2. Microservices Consideration
 - **Future-proofing:**  
-  - Design the backend in a modular way that allows splitting services into microservices when scaling.
-  - Use API versioning and clear service boundaries to decouple features.
+  - Design the backend in a modular way that allows splitting services into microservices:
+    - Token Configuration Service
+    - Deployment Orchestrator Service
+    - Chain-specific Deployment Services
+    - Distribution Service
+    - Bridge Service
+  - Use API versioning (v1) and clear service boundaries to decouple features.
   
 ### 6.3. Maintenance & Scalability Best Practices
 - **Logging & Monitoring:**  

@@ -1,225 +1,387 @@
-```markdown
-# Universal Token Launcher – Application Flow Document
+# Universal Token Launcher Application Flow
 
-This document provides a detailed blueprint for developers to build the frontend and backend of the Universal Token Launcher. It outlines the user journey, screens, decision points, API interactions, data flow, error handling, and roles/permissions.
-
-> **Note:** All references to “bridging” have been updated to “transfers” to reflect that Universal Tokens are now designed to transfer tokens between chains via a burn (source) and mint (destination) mechanism.
+This document provides a comprehensive walkthrough of the user journey through the Universal Token Launcher application, with special attention to potential pain points and best practices based on our implementation experience.
 
 ---
 
-## 1. User Journey Flow
+## 1. User Entry & Wallet Connection
 
-### 1.1. Onboarding / Initial Access
-- **User Connects Wallet:** 
-  - User lands on the landing page.
-  - A “Connect Wallet” button prompts the user to connect their Web3 wallet (e.g., MetaMask).
-  - Upon successful connection, the app detects the wallet address and available ZETA balance.
+### Flow Stages
+1. **Initial Landing**
+   - User arrives at the application landing page
+   - System presents welcome message and "Connect Wallet" button
+
+2. **Wallet Connection**
+   - User clicks "Connect Wallet" button
+   - System displays wallet selection modal (using RainbowKit)
+   - User selects their wallet provider (MetaMask, Coinbase Wallet, etc.)
+   - System prompts wallet connection
+   - User confirms connection in their wallet
+
+3. **Network Validation**
+   - System checks if user is connected to ZetaChain network
+   - If not on ZetaChain, system displays network switching prompt
+   - User clicks "Switch to ZetaChain" button
+   - System sends network switch request to wallet
+   - If ZetaChain not yet added to wallet, system sends request to add network
+
+### Key Technical Considerations
+- **Network Detection & Switching**
+  ```javascript
+  // Check current network
+  const isZetaChainNetwork = chainId === ZETACHAIN_ID;
+
+  // Switching implementation with fallback to add network
+  const handleSwitchToZetaChain = async () => {
+    try {
+      await switchChain({ chainId: ZETACHAIN_ID });
+    } catch (switchError) {
+      // Fallback: try to add the network
+      if (window.ethereum) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: `0x${ZETACHAIN_ID.toString(16)}`,
+              chainName: 'ZetaChain',
+              nativeCurrency: {
+                decimals: 18,
+                name: 'ZETA',
+                symbol: 'ZETA',
+              },
+              rpcUrls: ['https://zetachain-evm.blockpi.network/v1/rpc/public'],
+              blockExplorerUrls: ['https://explorer.zetachain.com']
+            }]
+          });
+        } catch (error) {
+          console.error('Error adding ZetaChain:', error);
+        }
+      }
+    }
+  };
+  ```
+
+- **Balance Check**
+  - Ensure proper ZETA balance check using wagmi's useBalance hook
+  ```javascript
+  // Native token balance check - no token address needed for native token
+  const { data: balanceData } = useBalance({
+    address,
+    chainId: ZETACHAIN_ID
+  });
+  ```
+
+- **Conditional Rendering**
+  - Only render main app components when wallet is connected and on the correct network
+  - Provide clear guidance on network switching with helpful links
+
+---
+
+## 2. Token Creation Interface
+
+### Flow Stages
+1. **Form Input**
+   - User enters token details (name, symbol, total supply, decimals)
+   - User uploads token icon
+   - System displays icon preview
+   - User selects target chains for deployment
+
+2. **Distribution Configuration**
+   - User adds recipient addresses and amounts manually or via CSV upload
+   - System validates addresses and CSV format
+   - System displays distribution preview
+
+3. **Fee Information**
+   - System displays required deployment fee (1 ZETA)
+   - System shows user's current ZETA balance
+   - System validates sufficient balance for deployment
+
+### Key Technical Considerations
+- **Form Data Preparation**
+  ```javascript
+  // Correctly prepare form data with exact field names
+  const formDataToSend = new FormData();
+  formDataToSend.append('token_name', formData.name);
+  formDataToSend.append('token_symbol', formData.symbol);
+  formDataToSend.append('decimals', formData.decimals);
+  formDataToSend.append('total_supply', formData.totalSupply);
   
-### 1.2. Token Creator Flow
-1. **Dashboard Access:**
-   - After wallet connection, the token creator is presented with a dashboard.
-2. **Token Configuration:**
-   - **Input Token Details:** Token Name, Image/Icon upload, Decimals, Total Supply.
-   - **CSV Upload:** Option to upload a CSV file (max 100 entries) with columns: wallet address, chain ID, and token amount.
-3. **Chain Selection:**
-   - A dropdown allows selection of available EVM chains.
-   - Additional chains (Solana, TON, SUI) are visible as “Coming Soon” (disabled).
-4. **Fee Verification & Payment:**
-   - Display the hardcoded ZETA fee.
-   - The app verifies the connected wallet’s ZETA balance.
-   - User clicks “Deploy Token” which triggers the fee payment process (single transaction signing).
-5. **Deployment Processing:**
-   - On fee confirmation, the backend deployer service is triggered.
-   - Status updates are displayed (e.g., “Fee Received,” “Deploying on Chain X,” “Token Distribution Complete”).
-6. **Confirmation:**
-   - Once deployment and token distribution complete, a success screen is shown with summary details (deployed contract addresses, token distribution summary).
+  // Format distribution data according to backend expectations
+  const distributionsForBackend = allDistributions.map(dist => ({
+    recipient_address: dist.address,  // Must match backend field name
+    chain_id: chainId.toString(),     // Convert to string
+    token_amount: dist.amount
+  }));
+  
+  formDataToSend.append('selected_chains', JSON.stringify([chainId.toString()]));
+  formDataToSend.append('distributions_json', JSON.stringify(distributionsForBackend));
+  if (tokenIcon) {
+    formDataToSend.append('icon', tokenIcon);
+  }
+  ```
 
-### 1.3. Token Holder Flow
-1. **Dashboard Access:**
-   - Token holders see a dashboard with their token balances across chains.
-2. **Token Transfer:**
-   - A “Transfer Tokens” section provides a one-click or guided interface.
-   - User selects the desired transfer action (from one chain to another).
-   - The process triggers a burn on the source chain and a mint on the destination chain.
-3. **Status & Notifications:**
-   - Real-time notifications are provided during transfers.
-   - Confirmation of success or error messages if a transfer fails.
+- **CSV Parsing**
+  - Implement robust CSV validation
+  - Check for required columns (address, amount)
+  - Validate address format
+  - Handle whitespace and empty lines properly
 
-### 1.4. Settings / Additional Actions
-- **User Settings:** (if applicable in future iterations)
-  - Wallet details, transaction history, and network preferences.
-- **Help & Support:** Access to documentation and error troubleshooting guides.
+- **Validation Logic**
+  ```javascript
+  const validateForm = () => {
+    const newErrors = {};
+    
+    // Network validation
+    if (!isZetaChainNetwork) {
+      newErrors.network = 'Please switch to ZetaChain network';
+      return false;
+    }
 
----
-
-## 2. Screens & States
-
-### 2.1. Landing / Onboarding Screen
-- **State:** Not connected
-- **Elements:** "Connect Wallet" button, brief app description.
-- **Action:** Initiate wallet connection.
-
-### 2.2. Dashboard – Token Creator
-- **State:** Connected wallet with creator role (implicitly identified by action context).
-- **Elements:**
-  - Token configuration form (name, icon, decimals, total supply).
-  - CSV file upload control.
-  - Chain selection dropdown.
-  - Fee display and “Deploy Token” button.
-- **States:**
-  - **Form Validation Errors:** Highlight invalid fields (e.g., CSV format issues).
-  - **Deployment In-Progress:** Loading spinner/status messages.
-  - **Success Confirmation:** Summary of deployment (contract addresses, CSV distribution summary).
-
-### 2.3. Dashboard – Token Holder
-- **State:** Connected wallet (non-creator role).
-- **Elements:**
-  - Overview of token balances across chains.
-  - “Transfer Tokens” button (or dual options if implementing separate “Transfer In” and “Transfer Out” flows).
-- **States:**
-  - **Transfer Action Confirmation:** Prompt for confirmation before initiating a transfer.
-  - **Transfer Processing:** Status update with progress bar.
-  - **Transfer Success/Error:** Success message or error notification.
-
-### 2.4. Transaction & Error States
-- **State:** API error or blockchain transaction failure.
-- **Elements:** Error messages, retry options.
-- **Actions:** Allow user to retry fee payment, re-upload CSV, or reinitiate a transfer action.
+    // Balance validation - properly format amounts
+    if (balanceData && parseFloat(balanceData.formatted) < ZETA_FEE) {
+      newErrors.balance = `Insufficient ZETA balance. You need at least ${ZETA_FEE} ZETA. Current balance: ${parseFloat(balanceData.formatted).toFixed(2)} ZETA`;
+      return false;
+    }
+    
+    // Other validations...
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+  ```
 
 ---
 
-## 3. Decision Points
+## 3. Token Deployment Process
 
-### 3.1. Fee Verification
-- **Logic:** Check if the connected wallet has sufficient ZETA.
-- **Impact:** If insufficient, display error and disable “Deploy Token” button.
+### Flow Stages
+1. **Fee Payment**
+   - User clicks "Deploy Token" button
+   - System validates form inputs
+   - System sends token creation request to backend
+   - System requests fee payment transaction
+   - User approves transaction in wallet
+   - System waits for transaction confirmation
 
-### 3.2. CSV File Validation
-- **Logic:** Validate CSV structure (max 100 rows, correct columns, valid address formats).
-- **Impact:** If invalid, show error state prompting user to correct the CSV.
+2. **Deployment Status Tracking**
+   - System displays deployment pending state
+   - System polls for deployment status updates
+   - System updates UI based on deployment progress
 
-### 3.3. Chain Selection
-- **Logic:** Based on the chain selected, enable/disable options.
-- **Impact:** Selecting a disabled chain (e.g., Solana) prevents further action with a “Coming Soon” tooltip.
+3. **Deployment Completion**
+   - System displays success message when deployment completes
+   - System shows deployed contract addresses on each chain
+   - User can view details or return to dashboard
 
-### 3.4. Deployment Process
-- **Logic:** After fee transaction confirmation, trigger backend service.
-- **Impact:** If backend fails to deploy on a chain, display a detailed error message and allow retry for that specific chain.
+### Key Technical Considerations
+- **Transaction Handling**
+  ```javascript
+  // Fee payment with proper error handling
+  try {
+    // Create token configuration first
+    const response = await apiService.createToken(formDataToSend);
+    setDeploymentDetails(response);
 
-### 3.5. Transfer Decision (Token Holder)
-- **Logic:** User selects the transfer action.
-- **Impact:** Determines the burning of tokens on the source chain and minting on the destination chain.
-- **Additional Check:** Validate token balance availability before proceeding.
+    // Handle fee payment
+    const feeInWei = ethers.parseEther(ZETA_FEE.toString());
+    
+    // IMPORTANT: Don't convert BigInt to string
+    const txResult = await sendTransaction({
+      to: UNIVERSAL_TOKEN_SERVICE_WALLET,
+      value: feeInWei
+    });
+    
+    if (!txResult || !txResult.hash) {
+      throw new Error('Transaction failed: No transaction hash returned');
+    }
+    
+    // Start deployment with fee payment transaction
+    await apiService.deployToken(response.id, {
+      fee_paid_tx: txResult.hash
+    });
+    
+    setDeploymentStatus('pending');
+  } catch (error) {
+    console.error('Error:', error);
+    setDeploymentStatus('error');
+    setErrors({...errors, submission: error.message});
+  }
+  ```
 
----
+- **Status Polling**
+  ```javascript
+  // Poll for deployment status updates
+  useEffect(() => {
+    let intervalId;
 
-## 4. API Interaction Points
+    if (deploymentStatus === 'pending' && deploymentDetails?.id) {
+      intervalId = setInterval(async () => {
+        try {
+          const logs = await apiService.getDeploymentLogs(deploymentDetails.id);
+          const updatedDetails = await apiService.getToken(deploymentDetails.id);
+          
+          setDeploymentDetails({
+            ...updatedDetails,
+            deployments: logs
+          });
 
-### 4.1. Wallet Connection
-- **Internal API:** Web3 provider integration (e.g., MetaMask via ethers.js).
-- **Data Returned:** Wallet address, ZETA balance.
+          // Check deployment status
+          if (updatedDetails.deployment_status === 'completed') {
+            setDeploymentStatus('success');
+            clearInterval(intervalId);
+          } else if (updatedDetails.deployment_status === 'failed') {
+            setDeploymentStatus('error');
+            clearInterval(intervalId);
+          }
+        } catch (error) {
+          console.error('Error polling deployment status:', error);
+        }
+      }, 5000); // Poll every 5 seconds
+    }
 
-### 4.2. Fee Verification
-- **Internal API:** Call to ZetaChain API to check token balance.
-- **Data Returned:** Confirmation of sufficient ZETA tokens.
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [deploymentStatus, deploymentDetails?.id]);
+  ```
 
-### 4.3. CSV Upload & Validation
-- **Frontend API:** Client-side CSV parser and validation library.
-- **Data Flow:** Parsed CSV data sent to backend for further processing if needed.
-
-### 4.4. Deployment Trigger
-- **Internal API:** Backend deployer service endpoint.
-- **Data Sent:** Token configuration details, CSV distribution data, selected chains, fee transaction details.
-- **Data Returned:** Deployment status updates, deployed contract addresses.
-
-### 4.5. Transfer Operations
-- **Internal API:** Backend endpoint for initiating token transfers (burn on source, mint on destination).
-- **Data Sent:** Transfer action details (source chain, destination chain, amount, user address).
-- **Data Returned:** Transfer status, transaction hash, success or failure notifications.
-
-### 4.6. Status Updates & Notifications
-- **Internal API:** Polling endpoints or WebSocket connections for real-time transaction status.
-- **Data Returned:** Deployment progress, transfer transaction status, error codes.
-
----
-
-## 5. Data Flow
-
-1. **User Input:**
-   - Token details and CSV file are entered/uploaded on the frontend.
-   - Wallet connection provides user address and ZETA balance.
-2. **Frontend Processing:**
-   - Validate CSV file and token input data.
-   - Display fee and chain selection options.
-3. **Fee Payment:**
-   - User signs a transaction to pay the fixed ZETA fee.
-   - Wallet transaction is confirmed; frontend updates status.
-4. **Backend Interaction:**
-   - On fee confirmation, frontend sends token configuration and CSV data to the backend deployer service.
-   - Backend validates fee payment, deploys contracts, and distributes tokens.
-5. **Response Handling:**
-   - Backend returns deployment status updates and contract addresses.
-   - Frontend displays success/error states accordingly.
-6. **Transfer Process:**
-   - Token holder initiates a transfer action.
-   - Frontend sends transfer request to backend.
-   - Backend processes the burn (source chain) and mint (destination chain) actions and returns real-time status updates.
-
----
-
-## 6. Edge Cases / Error States
-
-### 6.1. Insufficient Fee Balance
-- **Detection:** Wallet API returns a ZETA balance below the fixed fee.
-- **Handling:** Disable “Deploy Token” button; show error message prompting user to top up.
-
-### 6.2. CSV Validation Failure
-- **Detection:** CSV parser finds missing columns, invalid addresses, or exceeds 100 entries.
-- **Handling:** Display an error modal with guidance on proper CSV format; prevent proceeding until corrected.
-
-### 6.3. Backend Deployment Failure
-- **Detection:** API response indicates deployment error (e.g., smart contract error, network issue).
-- **Handling:** Display detailed error message; allow user to retry the failed deployment for specific chain(s).
-
-### 6.4. Transfer Transaction Failure
-- **Detection:** Backend or blockchain API returns an error during the transfer process.
-- **Handling:** Show error notification with a “Retry” option; log transaction details for debugging.
-
-### 6.5. Network/API Timeouts
-- **Detection:** API calls to blockchain or backend service time out.
-- **Handling:** Display timeout error; provide a “Retry” button and advise user to check network connectivity.
+- **User Experience During Deployment**
+  - Show clear loading indicators
+  - Provide meaningful status messages
+  - Display contract addresses as they become available
+  - Handle errors gracefully with retry options
 
 ---
 
-## 7. Roles and Permissions
+## 4. Additional Workflows
 
-### 7.1. Token Creator
-- **Implicit Role:** Determined by usage context (i.e., entering token configuration).
-- **Permissions:**
-  - Access token configuration form.
-  - Initiate fee payment and deployment.
-  - View deployment status and results.
-- **Note:** There is no explicit role authentication beyond wallet connection; the flow is determined by the actions the user takes.
+### Token Management & Transfer
+1. **Dashboard View**
+   - Show all created tokens with summary information
+   - Display token balances across chains
+   - Provide options to view details or transfer tokens
 
-### 7.2. Token Holder
-- **Implicit Role:** Any user who holds the token.
-- **Permissions:**
-  - View token balances.
-  - Initiate token transfers.
-  - Access transaction history.
-- **Note:** Similar to the creator, the role is determined by the context and available actions based on wallet connection.
+2. **Token Transfer**
+   - Allow selection of source and destination chains
+   - Show estimated fees and transaction times
+   - Process and track cross-chain transfers
+
+### Technical Considerations
+- **Native Balance Checking**
+  - Use chain-specific RPC endpoints for reliable balance checks
+  - Handle different token standards and decimals correctly
+
+- **Transaction Tracking**
+  - Implement webhook or polling for cross-chain transaction status
+  - Show clear transaction steps in the UI
 
 ---
 
-## 8. Summary
+## 5. Error Handling & Recovery
 
-- **User Journey:** Wallet connection → Token configuration (for creators) or Dashboard view (for holders) → Fee payment & contract deployment or token transfer.
-- **Screens & States:** Landing, Creator Dashboard, Holder Dashboard, Transaction Status, Error Modals.
-- **Decision Points:** Sufficient fee balance, valid CSV input, chain selection, transfer action confirmation.
-- **API Interactions:** Wallet connection, fee balance check, backend deployer service, transfer endpoint, and status polling.
-- **Data Flow:** User inputs flow to frontend validation, then to backend processing, with real-time status updates returned to the UI.
-- **Edge Cases:** Insufficient funds, CSV errors, backend failures, and network timeouts are gracefully handled with clear user prompts.
-- **Roles:** Token creator vs. token holder are determined by the actions they perform post-wallet connection.
+### Common Error Scenarios
+1. **Wallet Connection Errors**
+   - Wallet not installed
+   - User rejects connection
+   - Network switching fails
 
-This updated blueprint serves as a guide for both frontend and backend development to ensure a cohesive, user-friendly, and robust Universal Token Launcher that focuses on cross-chain token transfers.
+2. **Transaction Errors**
+   - User rejects transaction
+   - Insufficient balance
+   - Network congestion / failed transaction
+
+3. **API Errors**
+   - Backend unavailable
+   - Request validation errors
+   - CORS issues
+
+### Technical Implementation
+- **Frontend Error Boundaries**
+  - Implement React error boundaries for component-level errors
+  - Provide meaningful error messages with recovery options
+
+- **Transaction Recovery**
+  ```javascript
+  try {
+    // Transaction logic
+  } catch (error) {
+    // Error classification and handling
+    if (error.code === 4001) {
+      // User rejected transaction
+      setErrors({...errors, submission: 'Transaction was rejected. Please try again.'});
+    } else if (error.message.includes('insufficient funds')) {
+      // Insufficient balance
+      setErrors({...errors, submission: `Insufficient ZETA balance. Please add more ZETA to your wallet.`});
+    } else {
+      // Other errors
+      setErrors({...errors, submission: `Transaction failed: ${error.message}`});
+    }
+  }
+  ```
+
+- **API Error Handling**
+  ```javascript
+  // In API service
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('API Error:', response.status, errorText);
+    throw new Error(`API Error (${response.status}): ${errorText || 'Unknown error'}`);
+  }
+  ```
+
+---
+
+## 6. Best Practices & Lessons Learned
+
+### Frontend Best Practices
+1. **Wallet Integration**
+   - Use established libraries (wagmi, ethers) for reliable wallet connections
+   - Handle network switching with fallbacks for adding networks
+   - Validate network and balance before operations
+
+2. **Form Handling**
+   - Match field names exactly with backend expectations
+   - Validate addresses and amounts client-side
+   - Convert data types appropriately (strings for BigInts, JSON strings for arrays)
+
+3. **Transaction Processing**
+   - Don't convert BigInt values to strings when using wagmi hooks
+   - Handle transaction confirmation and errors explicitly
+   - Update UI based on transaction stages
+
+### Backend Best Practices
+1. **API Route Configuration**
+   - Use consistent prefix strategy (either in router or in app.include_router, not both)
+   - Document endpoints clearly with expected parameters
+
+2. **CORS Handling**
+   - Configure CORS middleware with appropriate origins
+   - Include development mode with wildcard origins
+
+3. **Authentication**
+   - Implement development bypass for testing
+   - Use clear error messages for authentication failures
+
+---
+
+## 7. Flow Diagrams
+
+### Main User Flow
+```
+Landing Page → Connect Wallet → Switch to ZetaChain →
+Token Creation Form → Enter Details → Upload Icon →
+Add Distributions → Validate & Deploy → Pay Fee →
+Monitor Deployment → View Success
+```
+
+### Error Recovery Flows
+```
+Wallet Connection Error → Retry or Install Wallet Instructions
+Network Switch Error → Manual Network Addition Instructions
+Deployment Error → View Details → Retry Deployment
+```
+
+---
+
+This application flow document provides a comprehensive guide to implementing the Universal Token Launcher, with particular attention to avoiding common pitfalls and ensuring a smooth user experience.
 ```

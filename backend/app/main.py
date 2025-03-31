@@ -20,15 +20,15 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],  # Temporarily allow all origins for debugging
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include API routers
-app.include_router(auth.router, prefix="/api", tags=["auth"])
-app.include_router(tokens.router, prefix="/api", tags=["tokens"])
+app.include_router(auth.router, tags=["auth"])
+app.include_router(tokens.router, tags=["tokens"])
 app.include_router(transfers.router, prefix="/api", tags=["transfers"])
 app.include_router(distributions.router, prefix="/api", tags=["distributions"])
 

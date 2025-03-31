@@ -1,296 +1,423 @@
-```markdown
-# Universal Token Launcher – Step-by-Step Implementation Plan
+# Implementation Plan: Universal Token Launcher
 
-This plan details the steps, deliverables, and checkpoints to build the Universal Token Launcher. It is designed for an AI coding agent (or development team) using Cursor IDE and similar tools to ensure clarity and consistency throughout the project. This updated plan reflects the recent changes where all references to “bridging” have been replaced with “transfers,” highlighting that Universal Tokens are used for cross-chain token transfers (burn on the source chain and mint on the destination chain).
-
----
-
-## Stage 1: Project Setup
-
-### Goal of the Step
-Initialize the project repository and set up the basic folder structure, environment configuration, and required frameworks for both frontend and backend.
-
-### Tasks to Complete
-1. **Folder Structure Setup:**
-   - Create a top-level structure with `/frontend` and `/backend` directories.
-   - Within `/frontend`, set up folders for assets (images, styles) and scripts.
-   - Within `/backend`, create folders for API (routes/controllers), core (config, database, authentication), services (business logic), and tests.
-2. **Environment Configuration:**
-   - Set up virtual environments (e.g., Python’s `venv` or Poetry) for the backend.
-   - Create a configuration file (e.g., `config.py` or an environment variables file `.env`) to hold secrets and DB connection strings.
-3. **Framework Installation:**
-   - **Backend:** Install FastAPI, SQLAlchemy, Pydantic, Uvicorn, and other dependencies.
-   - **Frontend:** Set up basic HTML, CSS (Tailwind CSS if chosen), and include ethers.js.
-4. **Initial Commit & Documentation:**
-   - Document the setup process in the README.md.
-
-### Dependencies
-- None (this is the initial setup).
-
-### AI Instructions
-- Generate initial repository files with clear folder structures.
-- Use default .gitignore files for Python and Node/JS as applicable.
-- Ensure all environment variables are clearly documented in a sample file (e.g., `.env.example`).
+This implementation plan outlines the step-by-step development approach for the Universal Token Launcher, incorporating our experience and best practices to avoid common pitfalls.
 
 ---
 
-## Stage 2: Backend Development
+## Phase 1: Project Setup & Environment Configuration (Weeks 1-2)
 
-### Goal of the Step
-Develop the backend core functionality including authentication, database models, API endpoints, and business logic for token deployment and cross-chain token transfers.
+### Setup Frontend
+1. **Create React Application**
+   - Initialize with `create-react-app`
+   - Configure ESLint and Prettier
 
-### Tasks to Complete
+2. **Install Key Dependencies**
+   - `wagmi@^2.14.0` - React hooks for Ethereum
+   - `ethers@^6.11.1` - Ethereum library
+   - `@rainbow-me/rainbowkit@^2.0.0` - Wallet connection UI
+   - Note: Ensure version compatibility between wagmi and ethers
 
-#### 2.1. Database Models & Schema
-- **Define Database Tables (PostgreSQL):**
-  - Create models for `Token_Configurations`, `Token_Distributions`, `Deployment_Logs`, and `Transfer_Transactions`.
-  - Specify fields with correct data types (e.g., SERIAL, VARCHAR, TEXT, NUMERIC, TIMESTAMP).
-  - Set up relationships and foreign key constraints (e.g., `token_config_id` in distributions referencing configurations).
-- **Implementation Tasks:**
-  - Use SQLAlchemy (or a similar ORM) to define models.
-  - Create migration scripts if using Alembic.
+3. **Configure Network Settings**
+   - Create a dedicated configuration file for supported networks
+   ```javascript
+   // Example chain configuration
+   const ZETACHAIN_CONFIG = {
+     id: 7000,
+     name: 'ZetaChain',
+     network: 'zetachain',
+     nativeCurrency: {
+       decimals: 18,
+       name: 'ZETA',
+       symbol: 'ZETA',
+     },
+     rpcUrls: {
+       public: { http: ['https://zetachain-evm.blockpi.network/v1/rpc/public'] },
+       default: { http: ['https://zetachain-evm.blockpi.network/v1/rpc/public'] },
+     },
+     blockExplorers: {
+       default: { name: 'ZetaScan', url: 'https://explorer.zetachain.com' },
+     }
+   };
+   ```
 
-#### 2.2. Authentication & Authorization
-- **Web3 Wallet Authentication:**
-  - Implement endpoints that prompt the user to sign a nonce.
-  - Validate signatures using ethers.js (frontend) and verify on the backend.
-  - Generate a JWT containing the wallet address and expiration.
-- **Implementation Tasks:**
-  - Create an authentication module in `/backend/app/core/auth.py`.
-  - Define Pydantic models for auth requests and responses.
-  - Configure JWT token generation and validation.
+4. **Setup API Service Layer**
+   - Create `apiService.js` with consistent error handling
+   - Use fetch API with proper CORS configuration
+   ```javascript
+   // API service example
+   async createToken(tokenData) {
+     try {
+       const response = await fetch(`${this.baseUrl}/api/tokens`, {
+         method: 'POST',
+         headers: { ...this._getAuthHeader() },
+         body: tokenData,
+         mode: 'cors',
+       });
+       
+       if (!response.ok) {
+         const errorText = await response.text();
+         console.error('API Error:', response.status, errorText);
+         throw new Error(`API Error (${response.status}): ${errorText}`);
+       }
+       
+       return await response.json();
+     } catch (error) {
+       console.error('Error creating token:', error);
+       throw error;
+     }
+   }
+   ```
 
-#### 2.3. API Endpoints
-- **Token Configuration & Deployment:**
-  - **POST /api/tokens:** Accept token details and CSV file metadata.
-  - **GET /api/tokens/{id}:** Retrieve configuration details and deployment status.
-  - **POST /api/tokens/{id}/deploy:** Trigger contract deployment and token distribution.
-- **Token Transfer Transactions:**
-  - **POST /api/transfer:** Initiate a token transfer action (burn on the source chain and mint on the destination chain).
-  - **GET /api/transfer/{id}:** Check the status of a token transfer transaction.
-- **Status Updates:**
-  - **GET /api/status:** Endpoint to poll or subscribe for real-time updates.
-- **Implementation Tasks:**
-  - Create route files in `/backend/app/api/` for tokens, transfers, and status.
-  - Use FastAPI’s dependency injection and Pydantic for request validation.
+### Setup Backend
+1. **Initialize FastAPI Project**
+   - Create project structure
+   - Configure dependencies in requirements.txt
 
-#### 2.4. Business Logic & Services
-- **Deployment Service:**
-  - Write services for fee verification, contract deployment using ZetaChain Standard Contracts, and token distribution.
-- **Transfer Service:**
-  - Develop logic to handle token transfers (burn on one chain, mint on another).
-- **Implementation Tasks:**
-  - Create service modules in `/backend/app/services/` (e.g., `deployer.py` and `transfer_service.py`).
-  - Ensure business logic is isolated from API routing code.
+2. **Database Setup**
+   - Configure PostgreSQL connection
+   - Set up SQLAlchemy models and migrations
 
-#### 2.5. Asynchronous Task Handling
-- **Optional for Long Operations:**
-  - Integrate Celery with Redis to offload blockchain interactions and deployment tasks.
-- **Implementation Tasks:**
-  - Set up Celery tasks and configure the Redis connection.
+3. **API Route Configuration**
+   - **IMPORTANT**: Configure routers with consistent prefix strategy
+   ```python
+   # In router definition file
+   router = APIRouter(prefix="/api/tokens", tags=["tokens"])
+   
+   # In main.py - DO NOT add prefix again
+   app.include_router(tokens.router, tags=["tokens"])
+   # Not: app.include_router(tokens.router, prefix="/api", tags=["tokens"])
+   ```
 
-### Dependencies
-- Stage 1 (Project Setup) must be completed.
-- Database connection settings must be configured.
-
-### AI Instructions
-- Generate detailed SQLAlchemy models based on the database design.
-- Ensure clear separation between API endpoints and service logic.
-- Document all functions with docstrings to explain non-obvious logic.
-
----
-
-## Stage 3: Frontend Development
-
-### Goal of the Step
-Build a simple, responsive user interface using HTML, CSS, and vanilla JavaScript for wallet connection, token configuration, and token transfer actions.
-
-### Tasks to Complete
-
-#### 3.1. UI Components & Pages
-- **Landing / Onboarding Page:**
-  - Create an HTML page with a “Connect Wallet” button.
-  - Include minimal descriptive text about the app.
-- **Token Creator Dashboard:**
-  - Build an HTML form for token details (name, icon upload, decimals, total supply).
-  - Add CSV file upload input and chain selection dropdown.
-  - Display fee information and a “Deploy Token” button.
-- **Token Holder Dashboard:**
-  - Create a page that lists token balances and includes a “Transfer Tokens” button.
-- **Implementation Tasks:**
-  - Develop separate HTML files (or a single-page app with dynamic content updates).
-  - Use Tailwind CSS or a simple CSS framework for styling.
-
-#### 3.2. Wallet Integration
-- **Implement Wallet Connection:**
-  - Use ethers.js in vanilla JavaScript to prompt connection (e.g., MetaMask).
-  - Display the connected wallet address and check for ZETA balance.
-- **Implementation Tasks:**
-  - Write a `wallet.js` utility that handles wallet connection, balance checks, and signature prompts.
-
-#### 3.3. State Management & API Calls
-- **Implement Basic State Handling:**
-  - Use JavaScript modules to manage application state (e.g., current user, token configuration data).
-- **API Integration:**
-  - Write helper functions (e.g., in `api.js`) to call backend endpoints.
-- **Implementation Tasks:**
-  - Ensure robust error handling in API calls with user notifications.
-
-### Dependencies
-- Completion of backend API endpoints for integration.
-- Basic UI/UX design mockups (even if minimal).
-
-### AI Instructions
-- Generate clean, modular JavaScript files that avoid global namespace pollution.
-- Use comments to document function purposes and API interactions.
+4. **CORS Configuration**
+   - Set up CORS middleware with proper origin handling
+   ```python
+   app.add_middleware(
+       CORSMiddleware,
+       allow_origins=settings.CORS_ORIGINS if not settings.DEBUG else ["*"],
+       allow_credentials=True,
+       allow_methods=["*"],
+       allow_headers=["*"],
+   )
+   ```
 
 ---
 
-## Stage 4: Integration Layer
+## Phase 2: Authentication & Wallet Integration (Weeks 3-4)
 
-### Goal of the Step
-Connect the frontend and backend by integrating API calls, validating inputs, and handling errors.
+### Frontend Wallet Integration
+1. **Setup Wagmi Client**
+   ```javascript
+   // Wallet configuration
+   const config = createConfig({
+     chains: [zetachain, ...otherChains],
+     transports: {
+       [zetachain.id]: http(zetachain.rpcUrls.default.http[0]),
+       // Add other chains as needed
+     }
+   });
+   ```
 
-### Tasks to Complete
-1. **API Connection:**
-   - Integrate API helper functions in JavaScript to call backend endpoints for token configuration, deployment, and token transfers.
-2. **Validation & Error Handling:**
-   - Implement frontend form validations (e.g., CSV format, required fields).
-   - Display error messages from backend responses.
-3. **Real-Time Updates:**
-   - Optionally set up polling or WebSocket connections to receive deployment and transfer status updates.
-4. **Testing Integration:**
-   - Test end-to-end flows: wallet connection → token configuration → fee payment → deployment → token transfer.
+2. **Implement Wallet Connection UI**
+   - Use RainbowKit components for connection flow
+   - Add network switching capabilities
 
-### Dependencies
-- Backend endpoints must be operational.
-- Frontend components must be implemented.
+3. **Network Switching Utility**
+   ```javascript
+   // Network switching function
+   const handleSwitchToZetaChain = async () => {
+     try {
+       await switchChain({ chainId: ZETACHAIN_ID });
+     } catch (switchError) {
+       // If network isn't added yet, try adding it
+       if (window.ethereum) {
+         try {
+           await window.ethereum.request({
+             method: 'wallet_addEthereumChain',
+             params: [{
+               chainId: `0x${ZETACHAIN_ID.toString(16)}`,
+               chainName: 'ZetaChain',
+               nativeCurrency: {
+                 decimals: 18,
+                 name: 'ZETA',
+                 symbol: 'ZETA',
+               },
+               rpcUrls: ['https://zetachain-evm.blockpi.network/v1/rpc/public'],
+               blockExplorerUrls: ['https://explorer.zetachain.com']
+             }]
+           });
+         } catch (error) {
+           console.error('Error adding network:', error);
+         }
+       }
+     }
+   };
+   ```
 
-### AI Instructions
-- Ensure that API calls include proper error handling (using try/catch or promise error callbacks).
-- Document integration points with inline comments to aid debugging.
+### Backend Authentication
+1. **JWT Token Implementation**
+   - Set up JWT token generation and validation
+   - Create nonce generation for wallet signatures
 
----
-
-## Stage 5: Storage & Media Handling
-
-### Goal of the Step
-Set up secure file storage for CSV uploads and token icon images.
-
-### Tasks to Complete
-1. **Storage Provider Setup:**
-   - Configure AWS S3 buckets (or a similar service) for:
-     - `/uploads/csv/` – Private folder for CSV files.
-     - `/uploads/icons/` – Public folder for token icons.
-2. **Integration in Backend:**
-   - Implement endpoints or service functions for file uploads.
-   - Generate signed URLs for secure CSV access if needed.
-3. **Frontend Integration:**
-   - Update the token configuration form to upload CSV and icon files to the storage provider.
-4. **Access Control:**
-   - Define S3 bucket policies to restrict write access and enable public read for icons.
-
-### Dependencies
-- Account setup with AWS S3 or an equivalent storage provider.
-- Environment variables must store credentials securely.
-
-### AI Instructions
-- Generate sample code for S3 file uploads using Python’s boto3 library.
-- Include clear comments on folder structure and access control configuration.
-
----
-
-## Stage 6: Testing
-
-### Goal of the Step
-Ensure robust code quality through unit, integration, and end-to-end tests.
-
-### Tasks to Complete
-1. **Backend Testing:**
-   - Write unit tests for database models, service functions, and API endpoints using pytest.
-   - Create integration tests to simulate end-to-end API calls.
-   - Achieve at least 80% code coverage.
-2. **Frontend Testing:**
-   - Write unit tests for utility functions in JavaScript (e.g., using a lightweight framework like Jest if necessary).
-   - Optionally, create manual integration tests to verify user flows.
-3. **Test Organization:**
-   - Place backend tests in `/backend/tests/` and frontend tests in `/frontend/tests/`.
-
-### Dependencies
-- Complete implementation of API endpoints and frontend utilities.
-
-### AI Instructions
-- Generate sample pytest test cases for each API endpoint.
-- Document test expectations in comments and ensure tests are modular.
+2. **Development Mode**
+   - Add development bypass option
+   ```python
+   # In auth middleware
+   async def get_current_wallet(credentials: HTTPAuthorizationCredentials = Depends(security)):
+       if settings.DEBUG and settings.AUTH_BYPASS_ENABLED:
+           return settings.TEST_WALLET_ADDRESS
+       
+       # Normal auth flow for production
+       try:
+           token = credentials.credentials
+           payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+           wallet_address: str = payload.get("sub")
+           # ...rest of auth logic
+   ```
 
 ---
 
-## Stage 7: Deployment
+## Phase 3: Token Creation Interface (Weeks 5-7)
 
-### Goal of the Step
-Set up automated deployment pipelines and deploy the application to staging/production environments.
+### Frontend Token Creation Form
+1. **Form Structure and Validation**
+   - Create controlled components for form fields
+   - Implement client-side validation
 
-### Tasks to Complete
-1. **CI/CD Setup:**
-   - Configure GitHub Actions (or a similar system) to run tests, lint code, and build Docker images.
-2. **Containerization:**
-   - Create Dockerfiles for the backend (and optionally for the frontend if needed).
-3. **Hosting & Environment:**
-   - Deploy the backend on a scalable service (e.g., GCP, Render, or similar).
-   - Deploy the static frontend on Vercel or Netlify.
-   - Configure environment variables, domain names, and SSL certificates.
-4. **Monitoring & Logging:**
-   - Set up Prometheus/Grafana and Sentry for real-time monitoring and error tracking.
-   - Configure logging in FastAPI and container logs.
+2. **File Uploads**
+   - Implement icon uploading with preview
+   - Implement CSV distribution list uploading with validation
 
-### Dependencies
-- Completed testing and stable builds.
-- Docker and hosting account setup.
+3. **FormData Handling**
+   - **CRITICAL**: Match field names exactly with backend expectations
+   ```javascript
+   // FormData preparation
+   const formDataToSend = new FormData();
+   formDataToSend.append('token_name', formData.name);         // Backend expects 'token_name'
+   formDataToSend.append('token_symbol', formData.symbol);     // Backend expects 'token_symbol'
+   formDataToSend.append('decimals', formData.decimals);
+   formDataToSend.append('total_supply', formData.totalSupply);
+   
+   // Convert array data to JSON strings
+   formDataToSend.append('selected_chains', JSON.stringify([chainId.toString()]));
+   
+   // Convert distributions to backend-expected format
+   const distributionsForBackend = distributions.map(dist => ({
+     recipient_address: dist.address,     // Backend expects 'recipient_address'
+     chain_id: chainId.toString(),        // Backend expects 'chain_id'
+     token_amount: dist.amount            // Backend expects 'token_amount'
+   }));
+   formDataToSend.append('distributions_json', JSON.stringify(distributionsForBackend));
+   ```
 
-### AI Instructions
-- Generate Dockerfiles and CI/CD configuration files.
-- Include clear documentation on environment variables and deployment steps.
+### Backend Token Creation Endpoint
+1. **Multipart Form Handling**
+   ```python
+   @router.post("/", response_model=TokenConfigurationResponse)
+   async def create_token(
+       token_name: str = Form(...),
+       token_symbol: str = Form(...),
+       decimals: int = Form(...),
+       total_supply: str = Form(...),
+       selected_chains: str = Form(...),  # JSON array of chain IDs
+       distributions_json: str = Form(None),  # Optional JSON array of distributions
+       icon: UploadFile = File(None),  # Optional token icon
+       wallet: str = Depends(get_current_wallet),
+       db: Session = Depends(get_db)
+   ):
+   ```
+
+2. **Data Parsing and Validation**
+   - Parse JSON strings from form data carefully
+   ```python
+   # Parse selected chains
+   try:
+       selected_chains_list = json.loads(selected_chains)
+       if not isinstance(selected_chains_list, list):
+           raise ValueError("Selected chains must be a list")
+   except json.JSONDecodeError:
+       raise HTTPException(
+           status_code=status.HTTP_400_BAD_REQUEST,
+           detail="Invalid selected chains format"
+       )
+   ```
+
+3. **Token Service Integration**
+   - Create token configuration records with proper error handling
+   ```python
+   # Error handling in service method
+   try:
+       # Create token configuration
+       token_config = TokenConfiguration(...)
+       db.add(token_config)
+       db.commit()
+       # ...
+   except Exception as e:
+       db.rollback()
+       print(f"Error creating token configuration: {str(e)}")
+       raise HTTPException(status_code=500, detail=f"Failed to create token: {str(e)}")
+   ```
 
 ---
 
-## Stage 8: Post-Launch Tasks
+## Phase 4: Transaction Processing (Weeks 8-10)
 
-### Goal of the Step
-Implement logging, analytics, and monitoring, and plan for iterative improvements based on user feedback.
+### Frontend Transaction Handling
+1. **Fee Payment Implementation**
+   - Use wagmi's sendTransaction hook
+   - **CRITICAL**: Handle BigInt values correctly
+   ```javascript
+   // Fee payment transaction
+   const feeInWei = ethers.parseEther(ZETA_FEE.toString());
+   
+   // CORRECT: Keep the BigInt value
+   const txResult = await sendTransaction({
+     to: UNIVERSAL_TOKEN_SERVICE_WALLET,
+     value: feeInWei  // Don't convert to string
+   });
+   
+   // Wait for hash before proceeding
+   if (!txResult || !txResult.hash) {
+     throw new Error('Transaction failed: No transaction hash returned');
+   }
+   ```
 
-### Tasks to Complete
-1. **Logging & Analytics:**
-   - Integrate centralized logging (e.g., ELK stack) and error reporting (Sentry).
-   - Set up analytics (e.g., Google Analytics) on the frontend.
-2. **User Feedback & Monitoring:**
-   - Monitor API usage, performance, and error rates.
-   - Plan for periodic reviews and updates to improve UI/UX and system performance.
-3. **Documentation:**
-   - Update README.md and developer docs to reflect deployment details and usage instructions.
-4. **Iterative Improvements:**
-   - Collect user feedback and plan for new features and enhancements.
+2. **Transaction Confirmation Flow**
+   - Update UI based on transaction states
+   - Handle transaction rejections gracefully
 
-### Dependencies
-- Application must be live and operational in production.
-- Monitoring tools must be integrated and configured.
+### Backend Transaction Verification
+1. **Fee Payment Verification**
+   - Implement robust verification logic
+   ```python
+   def verify_fee_payment(self, tx_hash: str) -> bool:
+       try:
+           # Get transaction details
+           tx = self.web3.eth.get_transaction(tx_hash)
+           tx_receipt = self.web3.eth.get_transaction_receipt(tx_hash)
+           
+           # Check transaction status
+           if tx_receipt.status != 1:
+               return False
+               
+           # Check recipient
+           if tx.to.lower() != settings.UNIVERSAL_TOKEN_SERVICE_WALLET.lower():
+               return False
+               
+           # Check amount
+           value_in_zeta = Decimal(self.web3.from_wei(tx.value, 'ether'))
+           if value_in_zeta < Decimal(settings.FIXED_ZETA_FEE):
+               return False
+               
+           return True
+       except Exception as e:
+           print(f"Error verifying fee payment: {str(e)}")
+           return False
+   ```
 
-### AI Instructions
-- Generate documentation updates and provide clear instructions for adding new tests or features.
-- Use inline comments to describe logging and analytics configuration.
+2. **Deployment Task Handling**
+   - Set up asynchronous task execution
+   - Implement status tracking for deployed contracts
 
 ---
 
-## Summary
+## Phase 5: Deployment Status Tracking (Weeks 11-12)
 
-This updated implementation plan outlines all stages required to build the Universal Token Launcher with a focus on cross-chain token transfers (burning on the source chain and minting on the destination chain):
-1. **Project Setup:** Establish repository and folder structures.
-2. **Backend Development:** Build authentication, database models, API endpoints, and business logic for token deployment and transfers.
-3. **Frontend Development:** Create HTML/CSS/JS UI components and wallet integration.
-4. **Integration:** Connect frontend and backend with robust error handling.
-5. **Storage & Media Handling:** Configure secure file storage.
-6. **Testing:** Write comprehensive unit, integration, and end-to-end tests.
-7. **Deployment:** Set up CI/CD pipelines, containerize, and deploy to staging/production.
-8. **Post-Launch:** Implement logging, analytics, monitoring, and plan for continuous improvements.
+### Frontend Status Updates
+1. **Polling Mechanism**
+   - Implement interval-based polling for deployment status
+   ```javascript
+   useEffect(() => {
+     let intervalId;
+     
+     if (deploymentStatus === 'pending' && deploymentDetails?.id) {
+       intervalId = setInterval(async () => {
+         try {
+           const logs = await apiService.getDeploymentLogs(deploymentDetails.id);
+           const updatedDetails = await apiService.getToken(deploymentDetails.id);
+           
+           setDeploymentDetails({
+             ...updatedDetails,
+             deployments: logs
+           });
+           
+           if (updatedDetails.deployment_status === 'completed') {
+             setDeploymentStatus('success');
+             clearInterval(intervalId);
+           } else if (updatedDetails.deployment_status === 'failed') {
+             setDeploymentStatus('error');
+             clearInterval(intervalId);
+           }
+         } catch (error) {
+           console.error('Error polling deployment status:', error);
+         }
+       }, 5000); // Poll every 5 seconds
+     }
+     
+     return () => {
+       if (intervalId) clearInterval(intervalId);
+     };
+   }, [deploymentStatus, deploymentDetails?.id]);
+   ```
 
-Following this step-by-step plan, an AI coding agent or development team can efficiently build the Universal Token Launcher that emphasizes seamless cross-chain token transfers.
-```
+2. **Status Display UI**
+   - Create visual indicators for deployment stages
+   - Show contract addresses with links to explorers
+
+### Backend Status Endpoints
+1. **Deployment Logs API**
+   - Create endpoints to retrieve deployment status
+   ```python
+   @router.get("/{token_id}/deployments", response_model=List[DeploymentLogResponse])
+   async def get_token_deployments(
+       token_id: int,
+       wallet: str = Depends(get_current_wallet),
+       db: Session = Depends(get_db)
+   ):
+       # Verify token belongs to the wallet
+       token_config = token_service.get_token_configuration(db, token_id, wallet)
+       
+       # Get deployment logs
+       return token_service.get_token_deployments(db, token_id)
+   ```
+
+2. **Status Update Logic**
+   - Implement background task for deployment processing
+   - Update deployment logs with contract addresses and status
+
+---
+
+## Risk Mitigation & Testing Plan
+
+### Known Risks and Mitigation
+1. **API Route Configuration Issues**
+   - Risk: 404 errors due to duplicate prefixes
+   - Mitigation: Code review to ensure router prefixes are consistent
+
+2. **CORS Configuration Problems**
+   - Risk: Frontend unable to connect to backend
+   - Mitigation: Configurable CORS settings with development mode support
+
+3. **Transaction Handling Errors**
+   - Risk: Transactions failing silently
+   - Mitigation: Comprehensive error handling and user feedback
+
+4. **Form Data Format Mismatches**
+   - Risk: Backend unable to process frontend data
+   - Mitigation: Clear documentation of expected formats and field names
+
+### Testing Strategy
+1. **Unit Testing**
+   - Test all API endpoints with various inputs
+   - Test form validation logic
+
+2. **Integration Testing**
+   - Test wallet connection and transaction flow
+   - Test token deployment end-to-end
+
+3. **End-to-End Testing**
+   - Full user journey from wallet connection to token deployment
+   - Edge cases with various network conditions
+
+---
+
+This implementation plan provides a detailed roadmap for developing the Universal Token Launcher, with specific guidance on avoiding common pitfalls based on our implementation experience.

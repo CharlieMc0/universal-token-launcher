@@ -10,7 +10,7 @@ def test_create_token(client):
         "token_symbol": "TEST",
         "decimals": 18,
         "total_supply": "1000000",
-        "creator_wallet": "0x1234567890123456789012345678901234567890",
+        "creator_wallet": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
         "icon_url": "https://example.com/icon.png"
     }
     
@@ -51,7 +51,7 @@ def test_get_token(client):
         "token_symbol": "TEST",
         "decimals": 18,
         "total_supply": "1000000",
-        "creator_wallet": "0x1234567890123456789012345678901234567890"
+        "creator_wallet": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63"
     }
     
     create_response = client.post("/api/v1/tokens/", json=token_data)
@@ -80,7 +80,7 @@ def test_list_tokens(client):
         "token_symbol": "TEST",
         "decimals": 18,
         "total_supply": "1000000",
-        "creator_wallet": "0x1234567890123456789012345678901234567890"
+        "creator_wallet": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63"
     }
     
     for i in range(3):
@@ -105,7 +105,7 @@ def test_update_token(client):
         "token_symbol": "TEST",
         "decimals": 18,
         "total_supply": "1000000",
-        "creator_wallet": "0x1234567890123456789012345678901234567890"
+        "creator_wallet": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63"
     }
     
     create_response = client.post("/api/v1/tokens/", json=token_data)
@@ -133,7 +133,7 @@ def test_delete_token(client):
         "token_symbol": "TEST",
         "decimals": 18,
         "total_supply": "1000000",
-        "creator_wallet": "0x1234567890123456789012345678901234567890"
+        "creator_wallet": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63"
     }
     
     create_response = client.post("/api/v1/tokens/", json=token_data)
