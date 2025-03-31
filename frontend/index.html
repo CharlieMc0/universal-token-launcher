@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Token Launcher</title>
+    <link rel="stylesheet" href="assets/styles/main.css">
+    <!-- Include ethers.js for Web3 interactions -->
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js" type="application/javascript"></script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Universal Token Launcher</h1>
+            <div id="wallet-container">
+                <button id="connect-wallet" class="btn-primary">Connect Wallet</button>
+                <span id="wallet-address" class="hidden"></span>
+            </div>
+        </div>
+    </header>
+    
+    <main class="container">
+        <div id="landing-view" class="app-view">
+            <h2>Deploy Universal Tokens Across Multiple Chains</h2>
+            <p>Connect your wallet to get started</p>
+            <div class="features">
+                <div class="feature">
+                    <h3>Simple Configuration</h3>
+                    <p>Define token details and distribution in one place</p>
+                </div>
+                <div class="feature">
+                    <h3>Cross-Chain Deployment</h3>
+                    <p>Deploy on multiple EVM chains with a single transaction</p>
+                </div>
+                <div class="feature">
+                    <h3>Token Transfers</h3>
+                    <p>Easily transfer tokens between chains</p>
+                </div>
+            </div>
+        </div>
+        
+        <div id="creator-view" class="app-view hidden">
+            <h2>Create Your Universal Token</h2>
+            <form id="token-form" class="card">
+                <div class="form-group">
+                    <label for="token-name">Token Name</label>
+                    <input type="text" id="token-name" required placeholder="e.g., My Universal Token">
+                </div>
+                
+                <div class="form-group">
+                    <label for="token-symbol">Token Symbol</label>
+                    <input type="text" id="token-symbol" required maxlength="8" placeholder="e.g., MUT">
+                </div>
+                
+                <div class="form-group">
+                    <label for="token-decimals">Decimals</label>
+                    <input type="number" id="token-decimals" min="0" max="18" value="18" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="token-supply">Total Supply</label>
+                    <input type="text" id="token-supply" required placeholder="e.g., 1000000">
+                </div>
+                
+                <div class="form-group">
+                    <label for="token-icon">Token Icon (Optional)</label>
+                    <input type="file" id="token-icon" accept=".jpg,.jpeg,.png,.svg,.webp">
+                </div>
+                
+                <div class="form-group">
+                    <label>Select Chains for Deployment</label>
+                    <div class="chain-options">
+                        <div class="chain-option">
+                            <input type="checkbox" id="chain-1" value="1" class="chain-checkbox">
+                            <label for="chain-1">Ethereum</label>
+                        </div>
+                        <div class="chain-option">
+                            <input type="checkbox" id="chain-137" value="137" class="chain-checkbox">
+                            <label for="chain-137">Polygon</label>
+                        </div>
+                        <div class="chain-option">
+                            <input type="checkbox" id="chain-56" value="56" class="chain-checkbox">
+                            <label for="chain-56">BNB Chain</label>
+                        </div>
+                        <div class="chain-option">
+                            <input type="checkbox" id="chain-43114" value="43114" class="chain-checkbox">
+                            <label for="chain-43114">Avalanche</label>
+                        </div>
+                        <div class="chain-option">
+                            <input type="checkbox" id="chain-42161" value="42161" class="chain-checkbox">
+                            <label for="chain-42161">Arbitrum</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="token-distributions">Initial Token Distributions (CSV)</label>
+                    <input type="file" id="token-distributions" accept=".csv">
+                    <small>CSV Format: recipient_address,chain_id,token_amount (max 100 entries)</small>
+                </div>
+                
+                <div class="fee-details">
+                    <h3>Fee Information</h3>
+                    <p>A fixed fee of <span id="zeta-fee">1.5</span> ZETA is required for deployment</p>
+                    <p>Your ZETA Balance: <span id="zeta-balance">0</span></p>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" id="create-token" class="btn-primary">Create Token</button>
+                </div>
+            </form>
+        </div>
+        
+        <div id="deployment-view" class="app-view hidden">
+            <h2>Token Deployment</h2>
+            <div class="card">
+                <div class="token-summary">
+                    <h3>Token Details</h3>
+                    <div id="token-details"></div>
+                </div>
+                
+                <div class="deployment-status">
+                    <h3>Deployment Status</h3>
+                    <div id="deployment-steps"></div>
+                </div>
+                
+                <div class="form-actions">
+                    <button id="pay-fee" class="btn-primary">Pay Fee & Deploy</button>
+                    <button id="view-transfers" class="btn-secondary hidden">Go to Transfer</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="holder-view" class="app-view hidden">
+            <h2>Your Universal Tokens</h2>
+            <div id="token-list">
+                <!-- Token cards will be inserted here -->
+            </div>
+            
+            <div id="transfer-form" class="card hidden">
+                <h3>Transfer Tokens</h3>
+                <form id="transfer-token-form">
+                    <div class="form-group">
+                        <label for="transfer-token">Token</label>
+                        <select id="transfer-token" required></select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="source-chain">Source Chain</label>
+                        <select id="source-chain" required></select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="destination-chain">Destination Chain</label>
+                        <select id="destination-chain" required></select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="transfer-amount">Amount</label>
+                        <input type="text" id="transfer-amount" required>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">Transfer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Status Modal -->
+        <div id="status-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close-modal">&times;</span>
+                <h3 id="modal-title">Status Update</h3>
+                <p id="modal-message"></p>
+                <div class="modal-actions">
+                    <button id="modal-confirm" class="btn-primary">OK</button>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 Universal Token Launcher | Powered by ZetaChain</p>
+        </div>
+    </footer>
+    
+    <!-- Application scripts -->
+    <script src="scripts/config.js"></script>
+    <script src="scripts/wallet.js"></script>
+    <script src="scripts/api.js"></script>
+    <script src="scripts/token.js"></script>
+    <script src="scripts/transfer.js"></script>
+    <script src="scripts/app.js"></script>
+</body>
+</html> 

@@ -17,6 +17,7 @@ pip-delete-this-directory.txt
 .env.production
 *.env
 
+
 # Database
 *.sql
 *.sqlite3
@@ -101,3 +102,5 @@ Thumbs.db
 
 ## Ignore all files in standard-contracts
 standard-contracts/**
+
+backend/gcp-creds.json

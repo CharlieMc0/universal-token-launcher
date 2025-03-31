@@ -1,0 +1,27 @@
+# FastAPI and dependencies
+fastapi==0.109.2
+uvicorn==0.27.1
+sqlalchemy==2.0.27
+alembic==1.13.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+pydantic==2.4.2
+pydantic-settings==2.0.3
+
+# Environment and security
+python-dotenv==1.0.1
+python-jose==3.3.0
+passlib==1.7.4
+python-multipart==0.0.9
+bcrypt==4.1.2
+
+# Web3 dependencies
+web3==6.15.0
+
+# Cloud Storage
+google-cloud-storage==2.14.0
+
+# Testing
+pytest==8.0.0
+pytest-asyncio==0.23.5
+httpx==0.26.0 
