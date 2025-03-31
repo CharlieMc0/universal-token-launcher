@@ -86,6 +86,8 @@ The Universal Token Launcher is a web application that allows non-developer user
 
 - **Technologies:** HTML, CSS (with a modern, sleek design), and vanilla JavaScript.
 - **Wallet Integration:** Use Web3 libraries (ethers.js or web3.js) for connecting to wallets (e.g., MetaMask).
+- **Technologies:** React.js with Create React App, along with styled-components for component-scoped styling.
+- **Wallet Integration:** Utilize wagmi (v2.x) in conjunction with ethers.js (v6.x) and @rainbow-me/rainbowkit for efficient wallet connections.
 - **UI/UX:** Simple, intuitive, and responsive design for desktop (with potential mobile support in future iterations).
 
 ### 6.2 Backend

@@ -29,6 +29,8 @@ This document outlines the recommended technologies for building the Universal T
   - **Native React forms with controlled components**  
     *Rationale:* Simplifies form state management without additional dependencies.
 
+- **Network Switching Utility:** Implements automatic switching to and addition of the ZetaChain network using a custom utility function (located in frontend/src/utils/networkSwitchingUtility.js) to streamline network configuration and improve user experience.
+
 ---
 
 ## 2. Backend Stack

@@ -25,7 +25,7 @@ const StyledSelect = styled.select`
   outline: none;
   transition: all 0.2s ease;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23B0B0B0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: ${props => !props.multiple && `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23B0B0B0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`};
   background-repeat: no-repeat;
   background-position: right 16px center;
   background-size: 16px;
@@ -38,11 +38,29 @@ const StyledSelect = styled.select`
   option {
     background-color: var(--bg-primary);
     color: var(--text-primary);
+    padding: 8px;
   }
   
   option:disabled {
     color: var(--text-secondary);
+    font-style: italic;
   }
+
+  ${props => props.multiple && `
+    height: auto;
+    min-height: 120px;
+    padding: 8px;
+    
+    option {
+      margin: 4px 0;
+      border-radius: 4px;
+      
+      &:checked {
+        background-color: var(--accent-primary);
+        color: white;
+      }
+    }
+  `}
 `;
 
 const HelperText = styled.div`
@@ -57,6 +75,7 @@ const FormSelect = ({
   options = [],
   helperText,
   error,
+  multiple = false,
   ...props
 }) => {
   return (
@@ -64,7 +83,8 @@ const FormSelect = ({
       {label && <Label htmlFor={id}>{label}</Label>}
       <StyledSelect 
         id={id} 
-        error={error} 
+        error={error}
+        multiple={multiple}
         {...props}
       >
         {options.map((option) => (

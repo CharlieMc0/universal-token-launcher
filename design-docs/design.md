@@ -98,6 +98,84 @@ Styles:
 
 ---
 
+### Token Tiles
+
+Example:
+```jsx
+<TokenTile
+  token={token}
+  chainId={chainId}
+  balance={balance}
+  selected={isSelected}
+  disabled={isDisabled}
+  onClick={handleClick}
+/>
+```
+
+Variants:
+- Default: Shows chain logo, name, and token balance
+- Selected: Blue accent background and border
+- Disabled: Grayed out, no hover state (for "Coming Soon" chains)
+
+Layout:
+- Grid-based display (min-width: 160px)
+- Centered content with chain logo, name, and balance
+- Hover effect with slight elevation
+- Responsive grid layout (auto-fill)
+
+### Token Sections
+
+Example:
+```jsx
+<TokenSection>
+  <TokenHeader>
+    <TokenIcon />
+    <TokenTitle>Token Name <TokenSymbol>SYMBOL</TokenSymbol></TokenTitle>
+  </TokenHeader>
+  <TokenGrid>
+    {/* TokenTiles */}
+  </TokenGrid>
+</TokenSection>
+```
+
+Layout:
+- Token icon and name header
+- Grid of chain tiles below
+- Clear visual hierarchy
+- Consistent spacing (24px between sections)
+
+### Selected Token Card
+
+Example:
+```jsx
+<SelectedTokenSection>
+  <SelectedTokenHeader>
+    <SelectedTokenInfo>
+      <TokenIcon />
+      <div>
+        <SelectedTokenTitle>Token Name <TokenSymbol>SYMBOL</TokenSymbol></SelectedTokenTitle>
+        <SelectedChainInfo>
+          <SelectedChainLogo />
+          <SelectedChainName />
+          <SelectedBalance />
+        </SelectedChainInfo>
+      </div>
+    </SelectedTokenInfo>
+  </SelectedTokenHeader>
+  <TokenGrid>
+    {/* Destination Chain Tiles */}
+  </TokenGrid>
+</SelectedTokenSection>
+```
+
+Layout:
+- Light background to distinguish from main content
+- Token info and selected chain details
+- Grid of available destination chains
+- Clear visual hierarchy with consistent spacing
+
+---
+
 ## 🔁 Interaction Patterns
 
 | Event                  | Response                                   |
@@ -105,7 +183,7 @@ Styles:
 | Form error             | Shake field, red message below input       |
 | Valid CSV Upload       | Badge: "97 entries valid. 3 errors."       |
 | Fee Paid               | Transition to deployment progress panel    |
-| Bridge in progress     | Live status: “Burning… Minting… ✅ Done”   |
+| Bridge in progress     | Live status: "Burning… Minting… ✅ Done"   |
 
 ---
 

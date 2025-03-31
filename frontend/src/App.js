@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { configureChains, createConfig, WagmiConfig } from 'wagmi';
-import { mainnet, sepolia } from 'wagmi/chains';
+import { mainnet, sepolia, bscTestnet, baseSepolia } from 'wagmi/chains';
 import { publicProvider } from 'wagmi/providers/public';
 import {
   RainbowKitProvider,
@@ -44,7 +44,7 @@ const zetaChainAthens = {
 
 // Configure Chains
 const { chains, publicClient } = configureChains(
-  [mainnet, sepolia, zetaChainAthens],
+  [mainnet, sepolia, bscTestnet, baseSepolia, zetaChainAthens],
   [publicProvider()]
 );
 

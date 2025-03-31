@@ -61,6 +61,11 @@ This document provides a comprehensive walkthrough of the user journey through t
   };
   ```
 
+  // Note: For a cleaner implementation, you can replace the above inline network switching logic
+  // with the custom network switching utility function 'switchToZetaChain' located in
+  // 'frontend/src/utils/networkSwitchingUtility.js'. This utility encapsulates the logic for both
+  // switching to ZetaChain and adding it if not already present.
+
 - **Balance Check**
   - Ensure proper ZETA balance check using wagmi's useBalance hook
   ```javascript
@@ -253,7 +258,111 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 4. Additional Workflows
+## 4. Token Transfer Flow
+
+### Flow Stages
+1. **Token Selection**
+   - User views all their tokens grouped by name
+   - Each token shows balances across different chains
+   - User clicks on a token+chain combination to select as source
+   - Selected token+chain is highlighted
+
+2. **Destination Selection**
+   - Selected token card appears below
+   - Shows source chain and current balance
+   - Displays all available destination chains as tiles
+   - User can select multiple destination chains
+   - "Coming Soon" chains are disabled
+
+3. **Transfer Details**
+   - User enters transfer amount
+   - Optional recipient address (defaults to user's address)
+   - Shows available balance for reference
+   - Submit button enabled when all required fields are filled
+
+4. **Transfer Processing**
+   - User clicks "Transfer Tokens"
+   - System initiates cross-chain transfer
+   - Shows transaction hash with link to explorer
+   - Displays success message with transfer details
+
+### Key Technical Considerations
+- **Token Data Structure**
+  ```javascript
+  const token = {
+    id: string,
+    name: string,
+    symbol: string,
+    iconUrl: string,
+    deployedChains: string[],
+    balances: {
+      [chainId: string]: number
+    }
+  };
+  ```
+
+- **Chain Selection Logic**
+  ```javascript
+  // Get available destination chains
+  const getAvailableDestinationChains = () => {
+    if (!selectedToken) return [];
+    
+    // Return all supported chains except the source chain
+    return supportedChains.filter(chain => 
+      chain.id !== formData.sourceChain
+    );
+  };
+  ```
+
+- **Transfer Processing**
+  ```javascript
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      setTransferring(true);
+      setTransferResult(null);
+      
+      const result = await apiService.transferTokens({
+        tokenId: formData.tokenId,
+        sourceChain: formData.sourceChain,
+        destinationChain: formData.destinationChain,
+        transferAmount: formData.transferAmount,
+        recipientAddress: formData.recipientAddress || address
+      });
+      
+      setTransferResult(result);
+    } catch (error) {
+      console.error('Transfer failed:', error);
+      alert(`Transfer failed: ${error.message}`);
+    } finally {
+      setTransferring(false);
+    }
+  };
+  ```
+
+### User Experience Considerations
+1. **Visual Feedback**
+   - Clear indication of selected token and chain
+   - Disabled state for unavailable chains
+   - Loading states during transfer
+   - Success/error messages with transaction details
+
+2. **Error Handling**
+   - Validate transfer amount against available balance
+   - Check for valid recipient address format
+   - Handle network errors gracefully
+   - Provide clear error messages
+
+3. **Accessibility**
+   - Keyboard navigation for chain selection
+   - Clear focus states
+   - Descriptive labels and helper text
+   - High contrast for important information
+
+---
+
+## 5. Additional Workflows
 
 ### Token Management & Transfer
 1. **Dashboard View**
@@ -277,7 +386,7 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 5. Error Handling & Recovery
+## 6. Error Handling & Recovery
 
 ### Common Error Scenarios
 1. **Wallet Connection Errors**
@@ -331,7 +440,7 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 6. Best Practices & Lessons Learned
+## 7. Best Practices & Lessons Learned
 
 ### Frontend Best Practices
 1. **Wallet Integration**
@@ -364,7 +473,7 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 7. Flow Diagrams
+## 8. Flow Diagrams
 
 ### Main User Flow
 ```
