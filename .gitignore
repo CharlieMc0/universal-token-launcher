@@ -1,0 +1,103 @@
+# Dependencies
+node_modules/
+venv/
+.env/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+*.env
+
+# Database
+*.sql
+*.sqlite3
+*.sqlite
+*.db
+
+# Storage & Uploads
+uploads/
+uploads/csv/*
+uploads/icons/*
+!uploads/csv/.gitkeep
+!uploads/icons/.gitkeep
+
+# Logs and debugging
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+debug/
+.debug/
+
+# Testing and coverage
+coverage/
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Build and dist
+build/
+dist/
+out/
+*.egg-info/
+*.egg
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# FastAPI specific
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# JWT and security
+*.pem
+*.key
+*.crt
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Redis
+dump.rdb
+
+# AWS
+.aws/
+aws.config
+
+# Documentation builds
+docs/_build/
+site/
+
+# Temporary files
+tmp/
+temp/
+.temp/
+*.tmp
+
+# System Files
+.DS_Store
+Thumbs.db 
+
+## Ignore all files in standard-contracts
+standard-contracts/**

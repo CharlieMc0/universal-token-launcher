@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# standard-contracts directory (read-only reference code)
+standard-contracts/** @readonly "This directory contains reference code and should not be modified. Please refer to the original repository for any changes."
