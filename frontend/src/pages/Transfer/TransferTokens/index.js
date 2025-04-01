@@ -305,8 +305,8 @@ const TransferTokens = ({ embedded = false }) => {
   };
 
   return (
-    <PageContainer embedded={embedded}>
-      <PageTitle embedded={embedded}>Transfer Your Universal Tokens</PageTitle>
+    <PageContainer embedded={embedded.toString()}>
+      <PageTitle embedded={embedded.toString()}>Transfer Your Universal Tokens</PageTitle>
       
       {loading ? (
         <FormContainer>

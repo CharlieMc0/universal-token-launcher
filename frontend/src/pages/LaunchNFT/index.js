@@ -317,8 +317,8 @@ const LaunchNFTPage = ({ embedded = false }) => {
   };
   
   return (
-    <PageContainer embedded={embedded}>
-      <PageTitle embedded={embedded}>Create Universal NFT Collection</PageTitle>
+    <PageContainer embedded={embedded.toString()}>
+      <PageTitle embedded={embedded.toString()}>Create Universal NFT Collection</PageTitle>
       
       {deploymentStatus ? (
         <FormContainer>

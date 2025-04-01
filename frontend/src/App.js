@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { configureChains, createConfig, WagmiConfig } from 'wagmi';
+import { configureChains, createConfig, WagmiConfig, useAccount } from 'wagmi';
 import { mainnet, sepolia, bscTestnet, baseSepolia } from 'wagmi/chains';
 import { publicProvider } from 'wagmi/providers/public';
 import {
@@ -22,6 +22,8 @@ import TransferPage from './pages/Transfer';
 import BuyPage from './pages/Buy';
 // Import Layout
 import Layout from './components/layout/Layout';
+// Import API Service
+import apiService from './services/apiService';
 
 // Define ZetaChain Testnet (Athens)
 const zetaChainAthens = {
@@ -67,6 +69,22 @@ const wagmiConfig = createConfig({
   publicClient
 });
 
+// Wallet Connector component to set address in apiService
+function WalletConnector({ children }) {
+  const { address, isConnected } = useAccount();
+  
+  useEffect(() => {
+    if (isConnected && address) {
+      // Set the wallet address in the API service
+      apiService.setWalletAddress(address);
+    } else {
+      apiService.setWalletAddress(null);
+    }
+  }, [address, isConnected]);
+  
+  return children;
+}
+
 function App() {
   return (
     <WagmiConfig config={wagmiConfig}>
@@ -79,15 +97,17 @@ function App() {
         })}
         chains={chains}
       >
-        <Router>
-          <Routes>
-            <Route path="/" element={<Layout><HomePage /></Layout>} />
-            <Route path="/create" element={<Layout><CreatePage /></Layout>} />
-            <Route path="/transfer" element={<Layout><TransferPage /></Layout>} />
-            <Route path="/buy" element={<Layout><BuyPage /></Layout>} />
-            {/* Add more routes as needed */}
-          </Routes>
-        </Router>
+        <WalletConnector>
+          <Router>
+            <Routes>
+              <Route path="/" element={<Layout><HomePage /></Layout>} />
+              <Route path="/create" element={<Layout><CreatePage /></Layout>} />
+              <Route path="/transfer" element={<Layout><TransferPage /></Layout>} />
+              <Route path="/buy" element={<Layout><BuyPage /></Layout>} />
+              {/* Add more routes as needed */}
+            </Routes>
+          </Router>
+        </WalletConnector>
       </RainbowKitProvider>
     </WagmiConfig>
   );

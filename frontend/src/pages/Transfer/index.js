@@ -78,7 +78,7 @@ const TransferPage = () => {
       </ToggleContainer>
       
       <ContentContainer>
-        {activeTab === 'token' ? <TransferTokens embedded={true} /> : <TransferNFTPage embedded={true} />}
+        {activeTab === 'token' ? <TransferTokens embedded="true" /> : <TransferNFTPage embedded="true" />}
       </ContentContainer>
     </PageContainer>
   );

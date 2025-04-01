@@ -78,7 +78,7 @@ const CreatePage = () => {
       </ToggleContainer>
       
       <ContentContainer>
-        {activeTab === 'token' ? <LaunchPage embedded={true} /> : <LaunchNFTPage embedded={true} />}
+        {activeTab === 'token' ? <LaunchPage embedded="true" /> : <LaunchNFTPage embedded="true" />}
       </ContentContainer>
     </PageContainer>
   );

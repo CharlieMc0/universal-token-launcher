@@ -628,7 +628,180 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 9. Flow Diagrams
+## 9. Contract Verification
+
+The Universal Token Launcher now provides automatic contract verification for deployed tokens, enhancing transparency and trust for users.
+
+### 9.1 Verification Process Overview
+
+1. **Automatic Verification:**
+   - Contracts are automatically verified after deployment
+   - No user intervention required
+   - Process runs in background during token deployment
+
+2. **Verification Status:**
+   - Users can view verification status in the deployment logs
+   - Possible statuses: pending, processing, verified, failed, skipped
+   - Clear error messages if verification fails
+
+3. **Explorer Integration:**
+   - Direct links to verified contracts on block explorers
+   - Different explorer support based on chain:
+     - Blockscout for ZetaChain (Athens)
+     - Etherscan for Ethereum networks (Sepolia)
+     - Basescan for Base (Base Sepolia)
+     - Other Etherscan-compatible explorers for additional chains
+
+### 9.2 User Benefits
+
+1. **Enhanced Transparency:**
+   - Users can inspect the source code on block explorers
+   - Builds trust by allowing code verification
+   - Confirms contract behavior matches expected functionality
+
+2. **Better Debugging:**
+   - Makes troubleshooting easier if issues arise
+   - Allows developers to understand token behavior
+   - Provides insight into contract interactions
+
+3. **Social Proof:**
+   - Shows verification checkmark on explorers
+   - Increases credibility for tokens
+   - Standard practice for legitimate projects
+
+### 9.3 Implementation Details
+
+1. **User Experience:**
+   - Seamlessly integrated into deployment flow
+   - Progress indicators during verification
+   - Success or failure notification
+
+2. **UI Elements:**
+   ```jsx
+   // Example verification status display in token details
+   <VerificationStatus status={deployment.verificationStatus}>
+     {deployment.verificationStatus === 'verified' ? (
+       <VerificationLink 
+         href={deployment.verifiedUrl} 
+         target="_blank" 
+         rel="noopener noreferrer"
+       >
+         ✓ Verified - View on Explorer
+       </VerificationLink>
+     ) : deployment.verificationStatus === 'failed' ? (
+       <VerificationError>
+         ✗ Verification Failed: {deployment.verificationError}
+       </VerificationError>
+     ) : (
+       <span>{capitalizeFirstLetter(deployment.verificationStatus)}...</span>
+     )}
+   </VerificationStatus>
+   ```
+
+3. **Technical Requirements:**
+   - Explorer API keys configured on backend
+   - Proper compiler settings
+   - Accurate source code management
+
+This automatic verification feature significantly improves the user experience by providing verified, transparent contracts without requiring any additional steps from users.
+
+---
+
+## 10. Testing Strategies
+
+### Integration Testing Approach
+
+1. **Component Isolation**
+   - Test components in isolation by mocking all external dependencies
+   - Mock API service calls to simulate various response scenarios
+   - Mock wallet connections and blockchain interactions
+   - Focus on testing component behavior, not implementation details
+
+2. **Form Submission Testing**
+   - Test complete form submission flows from input to API call
+   - Verify that form data is correctly formatted and sent to the API
+   - Test validation rules and error handling
+   - Use `screen.getByRole` with name options for more reliable button selection:
+     ```javascript
+     // More reliable than generic queries
+     const submitButton = screen.getByRole('button', { name: 'Launch Token' });
+     fireEvent.click(submitButton);
+     ```
+
+3. **Asynchronous State Management**
+   - Test loading states properly with waitFor and async assertions
+   - Verify that loading indicators appear and disappear appropriately
+   - Test both the loading and loaded states:
+     ```javascript
+     // Check loading state first
+     expect(screen.getByText(/loading your tokens/i)).toBeInTheDocument();
+     
+     // Then wait for loading to resolve
+     await waitFor(() => {
+       expect(screen.queryByText(/loading your tokens/i)).not.toBeInTheDocument();
+     });
+     
+     // Finally check that content appears
+     expect(screen.getByText(/My Universal Token/i)).toBeInTheDocument();
+     ```
+
+4. **API Mock Implementation**
+   - Implement realistic API mocks with delays to simulate network requests
+   - Test both success and error scenarios for each API call
+   - Simulate timeouts and network errors
+   - Example implementation:
+     ```javascript
+     apiService.getUserTokens.mockImplementation(() => {
+       return new Promise((resolve) => {
+         // Add delay to simulate network request
+         setTimeout(() => {
+           resolve([
+             { id: 'token1', name: 'My Universal Token', /* other props */ },
+             { id: 'token2', name: 'Another Token', /* other props */ }
+           ]);
+         }, 100);
+       });
+     });
+     ```
+
+5. **Transaction Testing**
+   - Mock blockchain transactions to test transaction flow
+   - Test error scenarios like user rejection and failed transactions
+   - Simulate transaction waiting and confirmation
+   - Check that UI updates correctly during transaction stages
+
+### Testing Gotchas and Solutions
+
+1. **Element Selection Challenges**
+   - **Problem**: Elements may be nested in styled-components making selection difficult
+   - **Solution**: Use more specific queries with text content or roles, and possibly add test IDs
+
+2. **Asynchronous Testing Issues**
+   - **Problem**: Tests may fail due to timing issues with state updates
+   - **Solution**: Use `waitFor` with appropriate timeouts and check both appearance and disappearance of elements
+
+3. **Mock Implementation Depth**
+   - **Problem**: Complex components may require deep mocking of multiple dependencies
+   - **Solution**: Create a dedicated test setup file with comprehensive mock implementations
+
+4. **Alert Testing**
+   - **Problem**: Browser alerts are not implemented in JSDOM
+   - **Solution**: Mock `window.alert` or refactor code to use custom alert components that can be tested
+
+### Continuous Integration Testing
+
+1. **Test Command**
+   - Use `npm test -- --testMatch="**/*Integration.test.js" --watchAll=false` to run all integration tests
+   - Include specific test files by pattern for more targeted testing
+
+2. **Mocking Strategy**
+   - Ensure all external dependencies are properly mocked in CI environment
+   - Use consistent mock implementations across tests
+   - Consider using MSW (Mock Service Worker) for API mocking in more complex scenarios
+
+---
+
+## 11. Flow Diagrams
 
 ### Main User Flows
 ```
@@ -655,6 +828,22 @@ Enter Quantity → Complete Purchase
 Wallet Connection Error → Retry or Install Wallet Instructions
 Network Switch Error → Manual Network Addition Instructions
 Deployment Error → View Details → Retry Deployment
+```
+
+### Integration Test Flows
+```
+LAUNCH INTEGRATION TEST:
+Mock API and Wagmi Hooks → Render LaunchPage →
+Fill Form Fields → Click Submit Button →
+Verify API Calls → Check Deployment Status →
+Verify Success/Error States
+
+TRANSFER INTEGRATION TEST:
+Mock API and Wagmi Hooks → Render TransferPage →
+Verify Loading State → Wait for Token Data →
+Verify Tokens Displayed → Select Source and Destination →
+Enter Amount → Submit Transfer →
+Verify API Calls → Check Transfer Status
 ```
 
 ---

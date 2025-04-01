@@ -122,8 +122,129 @@ python -m http.server 5500
 
 ## Documentation
 
-For more details, see the design documents in the `/design-docs` directory.
+For more details, see the design documents in the `/documentation` directory.
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+# Universal Token Launcher Backend
+
+This is the backend service for the Universal Token Launcher application on ZetaChain. It provides APIs for creating, managing, and deploying universal tokens.
+
+## Prerequisites
+
+- Node.js 18+
+- PostgreSQL database
+- ZetaChain and EVM-compatible wallet with funds
+
+## Setup
+
+1. Clone the repository and install dependencies:
+
+```bash
+git clone <repository-url>
+cd utl/backend
+npm install
+```
+
+2. Set up your environment variables by copying the example file:
+
+```bash
+cp .env.example .env
+```
+
+3. Update the `.env` file with your database credentials, RPC URLs, and private key:
+
+```
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_NAME=universal_token_launcher
+
+# Chain Configuration
+ZETACHAIN_RPC_URL=https://zetachain-athens-evm.blockpi.network/v1/rpc/public
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+BASE_GOERLI_RPC_URL=https://base-goerli.blockpi.network/v1/rpc/public
+
+# Wallet Configuration
+TEST_WALLET_PRIVATE_KEY=your_private_key
+
+# Server Configuration
+PORT=3000
+JWT_SECRET=your_jwt_secret
+```
+
+4. Create the database:
+
+```bash
+createdb universal_token_launcher
+```
+
+5. Run database migrations:
+
+```bash
+npm run migrate
+```
+
+## Running the Server
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+For production:
+
+```bash
+npm run build
+npm start
+```
+
+The server will be available at http://localhost:3000 (or the port specified in your `.env` file).
+
+## API Endpoints
+
+### Token Configuration
+
+- `POST /api/tokens` - Create a new token configuration
+- `GET /api/tokens` - Get all token configurations
+- `GET /api/tokens/:id` - Get token configuration by ID
+- `GET /api/tokens/:id/logs` - Get deployment logs for a token
+- `POST /api/tokens/:id/deploy` - Deploy a token
+
+## Direct Contract Deployment
+
+You can also use the CLI scripts to deploy and connect tokens directly:
+
+### Deploy a token
+
+```bash
+npm run deploy-token -- --name "My Token" --symbol MYT --supply 1000000 7001
+```
+
+### Connect tokens across chains
+
+```bash
+npm run connect-tokens -- --zeta-address 0x1234... --add-chain 11155111:0xabcd...
+```
+
+## Project Structure
+
+- `src/` - Source code
+  - `config/` - Configuration files
+  - `controllers/` - API controllers
+  - `db/` - Database migrations and seeders
+  - `models/` - Sequelize models
+  - `routes/` - API routes
+  - `services/` - Business logic
+  - `utils/` - Utility functions
+- `scripts/` - CLI scripts for direct interactions
+- `uploads/` - Uploaded files (token icons)
+
+## Development
+
+This project uses TypeScript, Sequelize, and Express. Ensure all new code follows the existing patterns and includes proper error handling.

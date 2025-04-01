@@ -3,8 +3,8 @@ description:
 globs: 
 alwaysApply: true
 ---
-# Design Documentation Directory
-design-docs/** @guide "This directory contains crucial design documentation including PRD, implementation plans, tech stack, app flow, and design elements. When making application changes, ensure they align with these documents and update the relevant design doc to reflect any modifications. Key documents include:
+# Documentation Directory
+documentation/** @guide "This directory contains crucial design documentation including PRD, implementation plans, tech stack, app flow, and design elements. When making application changes, ensure they align with these documents and update the relevant design doc to reflect any modifications. Key documents include:
 - Product Requirements Document (PRD)
 - Implementation Plans
 - Tech Stack Documentation

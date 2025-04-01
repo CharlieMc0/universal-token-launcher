@@ -7,6 +7,17 @@ class ApiService {
   constructor() {
     // Use environment variable for API URL or default to localhost in development
     this.baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+    console.log('API URL:', this.baseUrl);
+    this.walletAddress = null;
+  }
+
+  /**
+   * Set the connected wallet address
+   * @param {string} address - Wallet address
+   */
+  setWalletAddress(address) {
+    this.walletAddress = address;
+    console.log('Set wallet address:', address);
   }
 
   /**
@@ -15,11 +26,16 @@ class ApiService {
    * @returns {Object} Header object with Authorization
    */
   _getAuthHeader() {
-    // This would be enhanced later to use actual JWT tokens
-    // For now, during development, there's likely a bypass on the backend
-    return {
+    const headers = {
       'Content-Type': 'application/json',
     };
+
+    // Add wallet address if available
+    if (this.walletAddress) {
+      headers['X-Wallet-Address'] = this.walletAddress;
+    }
+
+    return headers;
   }
 
   /**
@@ -31,7 +47,15 @@ class ApiService {
    */
   async _fetchWithErrorHandling(endpoint, options = {}) {
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      console.log(`Making API request to: ${this.baseUrl}${endpoint}`);
+      
+      // Always include wallet address in query params for all requests
+      // This is a fallback in case headers aren't processed correctly
+      const separator = endpoint.includes('?') ? '&' : '?';
+      const walletParam = this.walletAddress ? `${separator}wallet=${this.walletAddress}` : '';
+      const url = `${this.baseUrl}${endpoint}${walletParam}`;
+      
+      const response = await fetch(url, {
         ...options,
         mode: 'cors',
       });
@@ -55,7 +79,7 @@ class ApiService {
    * @returns {Promise<Object>} Token configuration response
    */
   async createToken(formData) {
-    return this._fetchWithErrorHandling('/api/v1/tokens', {
+    return this._fetchWithErrorHandling('/api/tokens', {
       method: 'POST',
       body: formData,
       headers: {
@@ -72,7 +96,7 @@ class ApiService {
    * @returns {Promise<Object>} Deployment response
    */
   async deployToken(tokenId, deployData) {
-    return this._fetchWithErrorHandling(`/api/v1/tokens/${tokenId}/deploy`, {
+    return this._fetchWithErrorHandling(`/api/tokens/${tokenId}/deploy`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -88,7 +112,7 @@ class ApiService {
    * @returns {Promise<Object>} Token configuration details
    */
   async getToken(tokenId) {
-    return this._fetchWithErrorHandling(`/api/v1/tokens/${tokenId}`);
+    return this._fetchWithErrorHandling(`/api/tokens/${tokenId}`);
   }
 
   /**
@@ -96,7 +120,7 @@ class ApiService {
    * @returns {Promise<Array>} List of token configurations
    */
   async getTokens() {
-    return this._fetchWithErrorHandling('/api/v1/tokens');
+    return this._fetchWithErrorHandling('/api/tokens');
   }
 
   /**
@@ -105,7 +129,7 @@ class ApiService {
    * @returns {Promise<Array>} List of deployment logs
    */
   async getDeploymentLogs(tokenId) {
-    return this._fetchWithErrorHandling(`/api/v1/tokens/${tokenId}/deployments`);
+    return this._fetchWithErrorHandling(`/api/tokens/${tokenId}/logs`);
   }
 
   /**
@@ -114,37 +138,7 @@ class ApiService {
    * @returns {Promise<Array>} List of tokens with balances
    */
   async getUserTokens(walletAddress) {
-    // MOCK IMPLEMENTATION - Replace with actual API call when backend is ready
-    // In production this would be:
-    // return this._fetchWithErrorHandling(`/api/v1/users/${walletAddress}/tokens`);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Mock data
-    return [
-      {
-        id: 'token1',
-        name: 'My Universal Token',
-        symbol: 'MUT',
-        deployedChains: ['7001', '11155111', '97'],
-        balances: {
-          '7001': '1000',
-          '11155111': '500',
-          '97': '750'
-        }
-      },
-      {
-        id: 'token2',
-        name: 'Another Token',
-        symbol: 'ATK',
-        deployedChains: ['7001', '84532'],
-        balances: {
-          '7001': '2000',
-          '84532': '1500'
-        }
-      }
-    ];
+    return this._fetchWithErrorHandling(`/api/users/${walletAddress}/tokens`);
   }
   
   /**
@@ -153,28 +147,14 @@ class ApiService {
    * @returns {Promise<Object>} Transfer result
    */
   async transferTokens(transferData) {
-    // MOCK IMPLEMENTATION - Replace with actual API call when backend is ready
-    // In production this would be:
-    // return this._fetchWithErrorHandling('/api/v1/transfers', {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //     ...this._getAuthHeader(),
-    //   },
-    //   body: JSON.stringify(transferData),
-    // });
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    
-    // Mock successful transfer
-    return {
-      success: true,
-      transactionHash: '0x' + Math.random().toString(16).substring(2, 42),
-      sourceChain: transferData.sourceChain,
-      destinationChains: transferData.destinationChain,
-      amount: transferData.transferAmount
-    };
+    return this._fetchWithErrorHandling('/api/transfers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this._getAuthHeader(),
+      },
+      body: JSON.stringify(transferData),
+    });
   }
 }
 

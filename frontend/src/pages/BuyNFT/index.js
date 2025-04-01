@@ -444,8 +444,8 @@ const BuyNFTPage = ({ embedded = false }) => {
   };
   
   return (
-    <PageContainer embedded={embedded}>
-      <PageTitle embedded={embedded}>Buy Universal NFTs</PageTitle>
+    <PageContainer embedded={embedded.toString()}>
+      <PageTitle embedded={embedded.toString()}>Buy Universal NFTs</PageTitle>
       
       {purchaseStatus ? (
         <Section>

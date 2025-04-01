@@ -370,8 +370,8 @@ const TransferNFTPage = ({ embedded = false }) => {
   };
   
   return (
-    <PageContainer embedded={embedded}>
-      <PageTitle embedded={embedded}>Transfer Universal NFTs</PageTitle>
+    <PageContainer embedded={embedded.toString()}>
+      <PageTitle embedded={embedded.toString()}>Transfer Universal NFTs</PageTitle>
       
       <FormContainer>
         <SectionTitle>Your NFT Collections</SectionTitle>

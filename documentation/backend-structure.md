@@ -646,6 +646,265 @@ These implementations provide a solid foundation for the Universal Token Launche
 
 ---
 
+## 11. Contract Verification Implementation
+
+### 11.1 Verification Service Overview
+
+We have implemented a comprehensive contract verification service that allows deployed contracts to be automatically verified on block explorers:
+
+1. **Multi-Explorer Support:**
+   - **Blockscout API** for ZetaChain verification
+   - **Etherscan API** and compatible explorers for other EVM chains (Sepolia, Base, etc.)
+   - Automatic explorer type detection based on chain ID
+
+2. **Verification Methods:**
+   - Standard JSON input format for all explorers
+   - Support for compiler version, optimization settings, and runs
+   - Automatic source code dependency resolution (handles imports)
+
+3. **Status Tracking:**
+   - Polls Etherscan verification status for completion
+   - Stores verification status in the DeploymentLog model
+   - Provides explorer URLs for verified contracts
+
+### 11.2 Database Schema Updates
+
+New fields have been added to the DeploymentLog model to track verification:
+
+```javascript
+// New fields in DeploymentLog model
+verificationStatus: {
+  type: DataTypes.STRING,
+  field: 'verification_status',
+  defaultValue: 'pending'  // Values: pending, processing, verified, failed, skipped
+},
+verificationError: {
+  type: DataTypes.TEXT,
+  field: 'verification_error'
+},
+verifiedUrl: {
+  type: DataTypes.STRING,
+  field: 'verified_url'
+}
+```
+
+A migration script has been created to add these fields to the existing database:
+- Located at `src/db/migrations/20240402000000-add-verification-fields.js`
+- Adds verification_status, verification_error, and verified_url columns
+- Handles existing tables gracefully
+
+### 11.3 Integration with Deployment Process
+
+The verification process is now integrated with the token deployment workflow:
+
+1. **Automatic Verification:**
+   - Verification is attempted automatically after successful deployment
+   - 15-second delay ensures contracts are properly indexed before verification
+   - Non-blocking design allows deployment to continue even if verification fails
+
+2. **Configuration via Environment Variables:**
+   - API keys for different explorers configured in .env file
+   - Example in .env.example:
+     ```
+     ETHERSCAN_API_KEY=your_etherscan_api_key
+     POLYGONSCAN_API_KEY=your_polygonscan_api_key
+     BASESCAN_API_KEY=your_basescan_api_key
+     ```
+
+3. **Implementation in ContractService and TokenService:**
+   - Verification attempts included in both direct contract deployment methods
+   - Token service updates deployment logs with verification status
+   - Explorer URLs stored for frontend display
+
+### 11.4 Verification Testing
+
+A dedicated test script has been created to test verification:
+
+- Located at `src/tests/verify-contract.test.js`
+- Tests both Blockscout and Etherscan verification
+- Configurable via command-line arguments
+- Added to package.json scripts as `verify-test`
+
+Example usage:
+```bash
+# Test all verification methods
+npm run verify-test
+
+# Test only Blockscout verification
+npm run verify-test blockscout
+
+# Test only Etherscan verification 
+npm run verify-test etherscan
+```
+
+### 11.5 Technical Implementation
+
+The verification service implements several key technical features:
+
+1. **Standard JSON Input Generation:**
+   - Creates properly formatted JSON input with sources, settings, and optimizer configuration
+   - Recursively resolves and includes imported contracts
+   - Handles both local and node_modules imports
+
+2. **Explorer-Specific API Handling:**
+   - Formats requests differently based on explorer type
+   - Handles different response formats and success criteria
+   - Provides consistent result format regardless of explorer
+
+3. **Status Polling:**
+   - For Etherscan, implements polling to check verification status
+   - Configurable max attempts and delay between polls
+   - Handles queue waiting and error conditions
+
+This verification implementation greatly improves the user experience by automatically providing verified contracts that can be inspected and trusted by users.
+
+---
+
+## 12. API Integration Testing
+
+### 12.1 Frontend-Backend Integration Testing Strategy
+
+The frontend and backend integration has been significantly improved with a robust testing strategy:
+
+1. **Mock-Based Testing:**
+   - Frontend tests mock the backend API responses
+   - Realistic mock implementations simulate network delays
+   - Error scenarios are explicitly tested
+   - API service functions are consistently mocked across test files
+
+2. **Integration Test Structure:**
+   - **LaunchIntegration.test.js:**
+     - Tests token creation form submission
+     - Tests fee payment transaction processing
+     - Tests deployment status tracking
+     - Handles error cases (API errors, transaction rejections)
+   
+   - **TransferIntegration.test.js:**
+     - Tests loading state for user tokens
+     - Tests token selection and display
+     - Tests transfer form validation
+     - Tests transfer processing and status updates
+
+3. **API Response Format Consistency:**
+   - All mock responses follow the exact format returned by the backend
+   - Field names match backend responses (e.g., `token_name` instead of `tokenName`)
+   - Data types are correctly handled (strings for BigInts, JSON strings for arrays)
+
+### 12.2 Testing API Service Functions
+
+The API service functions are tested with consistent mock implementations:
+
+```javascript
+// Mock implementation for token creation and deployment
+apiService.createToken.mockResolvedValue({
+  id: 1,
+  token_name: 'Test Token',
+  deployment_status: 'pending'
+});
+
+apiService.deployToken.mockResolvedValue({
+  id: 1,
+  deployment_status: 'pending'
+});
+
+// Mock implementation with delay for getUserTokens
+apiService.getUserTokens.mockImplementation(() => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve([
+        {
+          id: 'token1',
+          name: 'My Universal Token',
+          symbol: 'MUT',
+          iconUrl: 'https://example.com/icon.png',
+          deployedChains: ['7001', '11155111', '97'],
+          balances: {
+            '7001': '1000',
+            '11155111': '500',
+            '97': '750'
+          }
+        },
+        // ... more tokens
+      ]);
+    }, 100); // Small delay to simulate network request
+  });
+});
+```
+
+### 12.3 Testing Form Submission and API Interactions
+
+Form submission is tested with detailed verification of the data sent to the API:
+
+```javascript
+// Submit the form and verify API call
+const submitButton = screen.getByRole('button', { name: 'Launch Token' });
+fireEvent.click(submitButton);
+
+// Wait for API calls and verify form data
+await waitFor(() => {
+  expect(apiService.createToken).toHaveBeenCalled();
+});
+
+const formData = apiService.createToken.mock.calls[0][0];
+
+// Verify FormData contains correct values
+expect(formData.get('token_name')).toBe('Test Token');
+expect(formData.get('token_symbol')).toBe('TEST');
+expect(formData.get('decimals')).toBe('18');
+expect(formData.get('total_supply')).toBe('1000000');
+expect(formData.get('selected_chains')).toBe(JSON.stringify(['7001']));
+```
+
+### 12.4 Testing Loading States and Asynchronous Operations
+
+Loading states are properly tested with waitFor to handle asynchronous operations:
+
+```javascript
+// Render component
+render(<TransferPage />);
+
+// Check loading state
+expect(screen.getByText(/loading your tokens/i)).toBeInTheDocument();
+
+// Wait for loading to finish
+await waitFor(() => {
+  expect(apiService.getUserTokens).toHaveBeenCalled();
+}, { timeout: 1000 });
+
+// Wait for loading message to disappear
+await waitFor(() => {
+  expect(screen.queryByText(/loading your tokens/i)).not.toBeInTheDocument();
+}, { timeout: 1000 });
+
+// Verify tokens are displayed
+expect(screen.getByText(/My Universal Token/i)).toBeInTheDocument();
+```
+
+### 12.5 Key Testing Lessons Learned
+
+1. **Field Name Consistency:**
+   - Ensure frontend field names match API expectations exactly
+   - Backend uses snake_case while frontend may use camelCase
+
+2. **DOM Selection Strategies:**
+   - Use role-based selection for more reliable tests
+   - Match button text exactly with case sensitivity
+   - Use regular expressions for flexible text matching
+
+3. **Asynchronous Testing:**
+   - Always check loading states
+   - Use appropriate timeouts for waitFor calls
+   - Test both the appearance and disappearance of elements
+
+4. **API Mock Implementation:**
+   - Use consistent mock implementations across test files
+   - Add delays to mocks to simulate realistic API behavior
+   - Test both success and error scenarios
+
+These integration testing strategies ensure that the frontend and backend work together seamlessly, and that any API changes are caught early in the development process.
+
+---
+
 ## Summary
 
 - **Database:** PostgreSQL with tables for users, token configurations, token distributions, deployment logs, and transfer transactions. Data is normalized with appropriate indexes, constraints, and foreign keys.

@@ -103,6 +103,11 @@ The Universal Launcher is a web application that allows non-developer users (fam
 - **Contract Factory:** Use ethers.js to create contract factories for deployment.
 - **Transaction Handling:** Implement robust transaction monitoring and receipt validation.
 - **Error Recovery:** Include mechanisms to handle common blockchain transaction issues.
+- **Contract Verification:** Automatically verify deployed contracts on block explorers:
+  - Blockscout for ZetaChain contracts
+  - Etherscan and compatible explorers for other EVM chains
+  - Store verification status and explorer URLs for frontend display
+  - Provide proper error handling for failed verifications
 
 ## 7. Architecture & Workflow
 
@@ -376,3 +381,83 @@ The contracts have been successfully deployed to the following networks:
 - [ZetaChain Standard Contracts](https://github.com/zeta-chain/standard-contracts/)
 - Latest ZetaChain documentation and contract deployment guides.
 - [Ethers.js Documentation](https://docs.ethers.org/v6/) for contract deployment reference.
+
+## 16. Testing Strategy
+
+### 16.1 Integration Testing Approach
+
+The Universal Token Launcher implements a comprehensive testing strategy focusing on integration tests to ensure that:
+
+1. **Frontend and Backend Integration:**
+   - Form submissions correctly format and transmit data to the backend
+   - API responses are properly handled and displayed in the UI
+   - Loading states are correctly managed
+   - Error handling works as expected
+
+2. **User Flow Validation:**
+   - Complete token creation workflow functions correctly
+   - Token transfer process works end-to-end
+   - All user-facing features function as specified in the requirements
+
+### 16.2 Key Test Files
+
+1. **Frontend Integration Tests:**
+   - `frontend/src/pages/Launch/LaunchIntegration.test.js` - Tests the token creation and deployment flow
+   - `frontend/src/pages/Transfer/TransferIntegration.test.js` - Tests the token transfer flow
+   - `frontend/src/utils/apiService.test.js` - Tests API service methods
+
+2. **Backend Tests:**
+   - `backend/src/tests/token.test.js` - Tests token configuration and deployment
+   - `backend/src/tests/contract.test.js` - Tests smart contract deployment
+   - `backend/src/tests/verify-contract.test.js` - Tests contract verification
+
+### 16.3 Test Implementation Details
+
+1. **Mock-Based Testing:**
+   - APIs are mocked to simulate various response scenarios
+   - Blockchain interactions are mocked to test transactions
+   - Loading states are tested with controlled timing
+
+2. **Element Selection Strategy:**
+   - DOM elements are selected using role-based queries for reliability
+   - Form elements are accessed via label text
+   - Buttons are accessed by role and name
+   - Example: `screen.getByRole('button', { name: 'Launch Token' })`
+
+3. **Asynchronous Testing:**
+   - Loading states are verified before and after data loading
+   - `waitFor()` is used with appropriate timeouts
+   - API calls are verified to have been made with correct parameters
+
+### 16.4 Running Tests
+
+Tests can be run using the following commands:
+
+```bash
+# Frontend tests
+npm test                                             # Run all tests in watch mode
+npm test -- --testMatch="**/*Integration.test.js"    # Run all integration tests
+npm test -- --watchAll=false                         # Run all tests once
+
+# Backend tests
+cd backend
+npm run test-token-create                            # Test token creation
+npm run test-zeta-deploy                             # Test ZetaChain deployment
+npm run test-evm-deploy                              # Test EVM chain deployment
+```
+
+### 16.5 Continuous Integration
+
+All tests are configured to run in CI/CD pipelines to ensure code quality:
+
+1. **GitHub Actions:**
+   - Tests run on every pull request
+   - Both frontend and backend tests are executed
+   - Test coverage reports are generated
+
+2. **Environment Configuration:**
+   - Tests use environment-specific configurations
+   - API endpoints are mocked for CI environment
+   - Blockchain interactions are simulated
+
+This testing strategy ensures that the Universal Token Launcher maintains high quality and reliability as new features are added and existing code is modified.

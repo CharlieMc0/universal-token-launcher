@@ -19,7 +19,7 @@ import apiService from '../../services/apiService';
 // Constants
 const ZETA_FEE = 1; // 1 ZETA fee
 const ZETACHAIN_ID = 7001; // Athens Testnet
-const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x123456789012345678901234567890'; // Replace with actual wallet
+const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x4f1684A28E33F42cdf50AB96e29a709e17249E63'; // Actual wallet address
 
 const PageContainer = styled.div`
   max-width: ${props => props.embedded ? '100%' : '800px'};
@@ -322,14 +322,14 @@ const LaunchPage = ({ embedded = false }) => {
       console.log('Fee payment successful:', txResult);
       
       // Start deployment with fee payment transaction
-      await apiService.deployToken(response.id, {
+      await apiService.deployToken(response.tokenId, {
         fee_paid_tx: txResult.hash
       });
       
       // Redirect to a status page or show success
-      alert(`Token deployment initiated! Token ID: ${response.id}`);
+      alert(`Token deployment initiated! Token ID: ${response.tokenId}`);
       // In a full implementation, we would redirect to a status page:
-      // window.location.href = `/tokens/${response.id}/status`;
+      // window.location.href = `/tokens/${response.tokenId}/status`;
       
     } catch (error) {
       console.error('Error:', error);
@@ -345,8 +345,8 @@ const LaunchPage = ({ embedded = false }) => {
   
   if (!isConnected) {
     return (
-      <PageContainer embedded={embedded}>
-        <PageTitle embedded={embedded}>Launch Token</PageTitle>
+      <PageContainer embedded={embedded.toString()}>
+        <PageTitle embedded={embedded.toString()}>Launch Token</PageTitle>
         <FormContainer>
           <p>Please connect your wallet to continue.</p>
         </FormContainer>
@@ -355,8 +355,8 @@ const LaunchPage = ({ embedded = false }) => {
   }
   
   return (
-    <PageContainer embedded={embedded}>
-      <PageTitle embedded={embedded}>Launch Token</PageTitle>
+    <PageContainer embedded={embedded.toString()}>
+      <PageTitle embedded={embedded.toString()}>Launch Token</PageTitle>
       
       {!isZetaChainNetwork && (
         <FormContainer>

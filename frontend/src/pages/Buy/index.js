@@ -92,7 +92,7 @@ const BuyPage = () => {
       </ToggleContainer>
       
       {activeTab === 'nft' ? (
-        <BuyNFTPage embedded={true} />
+        <BuyNFTPage embedded={"true"} />
       ) : (
         <ComingSoon>
           <ComingSoonTitle>Token Marketplace Coming Soon</ComingSoonTitle>
