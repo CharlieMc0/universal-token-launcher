@@ -590,45 +590,30 @@ const LaunchPage = ({ embedded = false }) => {
     let intervalId;
 
     const pollStatus = async () => {
-      if (!createdTokenId) {
-        console.log('Polling stopped: No Token ID.');
-        return;
-      }
-
-      console.log(`[Polling Effect] Running pollStatus for Token ID: ${createdTokenId}`);
-      setProcessingStep('Checking deployment status on backend...'); // Ensure this updates UI
-
       try {
-        console.log(`[Polling Effect] Calling apiService.getToken(${createdTokenId})`);
+        console.log(`[Polling Effect] Checking token status for ID: ${createdTokenId}`);
         const tokenData = await apiService.getToken(createdTokenId);
-        console.log('[Polling Effect] Received tokenData:', tokenData);
+        console.log('[Polling Effect] Token data:', tokenData);
 
         // Check deploymentStatus field from API response (camelCase)
         if (tokenData.deploymentStatus === 'completed') {
-          console.log('[Polling Effect] Deployment completed! Fetching logs...');
-          // Use a temporary variable for logs to avoid state timing issues in logs
-          let finalLogs = [];
-          try {
-             finalLogs = await apiService.getDeploymentLogs(createdTokenId);
-             console.log('[Polling Effect] Fetched logs:', finalLogs);
-          } catch (logError) {
-             console.error('[Polling Effect] Error fetching deployment logs after completion:', logError);
-             // Proceed to show confirmation, but logs might be missing/stale
-          }
-          setDeploymentLogs(finalLogs);
+          console.log('[Polling Effect] Deployment completed! Using token data...');
+          // Process chainInfo from token response instead of fetching separate logs
+          const chainInfoLogs = tokenData.chainInfo || [];
+          console.log('[Polling Effect] Chain info:', chainInfoLogs);
+          
+          setDeploymentLogs(chainInfoLogs);
           setDeploymentStatus(DEPLOYMENT_STATUS.COMPLETED);
           console.log('[Polling Effect] Status set to COMPLETED. Clearing interval.');
           clearInterval(intervalId); // Explicitly clear here
           intervalId = null; // Ensure intervalId is nullified
         } else if (tokenData.deploymentStatus === 'failed') {
           console.error('[Polling Effect] Deployment failed on backend.', tokenData);
-           let finalLogs = [];
-           try {
-             finalLogs = await apiService.getDeploymentLogs(createdTokenId); // Get logs even on failure
-           } catch (logError) {
-             console.error('[Polling Effect] Error fetching deployment logs after failure:', logError);
-           }
-          setDeploymentLogs(finalLogs);
+          // Use chain info from token response instead of fetching separate logs
+          const chainInfoLogs = tokenData.chainInfo || [];
+          console.log('[Polling Effect] Chain info for failed deployment:', chainInfoLogs);
+          
+          setDeploymentLogs(chainInfoLogs);
           setErrors({ submission: `Deployment failed on backend. ${tokenData.deploymentError || 'Unknown error'}` });
           setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
           console.log('[Polling Effect] Status set to FAILED_DEPLOYMENT. Clearing interval.');

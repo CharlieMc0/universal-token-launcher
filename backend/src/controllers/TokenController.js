@@ -326,6 +326,8 @@ class TokenController {
 
   /**
    * Get deployment logs for a token
+   * NOTE: This function is no longer exposed via API. Frontend now uses the chainInfo from getTokenById.
+   * Kept for internal use by other controller methods.
    * @param {Request} req - Express request object
    * @param {Response} res - Express response object
    */

@@ -19,7 +19,6 @@ const tokenUploadFields = [
 router.post('/tokens', upload.fields(tokenUploadFields), TokenController.createToken);
 router.get('/tokens', TokenController.getTokens);
 router.get('/tokens/:id', TokenController.getTokenById);
-router.get('/tokens/:id/logs', TokenController.getDeploymentLogs);
 router.post('/tokens/:id/deploy', TokenController.deployToken);
 
 // Add route for getting tokens held by a specific user

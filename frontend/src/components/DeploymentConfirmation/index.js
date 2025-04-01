@@ -2,22 +2,24 @@ import React from 'react';
 import styled from 'styled-components';
 import { CheckCircleIcon, ClockIcon, XCircleIcon, LinkIcon } from '@heroicons/react/24/solid'; // Assuming you have heroicons
 
-// --- Mock Data & Types (Replace with actual data structure if different) ---
-// Example log structure based on backend docs:
+// --- Updated Data Structure ---
+// Example chainInfo structure based on backend response:
 // {
-//   id: number;
-//   token_config_id: number;
-//   chain_name: string;
-//   chain_id: string;
-//   contract_address: string;
-//   status: 'success' | 'failure' | 'pending'; // Deployment status
-//   transaction_hash: string;
-//   error_message: string | null;
-//   verificationStatus: 'verified' | 'pending' | 'processing' | 'failed' | 'skipped';
-//   verificationError: string | null;
-//   verifiedUrl: string | null; // URL to verified contract on explorer
-//   createdAt: string;
-//   updatedAt: string;
+//   name: string;                   // "ZetaChain Testnet"
+//   chainId: string;                // "7001"
+//   rpcUrl: string;                 // RPC endpoint
+//   explorerUrl: string;            // Block explorer base URL
+//   isZetaChain: boolean;           // Whether this is ZetaChain
+//   color: string;                  // Color for UI
+//   shortName: string;              // "ZetaChain"
+//   isTestnet: boolean;             // Whether this is a testnet
+//   isSupported: boolean;           // Whether this chain is supported
+//   blockscoutUrl: string;          // Blockscout URL if applicable
+//   contractAddress: string;        // Deployed contract address
+//   verificationStatus: string;     // "verified", "pending", "failed"
+//   verificationError: string;      // Error message if verification failed
+//   verifiedUrl: string;            // Direct URL to verified contract
+//   deploymentStatus: string;       // "success", "pending", "failed"
 // }
 
 // --- Styled Components ---
@@ -189,25 +191,6 @@ const ActionButton = styled.button`
   }
 `;
 
-// --- Helper Functions ---
-
-// Basic utility to get explorer URL if verifiedUrl is missing (expand as needed)
-const getFallbackExplorerUrl = (chainId, contractAddress) => {
-  // TODO: Add more chain mappings
-  switch (chainId?.toString()) {
-    case '7001': // ZetaChain Athens
-      return `https://explorer.zetachain.com/address/${contractAddress}`;
-    case '11155111': // Sepolia
-      return `https://sepolia.etherscan.io/address/${contractAddress}`;
-    case '97': // BSC Testnet
-      return `https://testnet.bscscan.com/address/${contractAddress}`;
-    case '84532': // Base Sepolia
-      return `https://sepolia.basescan.org/address/${contractAddress}`;
-    default:
-      return null; // No known explorer for this chain
-  }
-};
-
 // --- Component ---
 
 const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) => {
@@ -229,7 +212,8 @@ const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) =>
     );
   }
 
-  const successfulDeployments = logs.filter(log => log.status === 'success' || log.status === 'deployed');
+  // Filter the successful deployments based on deploymentStatus
+  const successfulDeployments = logs.filter(chain => chain.deploymentStatus === 'success');
 
   return (
     <ConfirmationContainer>
@@ -247,12 +231,12 @@ const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) =>
       )}
 
       <DeploymentList>
-        {successfulDeployments.map((log) => {
-          const explorerUrl = log.verifiedUrl || getFallbackExplorerUrl(log.chainId, log.contractAddress);
-          let verificationStatusText = log.verificationStatus || 'Unknown';
+        {successfulDeployments.map((chain) => {
+          const explorerUrl = chain.verifiedUrl || chain.explorerUrl || `${chain.explorerUrl}/address/${chain.contractAddress}`;
+          let verificationStatusText = chain.verificationStatus || 'Unknown';
           let VerificationIcon = ClockIcon; // Default to pending/processing style
 
-          switch (log.verificationStatus?.toLowerCase()) {
+          switch (chain.verificationStatus?.toLowerCase()) {
             case 'verified':
               verificationStatusText = 'Verified';
               VerificationIcon = CheckCircleIcon;
@@ -278,13 +262,13 @@ const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) =>
           }
 
           return (
-            <DeploymentItem key={log.id || `${log.chainId}-${log.contractAddress}`}>
+            <DeploymentItem key={`${chain.chainId}-${chain.contractAddress}`}>
               <ChainInfo>
-                <ChainName>{log.chainName || `Chain ID: ${log.chainId}`}</ChainName>
-                <ContractAddress>{log.contractAddress || 'N/A'}</ContractAddress>
+                <ChainName>{chain.name || `Chain ID: ${chain.chainId}`}</ChainName>
+                <ContractAddress>{chain.contractAddress || 'N/A'}</ContractAddress>
               </ChainInfo>
               <StatusSection>
-                <VerificationBadge className={log.verificationStatus?.toLowerCase() || 'pending'}>
+                <VerificationBadge className={chain.verificationStatus?.toLowerCase() || 'pending'}>
                   <IconWrapper>
                     <VerificationIcon style={{ width: '14px', height: '14px' }} />
                   </IconWrapper>

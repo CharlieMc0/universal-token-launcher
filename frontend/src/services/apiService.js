@@ -125,15 +125,6 @@ class ApiService {
   }
 
   /**
-   * Get deployment logs for a token
-   * @param {number} tokenId - Token configuration ID
-   * @returns {Promise<Array>} List of deployment logs
-   */
-  async getDeploymentLogs(tokenId) {
-    return this._fetchWithErrorHandling(`/api/tokens/${tokenId}/logs`);
-  }
-
-  /**
    * Get all universal tokens held by a user
    * @param {string} walletAddress - User's wallet address
    * @returns {Promise<Array>} List of tokens with balances
