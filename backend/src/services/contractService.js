@@ -1,5 +1,11 @@
 const { ethers } = require('ethers');
+const { JsonRpcProvider } = require('ethers');
 const chainInfo = require('../utils/chainInfo');
+const verificationService = require('./VerificationService');
+const { 
+  logger, 
+  logDeploymentAttempt 
+} = require('../utils/logger');
 const {
   ZETACHAIN_UNIVERSAL_TOKEN_ABI,
   ZETACHAIN_UNIVERSAL_TOKEN_BYTECODE,
@@ -22,7 +28,7 @@ class ContractService {
   setupProviders() {
     const networks = chainInfo.getSupportedNetworks();
     for (const network of networks) {
-      this.providers[network.chainId] = new ethers.JsonRpcProvider(network.rpcUrl);
+      this.providers[network.chainId] = new JsonRpcProvider(network.rpcUrl);
     }
   }
 
@@ -57,16 +63,39 @@ class ContractService {
    * @param {number} decimals - The token decimals
    * @param {string} totalSupply - The token total supply (as string to handle large numbers)
    * @param {string} creatorWallet - The creator's wallet address
+   * @param {number} attempt - The attempt number (1 for first attempt, 2+ for retries)
    * @returns {Promise<{contractAddress: string, transactionHash: string}>} - Deployment result
    */
-  async deployZetaChainUniversalToken(tokenName, tokenSymbol, decimals, totalSupply, creatorWallet) {
+  async deployZetaChainUniversalToken(tokenName, tokenSymbol, decimals, totalSupply, creatorWallet, attempt = 1) {
     try {
       // Determine ZetaChain network (mainnet or testnet)
       const chainId = chainInfo.getPrimaryZetaChainId();
       const network = chainInfo.getChainInfo(chainId);
       const wallet = this.getWallet(chainId);
       
-      console.log(`Deploying ZetaChainUniversalToken on chain ${chainId} (${network.name})...`);
+      // Log deployment attempt
+      logDeploymentAttempt(
+        `${tokenName}_${tokenSymbol}`, 
+        chainId, 
+        attempt, 
+        'ZetaChainUniversalToken',
+        {
+          chainName: network.name,
+          tokenName,
+          tokenSymbol,
+          decimals,
+          totalSupply,
+          creatorWallet
+        }
+      );
+      
+      logger.info(`Deploying ZetaChainUniversalToken on chain ${chainId} (${network.name})...`, {
+        attempt,
+        tokenName,
+        tokenSymbol,
+        chainId,
+        chainName: network.name
+      });
       
       // Create contract factory
       const factory = new ethers.ContractFactory(
@@ -91,16 +120,66 @@ class ContractService {
       // Wait for deployment to complete
       const receipt = await contract.deploymentTransaction().wait();
       
-      console.log(`ZetaChainUniversalToken deployed to ${contract.target}`);
-      console.log(`Transaction hash: ${receipt.hash}`);
-      console.log(`Explorer URL: ${chainInfo.getExplorerTxUrl(chainId, receipt.hash)}`);
+      logger.info(`ZetaChainUniversalToken deployed to ${contract.target}`, {
+        contractAddress: contract.target,
+        transactionHash: receipt.hash,
+        gasUsed: receipt.gasUsed.toString(),
+        blockNumber: receipt.blockNumber,
+        tokenName,
+        tokenSymbol,
+        chainId,
+        chainName: network.name,
+        attempt
+      });
+      
+      logger.info(`Explorer URL: ${chainInfo.getExplorerTxUrl(chainId, receipt.hash)}`);
+      
+      // After successful deployment, attempt to verify the contract
+      try {
+        logger.info(`Attempting to verify contract on ${network.name}...`, {
+          contractAddress: contract.target,
+          chainId,
+          chainName: network.name
+        });
+        
+        // We need to wait a bit for the contract to be indexed
+        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 second delay
+        
+        const verificationResult = await verificationService.verifyContract(
+          chainId,
+          contract.target,
+          'ZetaChainUniversalToken',
+          {
+            compilerVersion: '0.8.26',
+            optimization: true,
+            runs: 200
+          }
+        );
+        
+        logger.info(`Verification result:`, verificationResult);
+      } catch (verificationError) {
+        logger.error(`Contract verification failed: ${verificationError.message}`, {
+          contractAddress: contract.target,
+          chainId,
+          chainName: network.name,
+          error: verificationError.message,
+          stack: verificationError.stack
+        });
+        // Continue even if verification fails - this is non-blocking
+      }
       
       return {
         contractAddress: contract.target,
         transactionHash: receipt.hash
       };
     } catch (error) {
-      console.error(`Error deploying ZetaChainUniversalToken: ${error.message}`);
+      logger.error(`Error deploying ZetaChainUniversalToken: ${error.message}`, {
+        attempt,
+        tokenName,
+        tokenSymbol,
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
@@ -113,9 +192,10 @@ class ContractService {
    * @param {number} decimals - The token decimals
    * @param {string} totalSupply - The token total supply (as string to handle large numbers)
    * @param {string} creatorWallet - The creator's wallet address
+   * @param {number} attempt - The attempt number (1 for first attempt, 2+ for retries)
    * @returns {Promise<{contractAddress: string, transactionHash: string}>} - Deployment result
    */
-  async deployEVMUniversalToken(chainId, tokenName, tokenSymbol, decimals, totalSupply, creatorWallet) {
+  async deployEVMUniversalToken(chainId, tokenName, tokenSymbol, decimals, totalSupply, creatorWallet, attempt = 1) {
     try {
       // Validate chain ID
       const network = chainInfo.getChainInfo(chainId);
@@ -125,7 +205,29 @@ class ContractService {
       
       const wallet = this.getWallet(chainId);
       
-      console.log(`Deploying EVMUniversalToken on chain ${chainId} (${network.name})...`);
+      // Log deployment attempt
+      logDeploymentAttempt(
+        `${tokenName}_${tokenSymbol}`, 
+        chainId, 
+        attempt, 
+        'EVMUniversalToken',
+        {
+          chainName: network.name,
+          tokenName,
+          tokenSymbol,
+          decimals,
+          totalSupply,
+          creatorWallet
+        }
+      );
+      
+      logger.info(`Deploying EVMUniversalToken on chain ${chainId} (${network.name})...`, {
+        attempt,
+        tokenName,
+        tokenSymbol,
+        chainId,
+        chainName: network.name
+      });
       
       // Create contract factory
       const factory = new ethers.ContractFactory(
@@ -150,16 +252,67 @@ class ContractService {
       // Wait for deployment to complete
       const receipt = await contract.deploymentTransaction().wait();
       
-      console.log(`EVMUniversalToken deployed to ${contract.target}`);
-      console.log(`Transaction hash: ${receipt.hash}`);
-      console.log(`Explorer URL: ${chainInfo.getExplorerTxUrl(chainId, receipt.hash)}`);
+      logger.info(`EVMUniversalToken deployed to ${contract.target}`, {
+        contractAddress: contract.target,
+        transactionHash: receipt.hash,
+        gasUsed: receipt.gasUsed.toString(),
+        blockNumber: receipt.blockNumber,
+        tokenName,
+        tokenSymbol,
+        chainId,
+        chainName: network.name,
+        attempt
+      });
+      
+      logger.info(`Explorer URL: ${chainInfo.getExplorerTxUrl(chainId, receipt.hash)}`);
+      
+      // After successful deployment, attempt to verify the contract
+      try {
+        logger.info(`Attempting to verify contract on ${network.name}...`, {
+          contractAddress: contract.target,
+          chainId,
+          chainName: network.name
+        });
+        
+        // We need to wait a bit for the contract to be indexed
+        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 second delay
+        
+        const verificationResult = await verificationService.verifyContract(
+          chainId,
+          contract.target,
+          'EVMUniversalToken',
+          {
+            compilerVersion: '0.8.26',
+            optimization: true,
+            runs: 200
+          }
+        );
+        
+        logger.info(`Verification result:`, verificationResult);
+      } catch (verificationError) {
+        logger.error(`Contract verification failed: ${verificationError.message}`, {
+          contractAddress: contract.target,
+          chainId,
+          chainName: network.name,
+          error: verificationError.message,
+          stack: verificationError.stack
+        });
+        // Continue even if verification fails - this is non-blocking
+      }
       
       return {
         contractAddress: contract.target,
         transactionHash: receipt.hash
       };
     } catch (error) {
-      console.error(`Error deploying EVMUniversalToken on chain ${chainId}: ${error.message}`);
+      logger.error(`Error deploying EVMUniversalToken on chain ${chainId}: ${error.message}`, {
+        attempt,
+        tokenName,
+        tokenSymbol,
+        chainId,
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
@@ -244,54 +397,93 @@ class ContractService {
    * @returns {Promise<boolean>} - Whether the fee payment is valid
    */
   async verifyFeePayment(txHash) {
+    const chainId = chainInfo.getPrimaryZetaChainId();
+    const provider = this.providers[chainId];
+    const serviceWallet = process.env.UNIVERSAL_TOKEN_SERVICE_WALLET;
+    const minFee = process.env.FIXED_ZETA_FEE || '1';
+    const minFeeWei = ethers.parseEther(minFee);
+
+    logger.info(`Verifying fee payment for tx: ${txHash} on chain: ${chainId}`, {
+      txHash,
+      chainId,
+      expectedRecipient: serviceWallet,
+      expectedMinFee: `${minFee} ZETA (${minFeeWei.toString()} wei)`
+    });
+
     try {
-      // Determine ZetaChain network (mainnet or testnet)
-      const chainId = chainInfo.getPrimaryZetaChainId();
-      const provider = this.providers[chainId];
-      
       if (!provider) {
+        logger.error(`No provider available for ZetaChain (ID: ${chainId})`, { txHash, chainId });
         throw new Error(`No provider available for ZetaChain (ID: ${chainId})`);
       }
-      
-      // Get transaction details
-      const tx = await provider.getTransaction(txHash);
-      if (!tx) {
-        throw new Error(`Transaction ${txHash} not found`);
-      }
-      
-      // Get transaction receipt to check status
-      const receipt = await provider.getTransactionReceipt(txHash);
-      if (!receipt) {
-        throw new Error(`Transaction receipt for ${txHash} not found`);
-      }
-      
-      // Check transaction was successful
-      if (receipt.status !== 1) {
-        return false;
-      }
-      
-      // Check recipient is the service wallet
-      const serviceWallet = process.env.UNIVERSAL_TOKEN_SERVICE_WALLET;
+
       if (!serviceWallet) {
+        logger.error('Universal token service wallet not configured in .env', { txHash });
         throw new Error('Universal token service wallet not configured');
       }
-      
+
+      // Get transaction details
+      logger.debug(`Fetching transaction details for ${txHash}...`, { txHash });
+      const tx = await provider.getTransaction(txHash);
+      if (!tx) {
+        logger.warn(`Transaction ${txHash} not found on chain ${chainId}`, { txHash, chainId });
+        throw new Error(`Transaction ${txHash} not found`);
+      }
+      logger.debug(`Transaction details fetched`, { txHash, from: tx.from, to: tx.to, value: tx.value.toString() });
+
+      // Get transaction receipt to check status
+      logger.debug(`Fetching transaction receipt for ${txHash}...`, { txHash });
+      const receipt = await provider.getTransactionReceipt(txHash);
+      if (!receipt) {
+        logger.warn(`Transaction receipt for ${txHash} not found on chain ${chainId}`, { txHash, chainId });
+        // Adding a small delay and retry once, in case of RPC lag
+        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+        logger.debug(`Retrying fetch transaction receipt for ${txHash} after delay...`, { txHash });
+        receipt = await provider.getTransactionReceipt(txHash);
+        if (!receipt) {
+          logger.error(`Transaction receipt for ${txHash} still not found after retry`, { txHash, chainId });
+          throw new Error(`Transaction receipt for ${txHash} not found`);
+        }
+      }
+      logger.debug(`Transaction receipt fetched`, { txHash, status: receipt.status, blockNumber: receipt.blockNumber });
+
+      // Check transaction was successful
+      if (receipt.status !== 1) {
+        logger.warn(`Transaction ${txHash} was not successful (status: ${receipt.status})`, { txHash, status: receipt.status });
+        return false;
+      }
+      logger.debug(`Transaction status check passed (status: 1)`, { txHash });
+
+      // Check recipient is the service wallet
       if (tx.to.toLowerCase() !== serviceWallet.toLowerCase()) {
+        logger.warn(`Transaction recipient mismatch for ${txHash}`, {
+          txHash,
+          expectedRecipient: serviceWallet.toLowerCase(),
+          actualRecipient: tx.to.toLowerCase()
+        });
         return false;
       }
-      
+      logger.debug(`Transaction recipient check passed`, { txHash, recipient: tx.to });
+
       // Check payment amount meets minimum fee
-      const minFee = process.env.FIXED_ZETA_FEE || '1';
-      const minFeeWei = ethers.parseEther(minFee);
-      
       if (tx.value < minFeeWei) {
+        logger.warn(`Transaction value insufficient for ${txHash}`, {
+          txHash,
+          expectedMinFeeWei: minFeeWei.toString(),
+          actualValueWei: tx.value.toString()
+        });
         return false;
       }
-      
+      logger.debug(`Transaction value check passed`, { txHash, value: tx.value.toString() });
+
+      logger.info(`Fee payment verified successfully for tx: ${txHash}`, { txHash });
       return true;
     } catch (error) {
-      console.error(`Error verifying fee payment: ${error.message}`);
-      return false;
+      logger.error(`Error verifying fee payment: ${error.message}`, {
+        txHash,
+        error: error.message,
+        stack: error.stack // Include stack trace for better debugging
+       });
+      return false; // Ensure false is returned on any error
     }
   }
 }

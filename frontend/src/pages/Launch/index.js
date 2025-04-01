@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useAccount, useBalance, useSendTransaction, useChainId } from 'wagmi';
-import { parseEther } from 'ethers';
+import { useAccount, useBalance, useSendTransaction, useChainId, usePublicClient, useWalletClient } from 'wagmi';
+import { parseEther, formatEther } from 'ethers';
 
 // Components
 import FormInput from '../../components/FormInput';
@@ -19,7 +19,7 @@ import apiService from '../../services/apiService';
 // Constants
 const ZETA_FEE = 1; // 1 ZETA fee
 const ZETACHAIN_ID = 7001; // Athens Testnet
-const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x4f1684A28E33F42cdf50AB96e29a709e17249E63'; // Actual wallet address
+const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x04dA1034E7d84c004092671bBcEb6B1c8DCda7AE'; // Actual wallet address
 
 const PageContainer = styled.div`
   max-width: ${props => props.embedded ? '100%' : '800px'};
@@ -151,7 +151,9 @@ const LaunchPage = ({ embedded = false }) => {
     chainId: ZETACHAIN_ID
   });
   
-  const { sendTransaction } = useSendTransaction();
+  const { sendTransactionAsync } = useSendTransaction();
+  const publicClient = usePublicClient({ chainId: ZETACHAIN_ID });
+  const { data: walletClient } = useWalletClient({ chainId: ZETACHAIN_ID });
   
   const [formData, setFormData] = useState({
     name: '',
@@ -168,6 +170,22 @@ const LaunchPage = ({ embedded = false }) => {
   const [csvParseResult, setCsvParseResult] = useState(null);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [processingStep, setProcessingStep] = useState('');
+  const [createdTokenId, setCreatedTokenId] = useState(null);
+  const [transactionRetries, setTransactionRetries] = useState(0);
+  const [showRetryButton, setShowRetryButton] = useState(false);
+  const [transactionHash, setTransactionHash] = useState(null);
+  
+  // Verify wallet is ready
+  const [walletReady, setWalletReady] = useState(false);
+  
+  useEffect(() => {
+    if (isConnected && isZetaChainNetwork && walletClient) {
+      setWalletReady(true);
+    } else {
+      setWalletReady(false);
+    }
+  }, [isConnected, isZetaChainNetwork, walletClient]);
   
   const chainOptions = [
     { value: '7001', label: 'ZetaChain Athens' },
@@ -273,6 +291,222 @@ const LaunchPage = ({ embedded = false }) => {
     return Object.keys(newErrors).length === 0;
   };
   
+  const processFeePayment = async (tokenId) => {
+    setProcessingStep('Processing fee payment transaction...');
+    const feeInWei = parseEther(ZETA_FEE.toString());
+    setTransactionHash(null);
+    
+    // Declare txHashString in the outer scope
+    let txHashString;
+
+    try {
+      // Check if the wallet is connected and on the right network
+      if (!isConnected) {
+        throw new Error('Wallet not connected. Please connect your wallet and try again.');
+      }
+      
+      if (!isZetaChainNetwork) {
+        throw new Error('Please switch to ZetaChain network before proceeding.');
+      }
+      
+      if (!walletReady) {
+        // Wait briefly for wallet to be ready
+        setProcessingStep('Preparing wallet...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        if (!walletClient) {
+          throw new Error('Wallet client not available. Please ensure your wallet is properly connected.');
+        }
+      }
+      
+      // Add more detailed logging before starting transaction
+      console.log('Preparing to send transaction:', {
+        to: UNIVERSAL_TOKEN_SERVICE_WALLET,
+        value: feeInWei.toString(),
+        chainId: ZETACHAIN_ID
+      });
+      
+      // Prepare transaction parameters
+      const txParams = {
+        to: UNIVERSAL_TOKEN_SERVICE_WALLET,
+        value: feeInWei,
+        chainId: ZETACHAIN_ID // Ensure transaction is sent on the correct chain
+      };
+      
+      setProcessingStep('Waiting for wallet signature...');
+      
+      let txResult;
+      try {
+        // Add explicit check for walletClient right before sending
+        if (!walletClient) {
+          console.error('Wallet client is not available immediately before sending transaction.');
+          throw new Error('Wallet connection issue: Client unavailable. Please reconnect your wallet and try again.');
+        }
+
+        // Try to send the transaction with a separate try/catch
+        // Assign the result to a temporary variable
+        const asyncResult = await sendTransactionAsync(txParams); 
+        console.log('Transaction request sent (using async), waiting for user to sign:', asyncResult);
+
+        // Reliably extract the hash string
+        if (asyncResult && typeof asyncResult === 'object' && asyncResult.hash) {
+          txHashString = asyncResult.hash; // Extract hash from object
+        } else if (typeof asyncResult === 'string' && asyncResult.startsWith('0x')) {
+          txHashString = asyncResult; // Assume it's the hash string directly
+        } else {
+          // If we got something unexpected (like undefined or a different object)
+          console.error('sendTransactionAsync returned unexpected result:', asyncResult);
+          throw new Error('Wallet interaction failed unexpectedly. Invalid response received.');
+        }
+        
+        // Now txHashString is guaranteed to be the hash string (if successful)
+
+      } catch (sendError) {
+        // Specific error handling for sendTransactionAsync failures
+        console.error('Failed to send transaction:', sendError);
+        
+        // More descriptive error message for different error cases
+        if (sendError.message.includes('user rejected')) {
+          throw new Error('Transaction was rejected by the user. Please try again.');
+        } else if (sendError.message.includes('network') || sendError.message.includes('chain')) {
+          throw new Error('Network error: Please ensure you are connected to ZetaChain and try again.');
+        } else {
+          throw new Error(`Failed to send transaction: ${sendError.message}`);
+        }
+      }
+      
+      // Save and display transaction hash (use the direct string)
+      setTransactionHash(txHashString);
+      console.log('Fee payment transaction submitted (hash):', txHashString);
+      
+      // Wait for transaction confirmation
+      setProcessingStep('Waiting for transaction confirmation (this may take 10-15 seconds)...');
+      
+      let confirmed = false;
+      let receipt = null; // Store the receipt
+      let attempts = 0;
+      const maxAttempts = 20; // 20 attempts * 1.5 seconds = 30 seconds max wait time
+      
+      while (!confirmed && attempts < maxAttempts) {
+        try {
+          attempts++;
+          console.debug(`Attempt ${attempts}/${maxAttempts}: Checking transaction receipt for ${txHashString}...`, { txHash: txHashString, attempt: attempts });
+          
+          // Try to get transaction receipt to check if confirmed
+          receipt = await publicClient.getTransactionReceipt({ 
+            hash: txHashString // Use the hash string directly
+          });
+          
+          if (receipt) {
+            console.debug(`Receipt found for ${txHashString}`, { txHash: txHashString, status: receipt.status, blockNumber: receipt.blockNumber });
+            if (receipt.status === 'success') {
+              confirmed = true;
+              console.info('Transaction confirmed successfully!', { txHash: txHashString, receipt });
+            } else {
+              // Transaction reverted
+              console.warn(`Transaction ${txHashString} reverted (status: ${receipt.status})`, { txHash: txHashString, receipt });
+              throw new Error(`Transaction failed with status: ${receipt.status}`);
+            }
+          } else {
+            console.debug(`Receipt not yet available for ${txHashString}. Waiting...`, { txHash: txHashString });
+            // Wait before trying again
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+        } catch (error) {
+          console.warn(`Error fetching receipt (attempt ${attempts}/${maxAttempts}): ${error.message}`, { txHash: txHashString, attempt: attempts });
+          // Wait before trying again if it's not a terminal error
+          if (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+        }
+      }
+      
+      if (!confirmed) {
+        console.error(`Transaction confirmation timed out after ${maxAttempts} attempts.`, { txHash: txHashString });
+        throw new Error('Transaction confirmation timed out. The transaction may still complete - please check your wallet and retry later if needed.');
+      }
+      
+      // Start deployment with fee payment transaction
+      setProcessingStep('Transaction confirmed! Initiating token deployment...');
+      console.info(`Calling apiService.deployToken for tokenId: ${tokenId}`, { tokenId, feeTxHash: txHashString });
+      
+      try {
+          await apiService.deployToken(tokenId, {
+            fee_paid_tx: txHashString // Use the hash string directly
+          });
+          console.info(`apiService.deployToken call successful for tokenId: ${tokenId}`, { tokenId });
+      } catch (apiError) {
+          console.error(`apiService.deployToken call failed for tokenId: ${tokenId}`, { tokenId, error: apiError.message, stack: apiError.stack });
+          // Rethrow the error so it's caught by the outer try/catch
+          throw new Error(`Failed to initiate deployment via API: ${apiError.message}`);
+      }
+      
+      setProcessingStep('Token deployment initiated!');
+      setTimeout(() => {
+        alert(`Token deployment initiated! Token ID: ${tokenId}`);
+        // Reset the form if deployment was successful
+        setFormData({
+          name: '',
+          symbol: '',
+          decimals: '18',
+          totalSupply: '',
+          selectedChains: ['7001'],
+        });
+        setTokenIcon(null);
+        setCsvFile(null);
+        setDistributions([]);
+        setCsvParseResult(null);
+        setCreatedTokenId(null);
+        setTransactionHash(null);
+        setIsSubmitting(false);
+        setProcessingStep('');
+      }, 2000);
+      
+      return true;
+    } catch (txError) {
+      console.error('Transaction Error:', txError);
+      
+      // Provide more descriptive error message based on error type
+      let errorMessage = txError.message;
+      
+      if (txError.code === 4001) {
+        errorMessage = 'Transaction was rejected by the wallet. Please try again.';
+      } else if (txError.message.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds for transaction fee. Please add more ZETA to your wallet.';
+      }
+      
+      // If we created the token but the transaction failed, still provide the token ID
+      setErrors({
+        ...errors, 
+        submission: `Fee payment transaction failed: ${errorMessage}. Your token configuration (ID: ${tokenId}) was saved but not deployed.`
+      });
+      
+      // If we haven't exceeded retry limit, show retry button
+      if (transactionRetries < 3) {
+        setShowRetryButton(true);
+      }
+      
+      return false;
+    }
+  };
+
+  const handleRetryTransaction = async () => {
+    if (createdTokenId) {
+      setTransactionRetries(prev => prev + 1);
+      setShowRetryButton(false);
+      setErrors({});
+      setTransactionHash(null);
+      const success = await processFeePayment(createdTokenId);
+      if (!success && transactionRetries >= 2) {
+        // After 3 attempts, suggest manual deployment
+        setErrors({
+          ...errors,
+          submission: `Multiple transaction attempts failed. Please try again later or contact support with your Token ID: ${createdTokenId}.`
+        });
+      }
+    }
+  };
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -281,6 +515,10 @@ const LaunchPage = ({ embedded = false }) => {
     }
     
     setIsSubmitting(true);
+    setProcessingStep('Creating token configuration...');
+    setErrors({});
+    setTransactionRetries(0);
+    setShowRetryButton(false);
     
     try {
       // Create FormData to send to backend
@@ -306,36 +544,15 @@ const LaunchPage = ({ embedded = false }) => {
       // Send data to backend to create token configuration
       const response = await apiService.createToken(formDataToSend);
       console.log('Token created:', response);
+      setCreatedTokenId(response.tokenId);
       
-      // Process fee payment transaction
-      const feeInWei = parseEther(ZETA_FEE.toString());
-      
-      const txResult = await sendTransaction({
-        to: UNIVERSAL_TOKEN_SERVICE_WALLET,
-        value: feeInWei
-      });
-      
-      if (!txResult || !txResult.hash) {
-        throw new Error('Transaction failed: No transaction hash returned');
-      }
-      
-      console.log('Fee payment successful:', txResult);
-      
-      // Start deployment with fee payment transaction
-      await apiService.deployToken(response.tokenId, {
-        fee_paid_tx: txResult.hash
-      });
-      
-      // Redirect to a status page or show success
-      alert(`Token deployment initiated! Token ID: ${response.tokenId}`);
-      // In a full implementation, we would redirect to a status page:
-      // window.location.href = `/tokens/${response.tokenId}/status`;
-      
+      // Process fee payment
+      await processFeePayment(response.tokenId);
     } catch (error) {
       console.error('Error:', error);
-      setErrors({...errors, submission: error.message});
-    } finally {
+      setErrors({...errors, submission: `Token creation error: ${error.message}`});
       setIsSubmitting(false);
+      setProcessingStep('');
     }
   };
   
@@ -371,193 +588,266 @@ const LaunchPage = ({ embedded = false }) => {
         </FormContainer>
       )}
       
-      <form onSubmit={handleSubmit}>
+      {isSubmitting && (
         <FormContainer>
-          <SectionTitle>Token Information</SectionTitle>
-          
-          <FormRow>
-            <FormGroup>
-              <FormInput
-                label="Token Name"
-                id="name"
-                name="name"
-                placeholder="e.g. Universal Token"
-                value={formData.name}
-                onChange={handleChange}
-                error={errors.name}
-              />
-            </FormGroup>
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <span className="spinner" style={{ 
+                display: 'inline-block', 
+                width: '30px', 
+                height: '30px', 
+                border: '3px solid rgba(0, 0, 0, 0.1)', 
+                borderRadius: '50%', 
+                borderTopColor: 'var(--accent-primary)', 
+                animation: 'spin 1s ease-in-out infinite' 
+              }}></span>
+            </div>
+            <p>{processingStep || 'Processing...'}</p>
+            {createdTokenId && (
+              <p>Token ID: {createdTokenId}</p>
+            )}
             
-            <FormGroup>
-              <FormInput
-                label="Token Symbol"
-                id="symbol"
-                name="symbol"
-                placeholder="e.g. UTK"
-                value={formData.symbol}
-                onChange={handleChange}
-                error={errors.symbol}
-              />
-            </FormGroup>
-          </FormRow>
-          
-          <FormRow>
-            <FormGroup>
-              <FormInput
-                label="Decimals"
-                id="decimals"
-                name="decimals"
-                type="number"
-                placeholder="18"
-                value={formData.decimals}
-                onChange={handleChange}
-                error={errors.decimals}
-                min="0"
-                max="18"
-              />
-            </FormGroup>
+            {transactionHash && (
+              <div style={{ margin: '15px 0', padding: '10px', backgroundColor: 'rgba(60, 157, 242, 0.1)', borderRadius: '8px' }}>
+                <p style={{ marginBottom: '5px', fontWeight: 'bold' }}>Transaction Hash:</p>
+                <p style={{ wordBreak: 'break-all', fontSize: '14px' }}>{transactionHash}</p>
+                <p style={{ marginTop: '10px' }}>
+                  <a 
+                    href={`https://explorer.zetachain.com/tx/${transactionHash}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ 
+                      color: 'var(--accent-primary)', 
+                      textDecoration: 'none',
+                      padding: '5px 10px',
+                      border: '1px solid var(--accent-primary)',
+                      borderRadius: '5px',
+                      fontSize: '14px',
+                      display: 'inline-block',
+                      marginTop: '5px'
+                    }}
+                  >
+                    View on Explorer
+                  </a>
+                </p>
+              </div>
+            )}
             
-            <FormGroup>
-              <FormInput
-                label="Total Supply"
-                id="totalSupply"
-                name="totalSupply"
-                type="number"
-                placeholder="1000000"
-                value={formData.totalSupply}
-                onChange={handleChange}
-                error={errors.totalSupply}
-                min="1"
-              />
-            </FormGroup>
-          </FormRow>
-          
-          <FormRow>
-            <FormGroup>
-              <ChainSelector
-                label="Target Chains"
-                options={chainOptions}
-                value={formData.selectedChains}
-                onChange={handleChange}
-                helperText="Click to select target chains. ZetaChain is required and will always be selected."
-                error={errors.chains}
-              />
-            </FormGroup>
-          </FormRow>
-          
-          <FormRow>
-            <FormGroup>
-              <ImageUpload
-                label="Token Icon (Optional)"
-                id="tokenIcon"
-                onChange={handleIconChange}
-                onRemove={() => setTokenIcon(null)}
-                helperText="Recommended size: 512x512px, PNG or JPG"
-                error={errors.icon}
-              />
-            </FormGroup>
-          </FormRow>
+            {showRetryButton && (
+              <div style={{ marginTop: '20px' }}>
+                <p>Transaction failed. Would you like to try again?</p>
+                <ButtonContainer>
+                  <SubmitButton onClick={handleRetryTransaction}>
+                    Retry Transaction
+                  </SubmitButton>
+                </ButtonContainer>
+              </div>
+            )}
+            
+            {errors.submission && (
+              <ErrorMessage style={{ marginTop: '20px' }}>
+                {errors.submission}
+              </ErrorMessage>
+            )}
+          </div>
         </FormContainer>
-          
-        <FormContainer>
-          <SectionTitle>Initial Distribution (Optional)</SectionTitle>
-          
-          <DistributionToggle>
-            <ToggleButton
-              type="button"
-              $active={distributionMethod === 'manual'}
-              onClick={() => {
-                setDistributionMethod('manual');
-                setCsvFile(null);
-                setCsvParseResult(null);
-              }}
-            >
-              Manual Entry
-            </ToggleButton>
-            <ToggleButton
-              type="button"
-              $active={distributionMethod === 'csv'}
-              onClick={() => {
-                setDistributionMethod('csv');
-                setDistributions([]);
-              }}
-            >
-              Upload CSV
-            </ToggleButton>
-          </DistributionToggle>
-
-          <FormRow>
-            <FormGroup>
-              {distributionMethod === 'manual' ? (
-                <DistributionInput
-                  onDistributionsChange={setDistributions}
-                  chainId={currentChainId.toString()}
-                  error={errors.distributions}
-                  helperText="Enter wallet addresses (one per line) and the amount each address should receive"
-                />
-              ) : (
-                <FileUpload
-                  label="CSV Distribution List"
-                  id="csvFile"
-                  accept=".csv"
-                  onChange={handleCsvChange}
-                  onRemove={() => {
-                    setCsvFile(null);
-                    setDistributions([]);
-                    setCsvParseResult(null);
-                  }}
-                  helperText={
-                    csvParseResult 
-                      ? `${csvParseResult.validEntries} valid entries of ${csvParseResult.totalEntries} total` 
-                      : "CSV format: address,amount (max 100 entries)"
-                  }
-                  error={errors.csv}
-                />
-              )}
-            </FormGroup>
-          </FormRow>
-
-          {distributions.length > 0 && (
+      )}
+      
+      {!isSubmitting && (
+        <form onSubmit={handleSubmit}>
+          <FormContainer>
+            <SectionTitle>Token Information</SectionTitle>
+            
             <FormRow>
               <FormGroup>
-                <DistributionList distributions={distributions} />
+                <FormInput
+                  label="Token Name"
+                  id="name"
+                  name="name"
+                  placeholder="e.g. Universal Token"
+                  value={formData.name}
+                  onChange={handleChange}
+                  error={errors.name}
+                />
+              </FormGroup>
+              
+              <FormGroup>
+                <FormInput
+                  label="Token Symbol"
+                  id="symbol"
+                  name="symbol"
+                  placeholder="e.g. UTK"
+                  value={formData.symbol}
+                  onChange={handleChange}
+                  error={errors.symbol}
+                />
               </FormGroup>
             </FormRow>
-          )}
-        </FormContainer>
-          
-        <FormContainer>
-          <SectionTitle>Fee Information</SectionTitle>
-          <FeeSection>
-            <FeeRow>
-              <FeeName>Deployment Fee</FeeName>
-              <FeeAmount>{ZETA_FEE} ZETA</FeeAmount>
-            </FeeRow>
-            <FeeRow>
-              <FeeName>Your ZETA Balance</FeeName>
-              <FeeAmount>
-                {balanceData 
-                  ? `${parseFloat(balanceData.formatted).toFixed(2)} ZETA` 
-                  : 'Loading...'}
-              </FeeAmount>
-            </FeeRow>
-            {errors.balance && <ErrorMessage>{errors.balance}</ErrorMessage>}
-          </FeeSection>
-          
-          {errors.submission && (
-            <ErrorMessage>{errors.submission}</ErrorMessage>
-          )}
-          
-          <ButtonContainer>
-            <SubmitButton 
-              type="submit" 
-              disabled={isSubmitting || !isZetaChainNetwork}
-            >
-              {isSubmitting ? 'Processing...' : 'Launch Token'}
-            </SubmitButton>
-          </ButtonContainer>
-        </FormContainer>
-      </form>
+            
+            <FormRow>
+              <FormGroup>
+                <FormInput
+                  label="Decimals"
+                  id="decimals"
+                  name="decimals"
+                  type="number"
+                  placeholder="18"
+                  value={formData.decimals}
+                  onChange={handleChange}
+                  error={errors.decimals}
+                  min="0"
+                  max="18"
+                />
+              </FormGroup>
+              
+              <FormGroup>
+                <FormInput
+                  label="Total Supply"
+                  id="totalSupply"
+                  name="totalSupply"
+                  type="number"
+                  placeholder="1000000"
+                  value={formData.totalSupply}
+                  onChange={handleChange}
+                  error={errors.totalSupply}
+                  min="1"
+                />
+              </FormGroup>
+            </FormRow>
+            
+            <FormRow>
+              <FormGroup>
+                <ChainSelector
+                  label="Target Chains"
+                  options={chainOptions}
+                  value={formData.selectedChains}
+                  onChange={handleChange}
+                  helperText="Click to select target chains. ZetaChain is required and will always be selected."
+                  error={errors.chains}
+                />
+              </FormGroup>
+            </FormRow>
+            
+            <FormRow>
+              <FormGroup>
+                <ImageUpload
+                  label="Token Icon (Optional)"
+                  id="tokenIcon"
+                  onChange={handleIconChange}
+                  onRemove={() => setTokenIcon(null)}
+                  helperText="Recommended size: 512x512px, PNG or JPG"
+                  error={errors.icon}
+                />
+              </FormGroup>
+            </FormRow>
+          </FormContainer>
+            
+          <FormContainer>
+            <SectionTitle>Initial Distribution (Optional)</SectionTitle>
+            
+            <DistributionToggle>
+              <ToggleButton
+                type="button"
+                $active={distributionMethod === 'manual'}
+                onClick={() => {
+                  setDistributionMethod('manual');
+                  setCsvFile(null);
+                  setCsvParseResult(null);
+                }}
+              >
+                Manual Entry
+              </ToggleButton>
+              <ToggleButton
+                type="button"
+                $active={distributionMethod === 'csv'}
+                onClick={() => {
+                  setDistributionMethod('csv');
+                  setDistributions([]);
+                }}
+              >
+                Upload CSV
+              </ToggleButton>
+            </DistributionToggle>
+
+            <FormRow>
+              <FormGroup>
+                {distributionMethod === 'manual' ? (
+                  <DistributionInput
+                    onDistributionsChange={setDistributions}
+                    chainId={currentChainId.toString()}
+                    error={errors.distributions}
+                    helperText="Enter wallet addresses (one per line) and the amount each address should receive"
+                  />
+                ) : (
+                  <FileUpload
+                    label="CSV Distribution List"
+                    id="csvFile"
+                    accept=".csv"
+                    onChange={handleCsvChange}
+                    onRemove={() => {
+                      setCsvFile(null);
+                      setDistributions([]);
+                      setCsvParseResult(null);
+                    }}
+                    helperText={
+                      csvParseResult 
+                        ? `${csvParseResult.validEntries} valid entries of ${csvParseResult.totalEntries} total` 
+                        : "CSV format: address,amount (max 100 entries)"
+                    }
+                    error={errors.csv}
+                  />
+                )}
+              </FormGroup>
+            </FormRow>
+
+            {distributions.length > 0 && (
+              <FormRow>
+                <FormGroup>
+                  <DistributionList distributions={distributions} />
+                </FormGroup>
+              </FormRow>
+            )}
+          </FormContainer>
+            
+          <FormContainer>
+            <SectionTitle>Fee Information</SectionTitle>
+            <FeeSection>
+              <FeeRow>
+                <FeeName>Deployment Fee</FeeName>
+                <FeeAmount>{ZETA_FEE} ZETA</FeeAmount>
+              </FeeRow>
+              <FeeRow>
+                <FeeName>Your ZETA Balance</FeeName>
+                <FeeAmount>
+                  {balanceData 
+                    ? `${parseFloat(balanceData.formatted).toFixed(2)} ZETA` 
+                    : 'Loading...'}
+                </FeeAmount>
+              </FeeRow>
+              {errors.balance && <ErrorMessage>{errors.balance}</ErrorMessage>}
+            </FeeSection>
+            
+            {errors.submission && (
+              <ErrorMessage>{errors.submission}</ErrorMessage>
+            )}
+            
+            <ButtonContainer>
+              <SubmitButton 
+                type="submit" 
+                disabled={isSubmitting || !isZetaChainNetwork}
+              >
+                {isSubmitting ? 'Processing...' : 'Launch Token'}
+              </SubmitButton>
+            </ButtonContainer>
+          </FormContainer>
+        </form>
+      )}
+
+      <style jsx="true">{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </PageContainer>
   );
 };

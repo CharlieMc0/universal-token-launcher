@@ -1,2 +1,6 @@
 # Test coverage
 coverage/\n.nyc_output/\n 
+node_modules
+.env
+/logs
+*.log 

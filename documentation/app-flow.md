@@ -256,9 +256,43 @@ This document provides a comprehensive walkthrough of the user journey through t
       throw new Error('Transaction failed: No transaction hash returned');
     }
     
-    // Start deployment with fee payment transaction
+    // Wait for transaction confirmation before continuing
+    setProcessingStep('Waiting for transaction confirmation (this may take 10-15 seconds)...');
+    
+    let confirmed = false;
+    let attempts = 0;
+    const maxAttempts = 20; // 20 attempts * 1.5 seconds = 30 seconds max wait time
+    
+    while (!confirmed && attempts < maxAttempts) {
+      try {
+        attempts++;
+        
+        // Try to get transaction receipt to check if confirmed
+        const txReceipt = await publicClient.getTransactionReceipt({ 
+          hash: txResult.hash 
+        });
+        
+        if (txReceipt && txReceipt.status === 'success') {
+          confirmed = true;
+          console.log('Transaction confirmed:', txReceipt);
+        } else {
+          // Wait before trying again
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+      } catch (error) {
+        console.log(`Waiting for confirmation (attempt ${attempts}/${maxAttempts})...`);
+        // Wait before trying again
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
+    
+    if (!confirmed) {
+      throw new Error('Transaction confirmation timed out. The transaction may still complete - please check your wallet and retry later if needed.');
+    }
+    
+    // Only now proceed with the API call
     await apiService.deployToken(response.id, {
-      feePaidTx: txResult.hash
+      fee_paid_tx: txResult.hash
     });
     
     setDeploymentStatus('pending');
@@ -583,6 +617,174 @@ This document provides a comprehensive walkthrough of the user journey through t
   }
   ```
 
+- **Wallet Readiness Verification**
+  ```javascript
+  // Add a state to track wallet readiness
+  const [walletReady, setWalletReady] = useState(false);
+  
+  // Use walletClient hook from wagmi
+  const { data: walletClient } = useWalletClient({ chainId: ZETACHAIN_ID });
+  
+  // Check wallet readiness when dependencies change
+  useEffect(() => {
+    if (isConnected && isZetaChainNetwork && walletClient) {
+      setWalletReady(true);
+    } else {
+      setWalletReady(false);
+    }
+  }, [isConnected, isZetaChainNetwork, walletClient]);
+  
+  // Verify readiness before transaction
+  if (!walletReady) {
+    // Wait briefly for wallet to be ready
+    setProcessingStep('Preparing wallet...');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    if (!walletClient) {
+      throw new Error('Wallet client not available. Please ensure your wallet is properly connected.');
+    }
+  }
+  ```
+
+- **Transaction Preparation and Submission**
+  ```javascript
+  // Prepare transaction parameters
+  const txParams = {
+    to: UNIVERSAL_TOKEN_SERVICE_WALLET,
+    value: feeInWei,
+    chainId: ZETACHAIN_ID // Ensure transaction is sent on the correct chain
+  };
+  
+  setProcessingStep('Waiting for wallet signature...');
+  
+  let txResult;
+  try {
+    // Try to send the transaction with a separate try/catch
+    txResult = await sendTransaction(txParams);
+    console.log('Transaction request sent, waiting for user to sign:', txResult);
+  } catch (sendError) {
+    // Specific error handling for sendTransaction failures
+    console.error('Failed to send transaction:', sendError);
+    
+    // More descriptive error message for different error cases
+    if (sendError.message.includes('user rejected')) {
+      throw new Error('Transaction was rejected by the user. Please try again.');
+    } else if (sendError.message.includes('network') || sendError.message.includes('chain')) {
+      throw new Error('Network error: Please ensure you are connected to ZetaChain and try again.');
+    } else {
+      throw new Error(`Failed to send transaction: ${sendError.message}`);
+    }
+  }
+  ```
+
+- **Transaction Hash Display and Tracking**
+  ```javascript
+  // Save and display transaction hash
+  setTransactionHash(txResult.hash);
+  
+  // Render transaction hash with explorer link
+  {transactionHash && (
+    <div style={{ margin: '15px 0', padding: '10px', backgroundColor: 'rgba(60, 157, 242, 0.1)', borderRadius: '8px' }}>
+      <p style={{ marginBottom: '5px', fontWeight: 'bold' }}>Transaction Hash:</p>
+      <p style={{ wordBreak: 'break-all', fontSize: '14px' }}>{transactionHash}</p>
+      <p style={{ marginTop: '10px' }}>
+        <a 
+          href={`https://explorer.zetachain.com/tx/${transactionHash}`} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          style={{ 
+            color: 'var(--accent-primary)', 
+            textDecoration: 'none',
+            padding: '5px 10px',
+            border: '1px solid var(--accent-primary)',
+            borderRadius: '5px',
+            fontSize: '14px',
+            display: 'inline-block',
+            marginTop: '5px'
+          }}
+        >
+          View on Explorer
+        </a>
+      </p>
+    </div>
+  )}
+  ```
+
+- **Transaction Confirmation Handling**
+  ```javascript
+  // Wait for transaction confirmation before continuing
+  setProcessingStep('Waiting for transaction confirmation (this may take 10-15 seconds)...');
+  
+  let confirmed = false;
+  let attempts = 0;
+  const maxAttempts = 20; // 20 attempts * 1.5 seconds = 30 seconds max wait time
+  
+  while (!confirmed && attempts < maxAttempts) {
+    try {
+      attempts++;
+      
+      // Try to get transaction receipt to check if confirmed
+      const txReceipt = await publicClient.getTransactionReceipt({ 
+        hash: txResult.hash 
+      });
+      
+      if (txReceipt && txReceipt.status === 'success') {
+        confirmed = true;
+        console.log('Transaction confirmed:', txReceipt);
+      } else {
+        // Wait before trying again
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    } catch (error) {
+      console.log(`Waiting for confirmation (attempt ${attempts}/${maxAttempts})...`);
+      // Wait before trying again
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+  }
+  
+  if (!confirmed) {
+    throw new Error('Transaction confirmation timed out. The transaction may still complete - please check your wallet and retry later if needed.');
+  }
+  
+  // Only now proceed with the API call
+  await apiService.deployToken(tokenId, {
+    fee_paid_tx: txResult.hash
+  });
+  ```
+
+- **Retry Mechanism**
+  ```javascript
+  // Show retry button for failed transactions
+  {showRetryButton && (
+    <div style={{ marginTop: '20px' }}>
+      <p>Transaction failed. Would you like to try again?</p>
+      <ButtonContainer>
+        <SubmitButton onClick={handleRetryTransaction}>
+          Retry Transaction
+        </SubmitButton>
+      </ButtonContainer>
+    </div>
+  )}
+  
+  // Retry logic with attempt tracking
+  const handleRetryTransaction = async () => {
+    if (createdTokenId) {
+      setTransactionRetries(prev => prev + 1);
+      setShowRetryButton(false);
+      setErrors({});
+      setTransactionHash(null);
+      const success = await processFeePayment(createdTokenId);
+      if (!success && transactionRetries >= 2) {
+        // After 3 attempts, suggest manual deployment
+        setErrors({
+          ...errors,
+          submission: `Multiple transaction attempts failed. Please try again later or contact support with your Token ID: ${createdTokenId}.`
+        });
+      }
+    }
+  };
+  ```
+
 - **API Error Handling**
   ```javascript
   // In API service
@@ -602,6 +804,8 @@ This document provides a comprehensive walkthrough of the user journey through t
    - Use established libraries (wagmi, ethers) for reliable wallet connections
    - Handle network switching with fallbacks for adding networks
    - Validate network and balance before operations
+   - Check wallet readiness before attempting transactions
+   - Use the walletClient hook to ensure proper wallet initialization
 
 2. **Form Handling**
    - Match field names exactly with backend expectations
@@ -611,7 +815,12 @@ This document provides a comprehensive walkthrough of the user journey through t
 3. **Transaction Processing**
    - Don't convert BigInt values to strings when using wagmi hooks
    - Handle transaction confirmation and errors explicitly
-   - Update UI based on transaction stages
+   - Wait for blockchain confirmation before notifying backend APIs
+   - Update UI based on transaction stages with clear status messages
+   - Implement retry mechanisms for failed transactions
+   - Show transaction hash with explorer link for transparency
+   - Use separate try/catch blocks for transaction preparation and confirmation
+   - Provide clear and specific error messages for different failure scenarios
 
 ### Backend Best Practices
 1. **API Route Configuration**

@@ -30,6 +30,52 @@ The API service automatically includes wallet authentication:
 - Address is included in API requests via the `X-Wallet-Address` header
 - Address is also appended as a query parameter for added reliability
 
+## Transaction Handling
+
+The application includes robust transaction handling for token deployment:
+
+### Transaction Features
+
+- **Progressive Status Updates:** Shows step-by-step progress during token creation and deployment
+- **Transaction Retry:** Provides a retry button when transactions fail, with up to 3 retry attempts
+- **Clear Error Messages:** Displays detailed error information with specific messages for common issues
+- **Immediate Token ID Display:** Shows token ID as soon as it's created, even if transaction fails
+- **Wallet Connection Verification:** Ensures wallet is connected before attempting transactions
+- **Chain ID Specification:** Explicitly sets chain ID to ensure transactions happen on the correct network
+- **Transaction Hash Display:** Shows the transaction hash with link to ZetaChain block explorer
+- **Wallet Readiness Check:** Verifies wallet client is fully initialized before attempting transactions
+- **Transaction Confirmation:** Waits for blockchain confirmation before notifying the backend
+
+### Transaction Workflow
+
+1. **Pre-Transaction Validation:**
+   - Ensures wallet is properly connected
+   - Verifies user is on ZetaChain network
+   - Confirms wallet client is fully ready
+   
+2. **Transaction Preparation:**
+   - Clearly communicates waiting for wallet signature
+   - Prepares transaction parameters with explicit chain ID
+   - Handles common error scenarios with specific error messages
+   
+3. **Transaction Confirmation:**
+   - Displays transaction hash immediately after submission
+   - Shows block explorer link for transaction tracking
+   - Polls for transaction confirmation on the blockchain
+   - Only notifies backend API after transaction is confirmed
+   
+4. **Error Recovery:**
+   - Provides retry functionality with attempt tracking
+   - Shows clear error messages based on error type
+   - Preserves token ID even if transaction fails
+
+### Common Transaction Issues & Solutions
+
+- **No Transaction Hash:** This usually occurs when the wallet is not properly connected or the transaction is rejected by the wallet. The application now checks wallet readiness, provides better error context, and offers a retry button.
+- **Insufficient Balance:** The app checks balance before attempting transactions and provides a clear error message if the balance is insufficient.
+- **Network Mismatch:** Transactions are now explicitly sent to the ZetaChain network to prevent network mismatch issues.
+- **Transaction Timing:** Shows clear status updates during transaction confirmation to prevent user confusion during the waiting period.
+
 ## React Components
 
 ### Component Props
@@ -74,13 +120,25 @@ If the app can't connect to the backend, check:
 2. API URLs in apiService.js match the backend routes (they should use `/api/` not `/api/v1/`)
 3. Wallet connection is active (apiService now requires wallet authentication)
 
+### Transaction Handling Tips
+
+If users experience transaction issues:
+
+1.  Ensure they have sufficient ZETA balance (at least 1 ZETA + gas)
+2.  Verify they're connected to the ZetaChain network
+3.  If a transaction fails, use the retry button instead of refreshing the page
+4.  If multiple retries fail, note the token ID and contact support
+5.  Check the transaction on the ZetaChain explorer using the provided link
+6.  If the wallet seems disconnected, try reconnecting before retrying
+7.  **Wallet Interaction Note:** Be aware that wallet interaction functions (like `wagmi`'s `sendTransaction` or `sendTransactionAsync`) might return unexpected values (e.g., `undefined` or an object `{hash: '...'}` instead of just the hash string). Implement robust checks on the return value *before* using it or storing it in state intended for rendering, to prevent crashes (like React's "Objects are not valid as a React child" error). Using `sendTransactionAsync` and carefully extracting the hash string proved effective in resolving one such issue.
+
 ### Universal Token Service Wallet Address
 
-The application uses the Universal Token Service Wallet address from the backend environment configuration (currently set to `0x4f1684A28E33F42cdf50AB96e29a709e17249E63`). If the backend wallet address changes, update this value in:
+The application uses the Universal Token Service Wallet address from the backend environment configuration (currently set to `0x04dA1034E7d84c004092671bBcEb6B1c8DCda7AE`). If the backend wallet address changes, update this value in:
 
 ```jsx
 // src/pages/Launch/index.js
-const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x4f1684A28E33F42cdf50AB96e29a709e17249E63';
+const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x04dA1034E7d84c004092671bBcEb6B1c8DCda7AE';
 ```
 
 ## Contract Verification

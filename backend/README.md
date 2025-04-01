@@ -10,6 +10,11 @@ This backend service provides APIs for creating, managing, and deploying univers
 - Added token routes for API endpoints
 - Set up environment variable configuration
 - Configured basic error handling and middleware
+- Implemented contract verification service for multiple block explorers:
+  - Support for Blockscout API (ZetaChain) and Etherscan API (EVM chains)
+  - Automatic source code dependency resolution for verification
+  - Status tracking and polling for verification completion
+  - Explorer URLs for verified contracts
 - Enhanced testing framework for contract deployment and token management:
   - Improved output display of contract addresses and transaction hashes in tests
   - Created comprehensive demo script for full token flow demonstration
@@ -18,6 +23,15 @@ This backend service provides APIs for creating, managing, and deploying univers
   - Added summary output of all deployed contracts at the end of tests
   - Fixed various bugs in the test code to make it more robust
   - Added explorer URLs to make it easy to verify contracts on the blockchain
+- Added comprehensive logging system:
+  - Structured JSON logs for better filtering and analysis
+  - Separate log files for general application logs, errors, and deployments
+  - Request/response logging with performance metrics
+  - Detailed deployment tracking across all chains
+  - Log viewer utility for searching and analyzing logs
+  - Unique request IDs for tracing request lifecycle
+  - Automatic log rotation and size management
+  - Global error handling for uncaught exceptions
 
 ## Recent Bug Fixes
 
@@ -75,6 +89,12 @@ TEST_WALLET_PRIVATE_KEY=your_private_key_with_0x_prefix
 # Server Configuration
 PORT=3001
 JWT_SECRET=your_jwt_secret
+DEBUG=true  # Set to true for more verbose logging
+
+# Contract Verification APIs
+ETHERSCAN_API_KEY=your_etherscan_api_key
+POLYGONSCAN_API_KEY=your_polygonscan_api_key
+BASESCAN_API_KEY=your_basescan_api_key
 ```
 
 ## Running the Server
@@ -142,14 +162,32 @@ node -e "require('./src/tests/contract.test').testEVMDeployment()"
 node -e "require('./src/tests/token.test').testCreateTokenConfiguration()"
 ```
 
-5. Run the full demonstration:
+5. Run the complete demo showing the entire token flow
 
 ```bash
-# Run the complete demo showing the entire token flow
 npm run run-demo
 ```
 
-6. Connect tokens across chains:
+6. Test contract verification:
+
+```bash
+# Test both Blockscout and Etherscan verification methods
+npm run verify-test
+
+# Test only Blockscout (ZetaChain) verification
+npm run verify-test blockscout
+
+# Test only Etherscan verification (for EVM chains like Sepolia)
+npm run verify-test etherscan
+```
+
+The verification test will:
+- Attempt to verify a contract on the specified explorer
+- Display verification API requests and responses
+- Show verification status (success, pending, or error)
+- Output explorer URLs for verified contracts
+
+7. Connect tokens across chains:
 
 ```bash
 # Connect tokens between ZetaChain and an EVM chain
@@ -158,6 +196,175 @@ npm run connect-tokens-testnet <zetaChainTokenAddress> <evmChainId> <evmTokenAdd
 # Example:
 npm run connect-tokens-testnet 0x1234567890123456789012345678901234567890 11155111 0x9876543210987654321098765432109876543210
 ```
+
+## Logging System
+
+The application uses a structured logging system based on Winston to track all operations, with a focus on deployment activities.
+
+### Log Files
+
+Logs are stored in the `logs` directory:
+
+- `application-combined.log` - All logs from the application
+- `error.log` - Error logs only (for quick troubleshooting)
+- `deployment.log` - Deployment-specific logs (token deployment activities)
+
+Each log file automatically rotates when it reaches 5MB, keeping up to 5 historical files for each log type.
+
+### Log Format
+
+Logs are stored in JSON format with the following standard fields:
+
+```json
+{
+  "level": "info",
+  "message": "The log message",
+  "timestamp": "2023-04-01T12:34:56.789Z",
+  "service": "universal-token-launcher",
+  "additionalData": "..."
+}
+```
+
+Deployment logs include additional structured fields for easy filtering:
+
+```json
+{
+  "action": "deploy",
+  "tokenId": 123,
+  "chainId": "7001",
+  "status": "success",
+  "contractAddress": "0x...",
+  "transactionHash": "0x..."
+}
+```
+
+### Viewing Logs
+
+A log viewer utility is included to help search and analyze logs:
+
+```bash
+# View all deployment logs (default)
+npm run logs
+
+# View deployment logs specifically
+npm run logs:deployment
+
+# View error logs specifically
+npm run logs:error
+
+# Advanced usage with custom parameters
+node scripts/viewLogs.js --file=error.log
+
+# Search for logs related to a specific token
+node scripts/viewLogs.js --search=tokenId:123
+
+# Search for logs by API request ID
+node scripts/viewLogs.js --search=requestId:abc123
+
+# Search for logs in a date range
+node scripts/viewLogs.js --from=2023-04-01 --to=2023-04-30
+
+# Combine search criteria
+node scripts/viewLogs.js --file=deployment.log --search=status:failed
+```
+
+### API Request Tracking
+
+All API requests are assigned a unique ID that is maintained throughout the request lifecycle. This allows for easy correlation between request and response logs, even in high-traffic environments.
+
+```json
+// Request log example
+{
+  "level": "info",
+  "message": "API Request",
+  "requestId": "i3o60cw7a7",
+  "method": "GET",
+  "url": "/api/tokens/123",
+  "walletAddress": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63"
+}
+
+// Response log example
+{
+  "level": "info",
+  "message": "API Response",
+  "requestId": "i3o60cw7a7",
+  "statusCode": 200,
+  "responseTime": "45ms"
+}
+```
+
+### Deployment Status Tracking
+
+The logging system captures detailed information about each step of the deployment process:
+
+1. **Initialization**: Records when a deployment begins
+   ```json
+   {"action":"start","tokenId":123,"chainId":"all","status":"started"}
+   ```
+
+2. **Chain Deployment**: Logs the status of each chain deployment
+   ```json
+   {"action":"deploy","tokenId":123,"chainId":"7001","status":"started"}
+   {"action":"deploy","tokenId":123,"chainId":"7001","status":"success","contractAddress":"0x...","transactionHash":"0x..."}
+   ```
+
+3. **Contract Verification**: Tracks verification status on block explorers
+   ```json
+   {"action":"verify","tokenId":123,"chainId":"7001","status":"started"}
+   {"action":"verify","tokenId":123,"chainId":"7001","status":"success","explorerUrl":"https://..."}
+   ```
+
+4. **Chain Connection**: Records cross-chain connection attempts
+   ```json
+   {"action":"connect","tokenId":123,"chainId":"11155111","status":"started","zetaChainAddress":"0x...","evmAddress":"0x..."}
+   {"action":"connect","tokenId":123,"chainId":"11155111","status":"success","zetaChainTxHash":"0x...","evmTxHash":"0x..."}
+   ```
+
+5. **Completion**: Summarizes the final deployment status
+   ```json
+   {"action":"complete","tokenId":123,"chainId":"all","status":"completed","successCount":2,"failedCount":0}
+   ```
+
+Each log entry includes the relevant token ID, chain ID, and transaction hashes, making it easy to track the complete lifecycle of a token deployment and quickly identify any issues that occur during the process.
+
+### Error Handling
+
+The logging system captures both handled and unhandled errors:
+
+1. **Handled errors**: Detailed logs with context about where the error occurred
+   ```json
+   {"level":"error","message":"Error deploying on chain 11155111","tokenId":123,"chainId":"11155111","error":"Provider connection failed"}
+   ```
+
+2. **Unhandled exceptions**: Global error handlers capture otherwise uncaught errors
+   ```json
+   {"level":"error","message":"Uncaught exception","error":"Cannot read property of undefined","stack":"..."}
+   ```
+
+3. **Unhandled promise rejections**: Captures any promise rejections that aren't properly handled
+   ```json
+   {"level":"error","message":"Unhandled promise rejection","reason":"Network error","promise":"..."}
+   ```
+
+### Integration with Deployment Services
+
+The logging system is tightly integrated with the token deployment process:
+
+```javascript
+// Example of how token deployment is logged
+logDeployment('deploy', tokenId, chainId, 'started', {
+  chainName: 'ZetaChain',
+  tokenName: 'My Universal Token'
+});
+
+// Later after successful deployment
+logDeployment('deploy', tokenId, chainId, 'success', {
+  contractAddress: '0x1234...',
+  transactionHash: '0xabcd...'
+});
+```
+
+This structured approach ensures all deployment activities are properly tracked and can be easily searched and analyzed.
 
 ## API Usage Examples
 
@@ -192,6 +399,13 @@ curl -X GET http://localhost:3001/api/tokens/1/logs \
   -H "X-Wallet-Address: YOUR_WALLET_ADDRESS"
 ```
 
+### Get Contract Verification Status
+
+```bash
+curl -X GET http://localhost:3001/api/tokens/1/verification \
+  -H "X-Wallet-Address: YOUR_WALLET_ADDRESS"
+```
+
 ## API Endpoints
 
 The following endpoints are planned:
@@ -201,6 +415,7 @@ The following endpoints are planned:
 - `GET /api/tokens/:id` - Get token by ID
 - `GET /api/tokens/:id/logs` - Get deployment logs
 - `POST /api/tokens/:id/deploy` - Deploy a token
+- `GET /api/tokens/:id/verification` - Get verification status for deployed contracts
 
 ## Recommended Next Steps
 
@@ -563,4 +778,86 @@ For the next developer taking over this project, here are the recommended next s
    - Optimize database queries
    - Add background processing for long-running tasks
 
-By addressing these areas, the next developer will continue to improve the stability, functionality, and maintainability of the Universal Token Launcher backend. 
+By addressing these areas, the next developer will continue to improve the stability, functionality, and maintainability of the Universal Token Launcher backend.
+
+## Deployment Logging
+
+This application includes robust deployment logging to track all aspects of token deployment and verification. These logs help troubleshoot issues and provide transparency about deployment operations.
+
+### Deployment Log Structure
+
+Deployment logs are stored in both:
+1. The database (`deployment_logs` table)
+2. Log files (`logs/deployment.log`)
+
+### Types of Logged Events
+
+- **deploy_attempt**: Tracks each attempt to deploy a contract
+- **deploy**: Records the process of deploying contracts
+- **verify**: Tracks contract verification attempts
+- **connect**: Logs connection operations between tokens across chains
+- **start**: Records the beginning of a deployment process
+- **complete**: Marks the completion of a deployment process
+
+### Deployment Attempt Tracking
+
+The system now tracks:
+- Number of deployment attempts
+- Timestamps for each attempt
+- Detailed error information
+- Gas usage and transaction details
+
+### Checking Deployment Status
+
+To check the status of a deployment:
+
+```bash
+npm run check-deployment <tokenId>
+```
+
+This will display:
+- Token configuration details
+- Deployment status for each chain
+- Number of attempts
+- Error messages (if any)
+- Transaction hashes and contract addresses
+- Verification status
+
+### Deployment Log Fields
+
+Database fields for tracking deployments:
+- `deployAttempts`: Number of deployment attempts
+- `lastRetryAt`: Timestamp of the last retry attempt
+- `lastError`: Details of the last error encountered
+- `completedAt`: Timestamp when deployment completed
+
+### Examples
+
+Successful deployment log:
+```
+{
+  "action": "deploy",
+  "tokenId": "123",
+  "chainId": "7001",
+  "status": "success",
+  "timestamp": "2023-04-01T12:34:56.789Z",
+  "contractAddress": "0x1234...",
+  "transactionHash": "0xabcd...",
+  "attempts": 1,
+  "message": "Successfully deployed TestToken on ZetaChain at address 0x1234..."
+}
+```
+
+Failed deployment with retry:
+```
+{
+  "action": "deploy_attempt",
+  "tokenId": "123",
+  "chainId": "7001",
+  "attempt": 2,
+  "isRetry": true,
+  "contractType": "ZetaChainUniversalToken",
+  "timestamp": "2023-04-01T12:35:56.789Z",
+  "message": "Contract deployment retry #1 for TestToken (ZetaChainUniversalToken) on ZetaChain"
+}
+``` 

@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const sequelize = require('../db/config');
+const Sequelize = require('sequelize');
 
 /**
  * Run all database migrations
@@ -32,10 +33,16 @@ async function runMigrations() {
       const migration = require(path.join(migrationsPath, file));
       
       if (typeof migration.migrate === 'function') {
+        // Custom migrate function
         await migration.migrate();
         console.log(`Migration ${file} completed`);
+      } else if (typeof migration.up === 'function') {
+        // Standard Sequelize migration with up/down functions
+        const queryInterface = sequelize.getQueryInterface();
+        await migration.up(queryInterface, Sequelize);
+        console.log(`Migration ${file} completed`);
       } else {
-        console.warn(`Migration ${file} does not export a migrate function, skipping`);
+        console.warn(`Migration ${file} does not export a migrate or up function, skipping`);
       }
     }
     

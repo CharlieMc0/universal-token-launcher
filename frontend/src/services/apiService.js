@@ -23,13 +23,17 @@ class ApiService {
   /**
    * Get auth header with the connected wallet address
    * @private
+   * @param {boolean} includeContentType - Whether to include Content-Type in the headers
    * @returns {Object} Header object with Authorization
    */
-  _getAuthHeader() {
-    const headers = {
-      'Content-Type': 'application/json',
-    };
+  _getAuthHeader(includeContentType = true) {
+    const headers = {};
 
+    // Add Content-Type if requested
+    if (includeContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+    
     // Add wallet address if available
     if (this.walletAddress) {
       headers['X-Wallet-Address'] = this.walletAddress;
@@ -83,8 +87,8 @@ class ApiService {
       method: 'POST',
       body: formData,
       headers: {
-        // No Content-Type for FormData (browser will set it with boundary)
-        ...this._getAuthHeader(),
+        // Remove Content-Type header - browser will set it automatically with boundary
+        'X-Wallet-Address': this.walletAddress
       },
     });
   }
@@ -98,10 +102,7 @@ class ApiService {
   async deployToken(tokenId, deployData) {
     return this._fetchWithErrorHandling(`/api/tokens/${tokenId}/deploy`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this._getAuthHeader(),
-      },
+      headers: this._getAuthHeader(true),
       body: JSON.stringify(deployData),
     });
   }
@@ -149,10 +150,7 @@ class ApiService {
   async transferTokens(transferData) {
     return this._fetchWithErrorHandling('/api/transfers', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this._getAuthHeader(),
-      },
+      headers: this._getAuthHeader(true),
       body: JSON.stringify(transferData),
     });
   }

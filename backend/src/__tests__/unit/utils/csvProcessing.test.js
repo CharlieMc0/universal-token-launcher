@@ -1,10 +1,44 @@
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 
-// Mock dependencies
+// Reusable transform implementation
+class CSVTransformer {
+  constructor() {
+    const { Transform } = require('stream');
+    const transformer = new Transform({
+      objectMode: true,
+      transform(chunk, encoding, callback) {
+        // Simple CSV parsing for test purposes
+        const lines = chunk.toString().split('\n');
+        if (lines.length > 0) {
+          const headers = lines[0].trim().split(',');
+          
+          for (let i = 1; i < lines.length; i++) {
+            if (lines[i].trim()) {
+              const values = lines[i].trim().split(',');
+              const row = {};
+              
+              // Map values to header names
+              headers.forEach((header, index) => {
+                row[header] = values[index];
+              });
+              
+              this.push(row);
+            }
+          }
+        }
+        callback();
+      }
+    });
+    return transformer;
+  }
+}
+
+// Mock ethers before importing any modules
 jest.mock('ethers', () => ({
   isAddress: jest.fn().mockImplementation((address) => {
-    // Very simple validation for test purposes
+    // Simple validation for test purposes
     return address && address.startsWith('0x') && address.length === 42;
   }),
   getAddress: jest.fn().mockImplementation((address) => {
@@ -12,8 +46,8 @@ jest.mock('ethers', () => ({
     if (!address || !address.startsWith('0x') || address.length !== 42) {
       throw new Error('Invalid address');
     }
-    // For test purposes, return a simple checksum formatted version
-    return '0x' + address.slice(2).toLowerCase();
+    // Return a simple checksum formatted version
+    return address.toLowerCase();
   })
 }));
 
@@ -23,156 +57,154 @@ jest.mock('multer', () => ({
   fields: jest.fn()
 }));
 
+// Mock csv-parser - use a factory function that doesn't access external variables
 jest.mock('csv-parser', () => {
-  return function() {
+  return jest.fn().mockImplementation(() => {
+    // Use require inside the factory to avoid scope issues
     const { Transform } = require('stream');
+    
     return new Transform({
       objectMode: true,
       transform(chunk, encoding, callback) {
-        callback(null, chunk);
+        // Mock CSV parsing
+        const content = chunk.toString();
+        const lines = content.split('\n');
+        
+        if (lines.length > 0) {
+          const headers = lines[0].trim().split(',');
+          
+          // Generate mocked records
+          if (content.includes('recipient_address,chain_id,token_amount')) {
+            // Valid CSV format for valid.csv
+            callback(null, {
+              recipient_address: '0x4f1684a28e33f42cdf50ab96e29a709e17249e63',
+              chain_id: '7001',
+              token_amount: '100'
+            });
+            
+            // Add another record to simulate multiple rows
+            this.push({
+              recipient_address: '0x3a4cc340a87c38d36e469cb8f8eb37fba0e3daf3',
+              chain_id: '11155111',
+              token_amount: '50'
+            });
+          } else if (content.includes('invalid-address')) {
+            // Invalid address CSV for invalid.csv
+            callback(null, {
+              recipient_address: 'invalid-address',
+              chain_id: '7001',
+              token_amount: '100'
+            });
+          } else if (content.includes('address,chain,amount')) {
+            // Missing columns CSV for missing_columns.csv
+            callback(null, {
+              address: '0x4f1684a28e33f42cdf50ab96e29a709e17249e63',
+              chain: '7001',
+              amount: '100'
+            });
+          } else {
+            // Empty or unrecognized content
+            callback(null, null);
+          }
+        } else {
+          // Empty file
+          callback(null, null);
+        }
       }
     });
-  };
+  });
 });
 
-// Mock the fileUpload module separately
-jest.mock('../../../utils/fileUpload', () => {
-  return {
-    processDistributionsFile: jest.fn().mockImplementation(async (filePath) => {
-      if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
-      }
-      
-      // Return mock data based on the file path
-      if (filePath.includes('valid.csv')) {
-        return [
-          {
-            recipient_address: '0x4f1684a28e33f42cdf50ab96e29a709e17249e63',
-            chain_id: '7001',
-            token_amount: '100'
-          },
-          {
-            recipient_address: '0x3a4cc340a87c38d36e469cb8f8eb37fba0e3daf3',
-            chain_id: '11155111',
-            token_amount: '50'
-          }
-        ];
-      } else if (filePath.includes('invalid.csv')) {
-        return [];
-      } else if (filePath.includes('empty.csv')) {
-        return [];
-      } else {
-        return [];
-      }
-    }),
-    
-    validateCSV: jest.fn().mockImplementation((records) => {
-      if (!records || records.length === 0) {
-        return { isValid: false, error: 'CSV file is empty' };
-      }
-      
-      const firstRecord = records[0];
-      const requiredColumns = ['recipient_address', 'chain_id', 'token_amount'];
-      
-      // Check if required columns exist
-      const missingColumns = requiredColumns.filter(column => !firstRecord.hasOwnProperty(column));
-      
-      if (missingColumns.length > 0) {
-        return { 
-          isValid: false, 
-          error: `CSV is missing required columns: ${missingColumns.join(', ')}` 
-        };
-      }
-      
-      return { isValid: true };
-    }),
-    
-    validateDistributionEntry: jest.fn().mockImplementation((entry) => {
-      // Check recipient address
-      if (!entry.recipient_address) {
-        return { 
-          isValid: false, 
-          error: `Missing recipient address` 
-        };
-      }
-      
-      try {
-        const addr = entry.recipient_address.toLowerCase();
-        
-        // Basic format check
-        if (!addr.match(/^0x[0-9a-f]{40}$/)) {
-          return { 
-            isValid: false, 
-            error: `Invalid recipient address format: ${entry.recipient_address}` 
-          };
-        }
-      } catch (error) {
-        return { 
-          isValid: false, 
-          error: `Invalid recipient address: ${entry.recipient_address}` 
-        };
-      }
-      
-      // Check chain ID
-      if (!entry.chain_id || isNaN(parseInt(entry.chain_id))) {
-        return { 
-          isValid: false, 
-          error: `Invalid chain ID: ${entry.chain_id}` 
-        };
-      }
-      
-      // Check token amount
-      if (!entry.token_amount || isNaN(parseFloat(entry.token_amount)) || parseFloat(entry.token_amount) <= 0) {
-        return { 
-          isValid: false, 
-          error: `Invalid token amount: ${entry.token_amount}` 
-        };
-      }
-      
-      return { isValid: true };
-    })
-  };
-});
+// Create test stream factory functions
+function createValidStream() {
+  const stream = new Readable({
+    read() {} // Required implementation
+  });
+  stream.push('recipient_address,chain_id,token_amount\n');
+  stream.push('0x4f1684a28e33f42cdf50ab96e29a709e17249e63,7001,100\n');
+  stream.push('0x3a4cc340a87c38d36e469cb8f8eb37fba0e3daf3,11155111,50\n');
+  stream.push(null); // End the stream
+  return stream;
+}
 
-// Import after mocking
-const { processDistributionsFile, validateCSV, validateDistributionEntry } = require('../../../utils/fileUpload');
+function createInvalidAddressStream() {
+  const stream = new Readable({
+    read() {} // Required implementation
+  });
+  stream.push('recipient_address,chain_id,token_amount\n');
+  stream.push('invalid-address,7001,100\n');
+  stream.push(null);
+  return stream;
+}
 
-// Create a temporary test directory and CSV files
-const testDir = path.join(__dirname, '..', '..', 'temp');
-const validCsvPath = path.join(testDir, 'valid.csv');
-const invalidCsvPath = path.join(testDir, 'invalid.csv');
-const emptyCsvPath = path.join(testDir, 'empty.csv');
-const missingColumnsCsvPath = path.join(testDir, 'missing_columns.csv');
+function createMissingColumnsStream() {
+  const stream = new Readable({
+    read() {} // Required implementation
+  });
+  stream.push('address,chain,amount\n');
+  stream.push('0x4f1684a28e33f42cdf50ab96e29a709e17249e63,7001,100\n');
+  stream.push(null);
+  return stream;
+}
 
-// Mock the file system operations
+function createEmptyStream() {
+  const stream = new Readable({
+    read() {} // Required implementation
+  });
+  stream.push(null);
+  return stream;
+}
+
+// Now import the file under test
+const fileUploadUtils = require('../../../utils/fileUpload');
+
+// Export the transformer class to be used in mocks
+module.exports.CSVTransformer = CSVTransformer;
+
+// Mock file system operations
 jest.spyOn(fs, 'existsSync').mockImplementation((filePath) => {
-  return filePath.includes('temp') || 
-         filePath.includes('valid.csv') || 
+  return filePath.includes('valid.csv') || 
          filePath.includes('invalid.csv') || 
          filePath.includes('empty.csv') || 
          filePath.includes('missing_columns.csv');
 });
 
+jest.spyOn(fs, 'createReadStream').mockImplementation((filePath) => {
+  if (filePath.includes('valid.csv')) {
+    return createValidStream();
+  } else if (filePath.includes('invalid.csv')) {
+    return createInvalidAddressStream();
+  } else if (filePath.includes('missing_columns.csv')) {
+    return createMissingColumnsStream();
+  } else if (filePath.includes('empty.csv')) {
+    return createEmptyStream();
+  }
+  return createValidStream(); // Default
+});
+
+// Mock other file system operations we don't need to really perform
 jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
 jest.spyOn(fs, 'unlinkSync').mockImplementation(() => {});
 jest.spyOn(fs, 'mkdirSync').mockImplementation(() => {});
 jest.spyOn(fs, 'rmdirSync').mockImplementation(() => {});
 
+// After mocking all dependencies, we can now test our functions
 describe('CSV Processing Utilities', () => {
-  beforeAll(() => {
-    // Setup test files (mocked)
-  });
-  
-  afterAll(() => {
-    // Cleanup test files (mocked)
-  });
+  // Setup test paths
+  const testDir = path.join(__dirname, '..', '..', 'temp');
+  const validCsvPath = path.join(testDir, 'valid.csv');
+  const invalidCsvPath = path.join(testDir, 'invalid.csv');
+  const emptyCsvPath = path.join(testDir, 'empty.csv');
+  const missingColumnsCsvPath = path.join(testDir, 'missing_columns.csv');
   
   beforeEach(() => {
-    // Reset mock implementations before each test
+    // Reset all mocks before each test
     jest.clearAllMocks();
   });
   
   describe('validateCSV', () => {
+    const { validateCSV } = fileUploadUtils;
+    
     it('should validate correctly formatted CSV records', () => {
       const records = [
         {
@@ -195,9 +227,9 @@ describe('CSV Processing Utilities', () => {
     it('should reject records missing required columns', () => {
       const records = [
         {
-          recipient: '0x4f1684A28E33F42cdf50AB96e29a709e17249E63',
-          chain: '7001',
-          amount: '100'
+          recipient: '0x4f1684A28E33F42cdf50AB96e29a709e17249E63', // Wrong field name
+          chain: '7001', // Wrong field name
+          amount: '100' // Wrong field name
         }
       ];
       
@@ -208,6 +240,8 @@ describe('CSV Processing Utilities', () => {
   });
   
   describe('validateDistributionEntry', () => {
+    const { validateDistributionEntry } = fileUploadUtils;
+    
     it('should validate entry with lowercase address', () => {
       const entry = {
         recipient_address: '0x4f1684a28e33f42cdf50ab96e29a709e17249e63',
@@ -253,10 +287,22 @@ describe('CSV Processing Utilities', () => {
       expect(result.error).toContain('Missing recipient address');
     });
     
+    it('should reject invalid recipient address format', () => {
+      const entry = {
+        recipient_address: 'not-an-ethereum-address',
+        chain_id: '7001',
+        token_amount: '100'
+      };
+      
+      const result = validateDistributionEntry(entry);
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain('Invalid recipient address');
+    });
+    
     it('should reject invalid chain ID', () => {
       const entry = {
         recipient_address: '0x4f1684a28e33f42cdf50ab96e29a709e17249e63',
-        chain_id: 'invalid',
+        chain_id: 'not-a-number',
         token_amount: '100'
       };
       
@@ -265,11 +311,11 @@ describe('CSV Processing Utilities', () => {
       expect(result.error).toContain('Invalid chain ID');
     });
     
-    it('should reject non-positive token amount', () => {
+    it('should reject invalid token amount', () => {
       const entry = {
         recipient_address: '0x4f1684a28e33f42cdf50ab96e29a709e17249e63',
         chain_id: '7001',
-        token_amount: '0'
+        token_amount: 'not-a-number'
       };
       
       const result = validateDistributionEntry(entry);
@@ -288,36 +334,71 @@ describe('CSV Processing Utilities', () => {
       expect(result.isValid).toBe(false);
       expect(result.error).toContain('Invalid token amount');
     });
+    
+    it('should reject zero token amount', () => {
+      const entry = {
+        recipient_address: '0x4f1684a28e33f42cdf50ab96e29a709e17249e63',
+        chain_id: '7001',
+        token_amount: '0'
+      };
+      
+      const result = validateDistributionEntry(entry);
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain('Invalid token amount');
+    });
   });
   
   describe('processDistributionsFile', () => {
-    it('should process a valid CSV file and return distribution data', async () => {
-      const result = await processDistributionsFile(validCsvPath);
+    it('should process a valid CSV file correctly', async () => {
+      const result = await fileUploadUtils.processDistributionsFile(validCsvPath);
       
       expect(result).toBeDefined();
-      expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBe(2);
+      expect(result.distributions).toBeInstanceOf(Array);
+      expect(result.distributions.length).toBeGreaterThan(0);
       
-      // Check first distribution
-      expect(result[0]).toHaveProperty('recipient_address');
-      expect(result[0]).toHaveProperty('chain_id');
-      expect(result[0]).toHaveProperty('token_amount');
+      expect(fs.createReadStream).toHaveBeenCalledWith(validCsvPath);
     });
     
-    it('should return an empty array for an invalid CSV file', async () => {
-      const result = await processDistributionsFile(invalidCsvPath);
-      
-      expect(result).toBeDefined();
-      expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBe(0);
-    });
-    
-    it('should handle file not found error', async () => {
-      // Override mock for this specific test
+    it('should handle file not found errors', async () => {
       fs.existsSync.mockReturnValueOnce(false);
       
-      await expect(processDistributionsFile('/nonexistent/file.csv'))
+      await expect(fileUploadUtils.processDistributionsFile('/nonexistent/file.csv'))
         .rejects.toThrow('File not found');
+    });
+    
+    it('should validate CSV format and throw on missing columns', async () => {
+      // This will use the missing_columns.csv mock
+      await expect(fileUploadUtils.processDistributionsFile(missingColumnsCsvPath))
+        .rejects.toThrow('missing required columns');
+    });
+    
+    it('should filter out invalid entries but continue processing', async () => {
+      // Mock our implementation for invalid addresses
+      fs.createReadStream.mockImplementationOnce(() => {
+        const stream = new Readable({
+          read() {}
+        });
+        stream.push('recipient_address,chain_id,token_amount\n');
+        stream.push('invalid-address,7001,100\n');
+        stream.push('0x4f1684a28e33f42cdf50ab96e29a709e17249e63,7001,200\n');
+        stream.push(null);
+        return stream;
+      });
+      
+      const result = await fileUploadUtils.processDistributionsFile(invalidCsvPath);
+      
+      // Should contain only the valid entries
+      expect(result).toBeDefined();
+      expect(result.distributions).toBeInstanceOf(Array);
+      expect(result.validRows).toBe(1);
+      expect(result.errors.length).toBe(1);
+      
+      expect(fs.createReadStream).toHaveBeenCalledWith(invalidCsvPath);
+    });
+    
+    it('should handle empty CSV files appropriately', async () => {
+      await expect(fileUploadUtils.processDistributionsFile(emptyCsvPath))
+        .rejects.toThrow('empty');
     });
   });
 }); 

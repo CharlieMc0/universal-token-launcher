@@ -144,4 +144,10 @@ jest.mock('multer', () => {
       next();
     })
   }));
+});
+
+describe('Test Setup', () => {
+  it('should have Jest running', () => {
+    expect(true).toBe(true);
+  });
 }); 

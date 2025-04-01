@@ -1,9 +1,11 @@
 const { TokenConfiguration, DeploymentLog, TokenDistribution } = require('../models');
 const contractService = require('./ContractService');
+const verificationService = require('./VerificationService');
 const chainInfo = require('../utils/chainInfo');
 const { SUPPORTED_CHAINS } = require('../constants/chains');
 const { ZETACHAIN_ID, ZETACHAIN_TESTNET_ID } = require('../constants/bytecode');
 const { Sequelize } = require('sequelize');
+const { logger, logDeployment } = require('../utils/logger');
 
 class TokenService {
   /**
@@ -42,10 +44,21 @@ class TokenService {
         deploymentStatus: 'pending'
       });
 
+      logger.info(`Token configuration created`, {
+        tokenId: tokenConfig.id,
+        tokenName,
+        tokenSymbol,
+        creatorWallet,
+        selectedChains
+      });
+
       // Create deployment logs for each selected chain
       const deploymentPromises = selectedChains.map(async (chainId) => {
         if (!SUPPORTED_CHAINS[chainId]) {
-          console.warn(`Unsupported chain ID: ${chainId}`);
+          logger.warn(`Unsupported chain ID: ${chainId}`, {
+            tokenId: tokenConfig.id,
+            chainId
+          });
           return null;
         }
 
@@ -54,7 +67,8 @@ class TokenService {
           tokenConfigId: tokenConfig.id,
           chainName: chainInfo.name,
           chainId,
-          status: 'pending'
+          status: 'pending',
+          verificationStatus: 'pending'
         });
       });
 
@@ -77,7 +91,11 @@ class TokenService {
 
       return tokenConfig;
     } catch (error) {
-      console.error(`Error creating token configuration: ${error.message}`);
+      logger.error(`Error creating token configuration`, {
+        error: error.message,
+        stack: error.stack,
+        tokenData
+      });
       throw error;
     }
   }
@@ -96,9 +114,19 @@ class TokenService {
         throw new Error(`Token configuration with ID ${tokenId} not found`);
       }
 
+      logger.info(`Initiating token deployment`, {
+        tokenId,
+        feePaidTx,
+        tokenName: tokenConfig.tokenName
+      });
+
       // Verify fee payment
       const isFeeValid = await contractService.verifyFeePayment(feePaidTx);
       if (!isFeeValid) {
+        logger.warn(`Invalid fee payment transaction`, {
+          tokenId,
+          feePaidTx
+        });
         throw new Error('Invalid fee payment transaction');
       }
 
@@ -108,15 +136,29 @@ class TokenService {
         deploymentStatus: 'deploying'
       });
 
+      logger.info(`Token deployment status updated to deploying`, {
+        tokenId,
+        feePaidTx
+      });
+
       // Start deployment process in background
       this.processDeployment(tokenConfig)
         .catch(error => {
-          console.error(`Error in deployment process: ${error.message}`);
+          logger.error(`Error in deployment process`, {
+            tokenId: tokenConfig.id,
+            error: error.message,
+            stack: error.stack
+          });
         });
 
       return true;
     } catch (error) {
-      console.error(`Error deploying token: ${error.message}`);
+      logger.error(`Error deploying token`, {
+        tokenId,
+        error: error.message,
+        stack: error.stack,
+        feePaidTx
+      });
       throw error;
     }
   }
@@ -124,9 +166,10 @@ class TokenService {
   /**
    * Process the token deployment across all selected chains
    * @param {Object} tokenConfig - The token configuration object
+   * @param {number} maxRetries - Maximum number of retry attempts per deployment
    * @returns {Promise<void>}
    */
-  async processDeployment(tokenConfig) {
+  async processDeployment(tokenConfig, maxRetries = 2) {
     try {
       // Check if token config is valid
       if (!tokenConfig || !tokenConfig.id) {
@@ -146,7 +189,13 @@ class TokenService {
       // Determine ZetaChain ID based on current environment
       const actualZetaChainId = chainInfo.findZetaChainId(selectedChains);
       
-      console.log(`Starting deployment process for token ${tokenName} (ID: ${id})`);
+      logDeployment('start', id, 'all', 'started', {
+        tokenName,
+        tokenSymbol,
+        creatorWallet,
+        selectedChains,
+        maxRetries
+      });
 
       // Step 1: Ensure ZetaChain is in the selected chains
       if (!actualZetaChainId) {
@@ -154,7 +203,10 @@ class TokenService {
       }
 
       // Step 2: Deploy on ZetaChain first
-      console.log(`Deploying token on ZetaChain (ID: ${actualZetaChainId})...`);
+      logDeployment('deploy', id, actualZetaChainId, 'started', {
+        chainName: 'ZetaChain',
+        tokenName
+      });
       
       // Try to find the deployment log for ZetaChain using the actual chain ID found
       let zetaChainLog = await DeploymentLog.findOne({
@@ -166,7 +218,10 @@ class TokenService {
 
       // If not found, try looking for logs for any of the ZetaChain IDs
       if (!zetaChainLog) {
-        console.log('Deployment log not found for specific ZetaChain ID, trying alternate lookup...');
+        logger.debug('Deployment log not found for specific ZetaChain ID, trying alternate lookup...', {
+          tokenId: id,
+          chainId: actualZetaChainId
+        });
         
         // Look for any deployment log with a ZetaChain chain name
         zetaChainLog = await DeploymentLog.findOne({
@@ -181,13 +236,21 @@ class TokenService {
         
         // If found, update the log with the actual ZetaChain ID being used
         if (zetaChainLog) {
-          console.log(`Found ZetaChain deployment log with ID: ${zetaChainLog.chainId}`);
+          logger.debug(`Found ZetaChain deployment log with ID: ${zetaChainLog.chainId}`, {
+            tokenId: id,
+            foundChainId: zetaChainLog.chainId,
+            actualChainId: actualZetaChainId
+          });
         }
       }
 
       // If still not found, create a new deployment log for ZetaChain
       if (!zetaChainLog) {
-        console.log(`Creating new deployment log for ZetaChain (ID: ${actualZetaChainId})...`);
+        logger.info(`Creating new deployment log for ZetaChain`, {
+          tokenId: id,
+          chainId: actualZetaChainId
+        });
+        
         const chain = chainInfo.getChainInfo(actualZetaChainId);
         
         if (!chain) {
@@ -198,36 +261,178 @@ class TokenService {
           tokenConfigId: id,
           chainName: chain.name,
           chainId: actualZetaChainId,
-          status: 'pending'
+          status: 'pending',
+          verificationStatus: 'pending',
+          deployAttempts: 0
         });
       }
 
-      await zetaChainLog.update({ status: 'deploying' });
+      await zetaChainLog.update({ 
+        status: 'deploying',
+        deployAttempts: (zetaChainLog.deployAttempts || 0) + 1
+      });
 
-      // Deploy on ZetaChain
+      // Deploy on ZetaChain with retry logic
       let zetaChainDeployment;
-      try {
-        zetaChainDeployment = await contractService.deployZetaChainUniversalToken(
-          tokenName,
-          tokenSymbol,
-          decimals,
-          totalSupply.toString(),
-          creatorWallet
-        );
+      let zetaDeployAttempt = 1;
+      let zetaDeploySuccess = false;
+      
+      while (!zetaDeploySuccess && zetaDeployAttempt <= maxRetries) {
+        try {
+          // If this is a retry, update the attempt count
+          if (zetaDeployAttempt > 1) {
+            logger.info(`Retrying ZetaChain deployment, attempt ${zetaDeployAttempt} of ${maxRetries}`, {
+              tokenId: id,
+              chainId: actualZetaChainId,
+              attempt: zetaDeployAttempt
+            });
+            
+            await zetaChainLog.update({ 
+              status: 'retrying',
+              deployAttempts: zetaDeployAttempt,
+              lastRetryAt: new Date()
+            });
+            
+            // Wait a bit before retrying
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+          
+          zetaChainDeployment = await contractService.deployZetaChainUniversalToken(
+            tokenName,
+            tokenSymbol,
+            decimals,
+            totalSupply.toString(),
+            creatorWallet,
+            zetaDeployAttempt
+          );
+          
+          zetaDeploySuccess = true;
+        } catch (deployError) {
+          if (zetaDeployAttempt >= maxRetries) {
+            // Final attempt failed
+            logger.error(`All deployment attempts failed for ZetaChain`, {
+              tokenId: id,
+              chainId: actualZetaChainId,
+              maxRetries,
+              error: deployError.message
+            });
+            
+            await zetaChainLog.update({
+              status: 'failed',
+              errorMessage: `Failed after ${maxRetries} attempts: ${deployError.message}`,
+              deployAttempts: zetaDeployAttempt,
+              lastError: deployError.message
+            });
+            
+            // Exit deployment process
+            await tokenConfig.update({ 
+              deploymentStatus: 'failed',
+              deploymentError: `ZetaChain deployment failed after ${maxRetries} attempts`
+            });
+            
+            logDeployment('deploy', id, actualZetaChainId, 'failed', {
+              error: deployError.message,
+              attempts: zetaDeployAttempt
+            });
+            
+            return;
+          } else {
+            // Log the failure but continue to next attempt
+            logger.warn(`ZetaChain deployment attempt ${zetaDeployAttempt} failed`, {
+              tokenId: id,
+              chainId: actualZetaChainId,
+              attempt: zetaDeployAttempt,
+              error: deployError.message
+            });
+            
+            // Update log with failure info
+            await zetaChainLog.update({
+              lastError: deployError.message,
+              deployAttempts: zetaDeployAttempt
+            });
+            
+            zetaDeployAttempt++;
+          }
+        }
+      }
 
+      // If deployment was successful
+      if (zetaDeploySuccess) {
         await zetaChainLog.update({
           status: 'success',
           contractAddress: zetaChainDeployment.contractAddress,
-          transactionHash: zetaChainDeployment.transactionHash
+          transactionHash: zetaChainDeployment.transactionHash,
+          verificationStatus: 'processing',
+          deployAttempts: zetaDeployAttempt,
+          completedAt: new Date()
         });
-      } catch (error) {
-        console.error(`Error deploying on ZetaChain: ${error.message}`);
-        await zetaChainLog.update({
-          status: 'failed',
-          errorMessage: error.message
+        
+        logDeployment('deploy', id, actualZetaChainId, 'success', {
+          contractAddress: zetaChainDeployment.contractAddress,
+          transactionHash: zetaChainDeployment.transactionHash,
+          attempts: zetaDeployAttempt
         });
-        await tokenConfig.update({ deploymentStatus: 'failed' });
-        return;
+        
+        // Attempt to verify the contract
+        try {
+          logDeployment('verify', id, actualZetaChainId, 'started', {
+            contractAddress: zetaChainDeployment.contractAddress
+          });
+          
+          // Wait a bit longer for the contract to be properly indexed
+          await new Promise(resolve => setTimeout(resolve, 15000)); // 15 second delay
+          
+          const verificationResult = await verificationService.verifyContract(
+            actualZetaChainId,
+            zetaChainDeployment.contractAddress,
+            'ZetaChainUniversalToken',
+            {
+              compilerVersion: '0.8.26',
+              optimization: true,
+              runs: 200
+            }
+          );
+          
+          if (verificationResult.success) {
+            await zetaChainLog.update({
+              verificationStatus: 'verified',
+              verifiedUrl: verificationResult.explorerUrl
+            });
+            
+            logDeployment('verify', id, actualZetaChainId, 'success', {
+              explorerUrl: verificationResult.explorerUrl
+            });
+          } else {
+            await zetaChainLog.update({
+              verificationStatus: 'failed',
+              verificationError: verificationResult.message
+            });
+            
+            logDeployment('verify', id, actualZetaChainId, 'failed', {
+              error: verificationResult.message
+            });
+          }
+        } catch (verificationError) {
+          logger.error(`Error verifying ZetaChain contract`, {
+            tokenId: id,
+            chainId: actualZetaChainId,
+            contractAddress: zetaChainDeployment.contractAddress,
+            error: verificationError.message,
+            stack: verificationError.stack
+          });
+          
+          await zetaChainLog.update({
+            verificationStatus: 'failed',
+            verificationError: verificationError.message
+          });
+          
+          logDeployment('verify', id, actualZetaChainId, 'error', {
+            error: verificationError.message
+          });
+        }
+      } else {
+        // This should not happen with the retry logic above, but just in case
+        throw new Error(`ZetaChain deployment failed after all attempts`);
       }
 
       // Step 3: Deploy on other selected chains
@@ -238,16 +443,26 @@ class TokenService {
         const chain = chainInfo.getChainInfo(chainId);
         
         if (!chain) {
-          console.warn(`Chain information not found for chain ID: ${chainId}`);
+          logger.warn(`Chain information not found for chain ID: ${chainId}`, {
+            tokenId: id,
+            chainId
+          });
           continue;
         }
         
         if (chainInfo.isZetaChain(chainId)) {
-          console.warn(`Skipping additional ZetaChain ID: ${chainId}`);
+          logger.warn(`Skipping additional ZetaChain ID: ${chainId}`, {
+            tokenId: id,
+            chainId,
+            actualZetaChainId
+          });
           continue;
         }
 
-        console.log(`Deploying token on chain ${chainId} (${chain.name})...`);
+        logDeployment('deploy', id, chainId, 'started', {
+          chainName: chain.name,
+          tokenName
+        });
         
         // Find deployment log for this chain
         let chainLog = await DeploymentLog.findOne({
@@ -259,12 +474,18 @@ class TokenService {
 
         // If not found, create a new deployment log
         if (!chainLog) {
-          console.log(`Creating new deployment log for chain ${chainId} (${chain.name})...`);
+          logger.info(`Creating new deployment log for chain ${chainId}`, {
+            tokenId: id,
+            chainId,
+            chainName: chain.name
+          });
+          
           chainLog = await DeploymentLog.create({
             tokenConfigId: id,
             chainName: chain.name,
             chainId,
-            status: 'pending'
+            status: 'pending',
+            verificationStatus: 'pending'
           });
         }
 
@@ -284,23 +505,111 @@ class TokenService {
           await chainLog.update({
             status: 'success',
             contractAddress: evmDeployment.contractAddress,
-            transactionHash: evmDeployment.transactionHash
+            transactionHash: evmDeployment.transactionHash,
+            verificationStatus: 'processing'
           });
 
           evmDeployments[chainId] = evmDeployment;
+          
+          logDeployment('deploy', id, chainId, 'success', {
+            contractAddress: evmDeployment.contractAddress,
+            transactionHash: evmDeployment.transactionHash,
+            chainName: chain.name
+          });
+          
+          // Attempt to verify the contract
+          try {
+            logDeployment('verify', id, chainId, 'started', {
+              contractAddress: evmDeployment.contractAddress,
+              chainName: chain.name
+            });
+            
+            // Wait a bit longer for the contract to be properly indexed
+            await new Promise(resolve => setTimeout(resolve, 15000)); // 15 second delay
+            
+            const verificationResult = await verificationService.verifyContract(
+              chainId,
+              evmDeployment.contractAddress,
+              'EVMUniversalToken',
+              {
+                compilerVersion: '0.8.26',
+                optimization: true,
+                runs: 200
+              }
+            );
+            
+            if (verificationResult.success) {
+              await chainLog.update({
+                verificationStatus: 'verified',
+                verifiedUrl: verificationResult.explorerUrl
+              });
+              
+              logDeployment('verify', id, chainId, 'success', {
+                explorerUrl: verificationResult.explorerUrl,
+                chainName: chain.name
+              });
+            } else {
+              await chainLog.update({
+                verificationStatus: 'failed',
+                verificationError: verificationResult.message
+              });
+              
+              logDeployment('verify', id, chainId, 'failed', {
+                error: verificationResult.message,
+                chainName: chain.name
+              });
+            }
+          } catch (verificationError) {
+            logger.error(`Error verifying contract on chain ${chainId}`, {
+              tokenId: id,
+              chainId,
+              chainName: chain.name,
+              contractAddress: evmDeployment.contractAddress,
+              error: verificationError.message,
+              stack: verificationError.stack
+            });
+            
+            await chainLog.update({
+              verificationStatus: 'failed',
+              verificationError: verificationError.message
+            });
+            
+            logDeployment('verify', id, chainId, 'error', {
+              error: verificationError.message,
+              chainName: chain.name
+            });
+          }
         } catch (error) {
-          console.error(`Error deploying on chain ${chainId}: ${error.message}`);
+          logger.error(`Error deploying on chain ${chainId}`, {
+            tokenId: id,
+            chainId,
+            chainName: chain.name,
+            error: error.message,
+            stack: error.stack
+          });
+          
           await chainLog.update({
             status: 'failed',
-            errorMessage: error.message
+            errorMessage: error.message,
+            verificationStatus: 'skipped'
           });
+          
+          logDeployment('deploy', id, chainId, 'failed', {
+            error: error.message,
+            chainName: chain.name
+          });
+          
           // Continue with other chains despite failure
         }
       }
 
       // Step 4: Connect ZetaChain token to each EVM token
       for (const chainId in evmDeployments) {
-        console.log(`Connecting tokens between ZetaChain and chain ${chainId}...`);
+        logDeployment('connect', id, chainId, 'started', {
+          zetaChainAddress: zetaChainDeployment.contractAddress,
+          evmAddress: evmDeployments[chainId].contractAddress,
+          zetaChainId: actualZetaChainId
+        });
         
         try {
           const connectionResult = await contractService.connectTokens(
@@ -310,18 +619,47 @@ class TokenService {
             evmDeployments[chainId].contractAddress
           );
           
-          console.log(`Successfully connected tokens between ZetaChain and chain ${chainId}`);
-          console.log(`ZetaChain TX: ${connectionResult.zetaChainTxHash}`);
-          console.log(`EVM Chain TX: ${connectionResult.evmTxHash}`);
+          logDeployment('connect', id, chainId, 'success', {
+            zetaChainTxHash: connectionResult.zetaChainTxHash,
+            evmTxHash: connectionResult.evmTxHash,
+            zetaChainId: actualZetaChainId
+          });
 
           // Add explorer links
           const zetaChainTxUrl = chainInfo.getExplorerTxUrl(actualZetaChainId, connectionResult.zetaChainTxHash);
           const evmChainTxUrl = chainInfo.getExplorerTxUrl(chainId, connectionResult.evmTxHash);
           
-          if (zetaChainTxUrl) console.log(`ZetaChain Explorer: ${zetaChainTxUrl}`);
-          if (evmChainTxUrl) console.log(`EVM Chain Explorer: ${evmChainTxUrl}`);
+          if (zetaChainTxUrl) {
+            logger.info(`Connection ZetaChain TX URL: ${zetaChainTxUrl}`, {
+              tokenId: id,
+              chainId: actualZetaChainId,
+              txHash: connectionResult.zetaChainTxHash
+            });
+          }
+          
+          if (evmChainTxUrl) {
+            logger.info(`Connection EVM Chain TX URL: ${evmChainTxUrl}`, {
+              tokenId: id,
+              chainId,
+              txHash: connectionResult.evmTxHash
+            });
+          }
         } catch (error) {
-          console.error(`Error connecting tokens for chain ${chainId}: ${error.message}`);
+          logger.error(`Error connecting tokens for chain ${chainId}`, {
+            tokenId: id,
+            zetaChainId: actualZetaChainId,
+            evmChainId: chainId,
+            zetaChainAddress: zetaChainDeployment.contractAddress,
+            evmAddress: evmDeployments[chainId].contractAddress,
+            error: error.message,
+            stack: error.stack
+          });
+          
+          logDeployment('connect', id, chainId, 'failed', {
+            error: error.message,
+            zetaChainId: actualZetaChainId
+          });
+          
           // Continue with other connections despite failure
         }
       }
@@ -347,13 +685,29 @@ class TokenService {
         newStatus = 'partial';
       }
 
-      console.log(`Updating deployment status to: ${newStatus} (${successLogs.length} successful, ${failedLogs.length} failed, ${pendingLogs.length} pending)`);
+      logger.info(`Updating deployment status for token ${id}`, {
+        tokenId: id,
+        newStatus,
+        successCount: successLogs.length,
+        failedCount: failedLogs.length,
+        pendingCount: pendingLogs.length,
+        totalCount: allLogs.length
+      });
+      
       await tokenConfig.update({ deploymentStatus: newStatus });
 
-      console.log(`Deployment process completed for token ${tokenName} (ID: ${id}) with status ${newStatus}`);
+      logDeployment('complete', id, 'all', newStatus, {
+        successCount: successLogs.length,
+        failedCount: failedLogs.length,
+        pendingCount: pendingLogs.length,
+        totalCount: allLogs.length
+      });
     } catch (error) {
-      console.error(`Error in deployment process: ${error.message}`);
-      console.error(error.stack);
+      logger.error(`Error in deployment process`, {
+        tokenId: tokenConfig ? tokenConfig.id : 'unknown',
+        error: error.message,
+        stack: error.stack
+      });
       
       // Update token config status to failed
       if (tokenConfig && tokenConfig.id) {
@@ -367,7 +721,8 @@ class TokenService {
           await DeploymentLog.update(
             { 
               status: 'failed',
-              errorMessage: `Process error: ${error.message}`
+              errorMessage: `Process error: ${error.message}`,
+              verificationStatus: 'skipped'
             },
             { 
               where: { 
@@ -376,8 +731,16 @@ class TokenService {
               } 
             }
           );
+          
+          logDeployment('error', tokenConfig.id, 'all', 'failed', {
+            error: error.message
+          });
         } catch (updateError) {
-          console.error(`Failed to update token status after error: ${updateError.message}`);
+          logger.error(`Failed to update token status after error`, {
+            tokenId: tokenConfig.id,
+            originalError: error.message,
+            updateError: updateError.message
+          });
         }
       }
     }
@@ -392,11 +755,15 @@ class TokenService {
     try {
       const tokenConfig = await TokenConfiguration.findByPk(tokenId);
       if (!tokenConfig) {
+        logger.warn(`Token configuration not found`, { tokenId });
         throw new Error(`Token configuration with ID ${tokenId} not found`);
       }
       return tokenConfig;
     } catch (error) {
-      console.error(`Error getting token configuration: ${error.message}`);
+      logger.error(`Error getting token configuration`, {
+        tokenId,
+        error: error.message
+      });
       throw error;
     }
   }
@@ -415,7 +782,10 @@ class TokenService {
       });
       return tokens;
     } catch (error) {
-      console.error(`Error getting token configurations: ${error.message}`);
+      logger.error(`Error getting token configurations`, {
+        creatorWallet,
+        error: error.message
+      });
       throw error;
     }
   }
@@ -431,9 +801,18 @@ class TokenService {
         where: { tokenConfigId: tokenId },
         order: [['updatedAt', 'DESC']]
       });
+      
+      logger.debug(`Retrieved deployment logs`, {
+        tokenId,
+        logCount: logs.length
+      });
+      
       return logs;
     } catch (error) {
-      console.error(`Error getting deployment logs: ${error.message}`);
+      logger.error(`Error getting deployment logs`, {
+        tokenId,
+        error: error.message
+      });
       throw error;
     }
   }

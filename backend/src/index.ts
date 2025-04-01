@@ -8,6 +8,10 @@ import path from 'path';
 // Import routes
 import tokenRoutes from './routes/tokenRoutes';
 
+// Import custom logger and middleware
+import { logger } from './utils/logger';
+import loggerMiddleware from './middleware/loggerMiddleware';
+
 // Load environment variables
 dotenv.config();
 
@@ -22,6 +26,9 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Add custom logger middleware
+app.use(loggerMiddleware);
+
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -35,8 +42,32 @@ app.get('/health', (_req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Health check available at http://localhost:${PORT}/health`);
+  logger.info(`Server started`, {
+    port: PORT,
+    environment: process.env.NODE_ENV || 'development',
+    debugMode: process.env.DEBUG === 'true'
+  });
+  
+  logger.info(`Health check available at http://localhost:${PORT}/health`);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error(`Uncaught exception`, {
+    error: error.message,
+    stack: error.stack
+  });
+  
+  // Exit with error
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error(`Unhandled promise rejection`, {
+    reason,
+    promise
+  });
 });
 
 export default app; 

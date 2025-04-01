@@ -43,6 +43,36 @@ const DeploymentLog = sequelize.define('DeploymentLog', {
   errorMessage: {
     type: DataTypes.TEXT,
     field: 'error_message'
+  },
+  verificationStatus: {
+    type: DataTypes.STRING,
+    field: 'verification_status',
+    defaultValue: 'pending'
+  },
+  verificationError: {
+    type: DataTypes.TEXT,
+    field: 'verification_error'
+  },
+  verifiedUrl: {
+    type: DataTypes.STRING,
+    field: 'verified_url'
+  },
+  deployAttempts: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'deploy_attempts'
+  },
+  lastRetryAt: {
+    type: DataTypes.DATE,
+    field: 'last_retry_at'
+  },
+  lastError: {
+    type: DataTypes.TEXT,
+    field: 'last_error'
+  },
+  completedAt: {
+    type: DataTypes.DATE,
+    field: 'completed_at'
   }
 }, {
   tableName: 'deployment_logs',
