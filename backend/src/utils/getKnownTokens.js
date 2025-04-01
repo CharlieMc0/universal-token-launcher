@@ -28,7 +28,7 @@ const getKnownTokens = (walletAddress) => {
             name: "ZetaChain Testnet",
             chainId: "7001",
             rpcUrl: "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
-            explorerUrl: "https://zetachain-testnet.blockscout.com",
+            explorerUrl: "https://athens.explorer.zetachain.com",
             contractAddress: "0x51d5D00dfB9e1f4D60BBD6eda288F44Fb3158E16",
             deploymentStatus: "success"
           },
@@ -67,7 +67,7 @@ const getKnownTokens = (walletAddress) => {
             name: "ZetaChain Testnet",
             chainId: "7001",
             rpcUrl: "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
-            explorerUrl: "https://zetachain-testnet.blockscout.com",
+            explorerUrl: "https://athens.explorer.zetachain.com",
             contractAddress: "0x51d5D00dfB9e1f4D60BBD6eda288F44Fb3158E16",
             deploymentStatus: "success"
           }

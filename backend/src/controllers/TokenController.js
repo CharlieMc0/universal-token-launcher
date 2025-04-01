@@ -505,15 +505,19 @@ class TokenController {
       const tokensFromService = await TokenService.findUserUniversalTokens(walletAddress);
       
       console.log(`[DEBUG-CONTROLLER] Service returned ${tokensFromService?.length || 0} tokens`);
+      console.log(`[DEBUG-CONTROLLER] Token sources:`, tokensFromService?.map(t => ({ name: t.tokenName, source: t.source, address: Object.values(t.deployedContracts)[0] })));
       
       // If no tokens found from service, check for known tokens
       if (!tokensFromService || tokensFromService.length === 0) {
+        console.log(`[DEBUG-CONTROLLER] No tokens found from service, checking known tokens`);
         const knownTokens = getKnownTokens(walletAddress);
         
         if (knownTokens && knownTokens.length > 0) {
           console.log(`[DEBUG-CONTROLLER] Found ${knownTokens.length} known tokens for ${walletAddress}`);
           return res.status(200).json(knownTokens);
         }
+      } else {
+        console.log(`[DEBUG-CONTROLLER] Using ${tokensFromService.length} tokens from service`);
       }
       
       // Enhance tokens with detailed chain info (this will be skipped if nothing found)

@@ -62,6 +62,13 @@ To apply these fixes to an existing database, run:
 npm run migrate
 ```
 
+### TokenService `findUserUniversalTokens` Fix
+
+- Resolved an error `TypeError: Cannot read properties of undefined (reading 'findZetaChainDeploymentsByCreator')` that occurred when fetching user tokens.
+- The issue was caused by an incorrect attempt to call a non-existent `deploymentService`.
+- The fix involved replacing the incorrect call with a direct Sequelize database query using `DeploymentLog.findAll` to fetch deployments based on the `creatorWallet`.
+- Adjusted token processing logic to handle the data structure returned by the new query.
+
 ## Prerequisites
 
 - Node.js v16+

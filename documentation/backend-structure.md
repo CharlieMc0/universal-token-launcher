@@ -254,8 +254,7 @@ This enhanced format enables the frontend to display rich information about the 
 ### 6.1. Modular Architecture
 - **Service Layer:**  
   - Separate core functionalities into distinct modules or services:
-    - **TokenService:** Handles token configuration, fee verification, and deployment coordination.
-    - **DeploymentService:** Manages contract deployment and status tracking per chain.
+    - **TokenService:** Handles token configuration, fee verification, and deployment coordination. Also includes logic to find user tokens by querying the `DeploymentLog` and `TokenConfiguration` models.
     - **DistributionService:** Handles initial token distribution validation and execution.
     - **TransferService:** Manages transfer transactions (burn/mint operations).
     - **UserService:** Manages wallet authentication and JWT session management.
