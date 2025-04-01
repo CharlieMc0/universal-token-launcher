@@ -162,20 +162,20 @@ This document provides a comprehensive walkthrough of the user journey through t
   ```javascript
   // Correctly prepare form data with exact field names
   const formDataToSend = new FormData();
-  formDataToSend.append('token_name', formData.name);
-  formDataToSend.append('token_symbol', formData.symbol);
+  formDataToSend.append('tokenName', formData.name);
+  formDataToSend.append('tokenSymbol', formData.symbol);
   formDataToSend.append('decimals', formData.decimals);
-  formDataToSend.append('total_supply', formData.totalSupply);
+  formDataToSend.append('totalSupply', formData.totalSupply);
   
   // Format distribution data according to backend expectations
   const distributionsForBackend = allDistributions.map(dist => ({
-    recipient_address: dist.address,  // Must match backend field name
-    chain_id: chainId.toString(),     // Convert to string
-    token_amount: dist.amount
+    recipientAddress: dist.address,
+    chainId: chainId.toString(),
+    tokenAmount: dist.amount
   }));
   
-  formDataToSend.append('selected_chains', JSON.stringify([chainId.toString()]));
-  formDataToSend.append('distributions_json', JSON.stringify(distributionsForBackend));
+  formDataToSend.append('selectedChains', JSON.stringify([chainId.toString()]));
+  formDataToSend.append('distributionsJson', JSON.stringify(distributionsForBackend));
   if (tokenIcon) {
     formDataToSend.append('icon', tokenIcon);
   }
@@ -258,7 +258,7 @@ This document provides a comprehensive walkthrough of the user journey through t
     
     // Start deployment with fee payment transaction
     await apiService.deployToken(response.id, {
-      fee_paid_tx: txResult.hash
+      feePaidTx: txResult.hash
     });
     
     setDeploymentStatus('pending');

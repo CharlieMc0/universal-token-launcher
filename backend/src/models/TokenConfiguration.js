@@ -1,6 +1,5 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
-const { DEPLOYMENT_STATUS } = require('../config/constants');
+const sequelize = require('../db/config');
 
 const TokenConfiguration = sequelize.define('TokenConfiguration', {
   id: {
@@ -8,13 +7,24 @@ const TokenConfiguration = sequelize.define('TokenConfiguration', {
     primaryKey: true,
     autoIncrement: true
   },
+  creatorWallet: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    field: 'creator_wallet'
+  },
   tokenName: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
+    field: 'token_name'
   },
   tokenSymbol: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
+    field: 'token_symbol'
+  },
+  iconUrl: {
+    type: DataTypes.STRING,
+    field: 'icon_url'
   },
   decimals: {
     type: DataTypes.INTEGER,
@@ -22,51 +32,37 @@ const TokenConfiguration = sequelize.define('TokenConfiguration', {
     defaultValue: 18
   },
   totalSupply: {
-    type: DataTypes.DECIMAL(78, 18),
-    allowNull: false
+    type: DataTypes.DECIMAL,
+    allowNull: false,
+    field: 'total_supply'
   },
-  creatorWallet: {
-    type: DataTypes.STRING,
-    allowNull: false
+  distributionsJson: {
+    type: DataTypes.JSONB,
+    field: 'distributions_json'
   },
-  iconUrl: {
+  selectedChains: {
+    type: DataTypes.JSONB,
+    field: 'selected_chains'
+  },
+  feePaidTx: {
     type: DataTypes.STRING,
-    allowNull: true
+    field: 'fee_paid_tx'
   },
   deploymentStatus: {
     type: DataTypes.STRING,
     allowNull: false,
-    defaultValue: DEPLOYMENT_STATUS.PENDING,
-    validate: {
-      isIn: [Object.values(DEPLOYMENT_STATUS)]
-    }
+    defaultValue: 'pending',
+    field: 'deployment_status'
   },
-  feeTransactionHash: {
-    type: DataTypes.STRING,
-    allowNull: true
-  },
-  selectedChains: {
-    type: DataTypes.JSONB,
-    allowNull: false,
-    defaultValue: []
-  },
-  csvDataRaw: {
+  deploymentError: {
     type: DataTypes.TEXT,
-    allowNull: true
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
+    field: 'deployment_error'
   }
 }, {
   tableName: 'token_configurations',
-  timestamps: true
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
 
 module.exports = TokenConfiguration; 

@@ -1,6 +1,6 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
-const { DEPLOYMENT_STATUS } = require('../config/constants');
+const sequelize = require('../db/config');
+const TokenConfiguration = require('./TokenConfiguration');
 
 const DeploymentLog = sequelize.define('DeploymentLog', {
   id: {
@@ -11,6 +11,7 @@ const DeploymentLog = sequelize.define('DeploymentLog', {
   tokenConfigId: {
     type: DataTypes.INTEGER,
     allowNull: false,
+    field: 'token_config_id',
     references: {
       model: 'token_configurations',
       key: 'id'
@@ -18,45 +19,40 @@ const DeploymentLog = sequelize.define('DeploymentLog', {
   },
   chainName: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
+    field: 'chain_name'
   },
   chainId: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
+    field: 'chain_id'
   },
   contractAddress: {
     type: DataTypes.STRING,
-    allowNull: true
+    field: 'contract_address'
   },
   status: {
     type: DataTypes.STRING,
     allowNull: false,
-    defaultValue: DEPLOYMENT_STATUS.PENDING,
-    validate: {
-      isIn: [Object.values(DEPLOYMENT_STATUS)]
-    }
+    defaultValue: 'pending'
   },
   transactionHash: {
     type: DataTypes.STRING,
-    allowNull: true
+    field: 'transaction_hash'
   },
   errorMessage: {
     type: DataTypes.TEXT,
-    allowNull: true
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
+    field: 'error_message'
   }
 }, {
   tableName: 'deployment_logs',
-  timestamps: true
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
+
+// Establish relationship
+DeploymentLog.belongsTo(TokenConfiguration, { foreignKey: 'tokenConfigId' });
+TokenConfiguration.hasMany(DeploymentLog, { foreignKey: 'tokenConfigId' });
 
 module.exports = DeploymentLog; 

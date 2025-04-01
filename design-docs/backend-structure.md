@@ -6,7 +6,7 @@ This document outlines the foundational backend system for the Universal Token L
 
 ## 1. Database Architecture
 
-We will use **PostgreSQL** as our primary relational database. Data is normalized to avoid redundancy, with separate tables for token configurations, distribution records, deployment logs, and bridge transactions. Key tables include:
+We will use **PostgreSQL** as our primary relational database. Data is normalized to avoid redundancy, with separate tables for token configurations, distribution records, deployment logs, and transfer transactions. Key tables include:
 
 ### 1.1. Users (Optional)
 *Purpose:* Store minimal user metadata if needed (wallet addresses).
@@ -18,7 +18,7 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - This table is optional since authentication is via wallet connection.
   - Use this table to store user preferences or history if required later.
 
-### 1.2. Token_Configurations
+### 1.2. TokenConfigurations
 *Purpose:* Record each token deployment configuration initiated by a token creator.
 - **Fields:**
   - `id` (SERIAL, PRIMARY KEY)
@@ -38,11 +38,11 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - Index on `creator_wallet` for quick lookup.
   - Constraint on `deployment_status` values (if using ENUM type, or check constraint).
 
-### 1.3. Token_Distributions
+### 1.3. TokenDistributions
 *Purpose:* Store individual CSV entries for token distributions.
 - **Fields:**
   - `id` (SERIAL, PRIMARY KEY)
-  - `token_config_id` (INTEGER, NOT NULL) – Foreign key referencing `Token_Configurations(id)`.
+  - `token_config_id` (INTEGER, NOT NULL) – Foreign key referencing `TokenConfigurations(id)`.
   - `recipient_address` (TEXT, NOT NULL)
   - `chain_id` (VARCHAR, NOT NULL) – Identifier of the target chain.
   - `token_amount` (NUMERIC, NOT NULL)
@@ -54,11 +54,11 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - Foreign key on `token_config_id` (with ON DELETE CASCADE).
   - Unique composite index on (`token_config_id`, `recipient_address`, `chain_id`) to avoid duplicate entries.
 
-### 1.4. Deployment_Logs
+### 1.4. DeploymentLogs
 *Purpose:* Log the status of contract deployments on each selected chain.
 - **Fields:**
   - `id` (SERIAL, PRIMARY KEY)
-  - `token_config_id` (INTEGER, NOT NULL) – Foreign key referencing `Token_Configurations(id)`.
+  - `token_config_id` (INTEGER, NOT NULL) – Foreign key referencing `TokenConfigurations(id)`.
   - `chain_name` (VARCHAR, NOT NULL) – E.g., 'Ethereum', 'Polygon'.
   - `chain_id` (VARCHAR, NOT NULL) – Chain identifier (e.g., '1' for Ethereum).
   - `contract_address` (TEXT) – Deployed contract address.
@@ -71,16 +71,16 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - Foreign key on `token_config_id`.
   - Index on `chain_name` for filtering by network.
 
-### 1.5. Bridge_Transactions
-*Purpose:* Record all bridging actions initiated by token holders.
+### 1.5. TransferTransactions
+*Purpose:* Record all transfer actions initiated by token holders.
 - **Fields:**
   - `id` (SERIAL, PRIMARY KEY)
-  - `user_wallet` (TEXT, NOT NULL) – The wallet initiating the bridge.
-  - `action_type` (VARCHAR, NOT NULL) – 'bridge_in' or 'bridge_out'.
+  - `user_wallet` (TEXT, NOT NULL) – The wallet initiating the transfer.
+  - `action_type` (VARCHAR, NOT NULL) – 'transfer_in' or 'transfer_out'.
   - `source_chain` (VARCHAR, NOT NULL)
   - `destination_chain` (VARCHAR, NOT NULL)
   - `token_amount` (NUMERIC, NOT NULL)
-  - `transaction_hash` (VARCHAR) – Hash from the bridging blockchain.
+  - `transaction_hash` (VARCHAR) – Hash from the transfer blockchain.
   - `status` (VARCHAR) – e.g., 'pending', 'success', 'failed'.
   - `created_at` (TIMESTAMP WITH TIME ZONE, default NOW())
   - `updated_at` (TIMESTAMP WITH TIME ZONE)
@@ -163,19 +163,19 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - **Description:** Get deployment logs for a specific token.
   - **Response:** Array of deployment logs with chain-specific status and contract addresses.
 
-#### 4.2.2. Bridge Transactions
-- **POST /api/bridge**
-  - **Description:** Initiate a bridging operation (bridge in/out).
+#### 4.2.2. Transfer Transactions
+- **POST /api/transfers**
+  - **Description:** Initiate a transfer operation (transfer in/out).
   - **Request Body:** JSON payload with action type, source chain, destination chain, token amount, and user wallet.
-  - **Response:** Bridge transaction ID and initial status.
+  - **Response:** Transfer transaction ID and initial status.
   
-- **GET /api/bridge/{id}**
-  - **Description:** Retrieve the status of a specific bridge transaction.
-  - **Response:** Bridge details including transaction hash and status.
+- **GET /api/transfers/{id}**
+  - **Description:** Retrieve the status of a specific transfer transaction.
+  - **Response:** Transfer details including transaction hash and status.
 
 #### 4.2.3. Status & Notifications
 - **GET /api/status**
-  - **Description:** Poll or subscribe for real-time status updates (deployment progress, bridge transaction updates).
+  - **Description:** Poll or subscribe for real-time status updates (deployment progress, transfer transaction updates).
   - **Response:** JSON with current statuses (may integrate WebSocket endpoints for real-time updates).
 
 ### 4.3. Error & Validation Handling
@@ -199,7 +199,7 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 ### 5.2. Sensitive Data Handling
 - **Public vs. Private Data:**  
   - Public Data: Token details (name, icon URL), deployment status.
-  - Private Data: CSV file contents, wallet addresses, deployment logs, and bridge transaction details should be secured.
+  - Private Data: CSV file contents, wallet addresses, deployment logs, and transfer transaction details should be secured.
 - **Access Controls:**  
   - Validate JWTs on protected endpoints.
   - Use role-based checks where necessary (e.g., only the token creator can view or modify their deployment data).
@@ -211,11 +211,11 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 ### 6.1. Modular Architecture
 - **Service Layer:**  
   - Separate core functionalities into distinct modules or services:
-    - **Token Service:** Handles token configuration, fee verification, and deployment coordination.
-    - **Deployment Service:** Manages contract deployment and status tracking per chain.
-    - **Distribution Service:** Handles initial token distribution validation and execution.
-    - **Bridge Service:** Manages bridge transactions (burn/mint operations).
-    - **User/Session Service:** Manages wallet authentication and JWT session management.
+    - **TokenService:** Handles token configuration, fee verification, and deployment coordination.
+    - **DeploymentService:** Manages contract deployment and status tracking per chain.
+    - **DistributionService:** Handles initial token distribution validation and execution.
+    - **TransferService:** Manages transfer transactions (burn/mint operations).
+    - **UserService:** Manages wallet authentication and JWT session management.
 - **Asynchronous Processing:**  
   - Use background job processing (e.g., Bull/Redis) for long-running operations:
     - Contract deployment tasks per chain
@@ -229,7 +229,7 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
     - Deployment Orchestrator Service
     - Chain-specific Deployment Services
     - Distribution Service
-    - Bridge Service
+    - Transfer Service
   - Use API versioning (v1) and clear service boundaries to decouple features.
   
 ### 6.3. Maintenance & Scalability Best Practices
@@ -249,106 +249,66 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - Store contract bytecode and ABIs in dedicated JavaScript modules.
   - Example location: `src/constants/bytecode.js`
 
-- **Expected Format:**
-  ```javascript
-  // Universal Token bytecode and ABI exports
-  // This file contains the compiled bytecode and ABIs for Universal Token contracts
+### 7.2. Testing Framework
+- **Contract Deployment Tests:**
+  - Located in `src/tests/contract.test.js`
+  - Functions to test ZetaChain and EVM chain deployments
+  - Graceful fallback to mock data when real deployment isn't possible
+  - Clear display of contract addresses and transaction hashes
+  - Explorer URLs for easy contract verification
 
-  /**
-   * IMPORTANT PRODUCTION NOTE:
-   * 
-   * For a production deployment, you should:
-   * 1. Compile the standard-contracts directly using Hardhat
-   * 2. Extract the correct artifacts (ABIs and bytecode) for:
-   *    - ZetaChainUniversalToken
-   *    - EVMUniversalToken
-   * 3. Use separate ABI files for readability
-   * 
-   * The current placeholders are for development only!
-   */
+- **Token Service Tests:**
+  - Located in `src/tests/token.test.js`
+  - Functions to test token configuration creation and retrieval
+  - Tests for deployment logs and token deployment initiation
+  - Structured output of deployment information
 
-  // Export the token bytecode (begins with 0x)
-  exports.UNIVERSAL_TOKEN_BYTECODE = '0x608060405234801...';
+- **Demo Scripts:**
+  - **Full Demo:** `scripts/runDemo.js` - Shows the entire token flow from creation to connection
+  - **Connect Tokens:** `scripts/connectTokens.js` - Script for connecting tokens across chains
+  - **Summary Output:** Comprehensive list of all deployed contracts with explorer URLs
 
-  // Export the token ABI
-  exports.UNIVERSAL_TOKEN_ABI = [
-    // ... ABI entries
-  ];
+- **Test NPM Scripts:**
+  - `npm run test-zeta-deploy` - Test ZetaChain token deployment
+  - `npm run test-evm-deploy` - Test EVM token deployment
+  - `npm run test-token-create` - Test token configuration creation
+  - `npm run test-deployment` - Run all token tests
+  - `npm run run-demo` - Run the complete demo
+  - `npm run connect-tokens-testnet` - Connect tokens across chains
 
-  // Chain-specific contracts
-  exports.ZETACHAIN_UNIVERSAL_TOKEN_BYTECODE = exports.UNIVERSAL_TOKEN_BYTECODE; 
-  exports.ZETACHAIN_UNIVERSAL_TOKEN_ABI = exports.UNIVERSAL_TOKEN_ABI;
+### 7.3. Testing Framework Output
 
-  exports.EVM_UNIVERSAL_TOKEN_BYTECODE = exports.UNIVERSAL_TOKEN_BYTECODE;
-  exports.EVM_UNIVERSAL_TOKEN_ABI = exports.UNIVERSAL_TOKEN_ABI;
-  ```
+The enhanced testing framework provides comprehensive output with critical contract deployment information:
 
-- **Critical Considerations:**
-  - Ensure all multiline comment blocks are properly closed with `*/`
-  - Validate bytecode strings are properly formatted (beginning with '0x' followed by valid hex)
-  - Keep string literals properly formatted without invalid characters
-  - Ensure proper export of all required contract artifacts
+- **Contract Addresses:** Clearly displayed for all deployed contracts
+- **Transaction Hashes:** Shown for all deployment transactions
+- **Explorer URLs:** Direct links to view contracts and transactions on blockchain explorers
+- **Error Handling:** Graceful handling of deployment failures with fallback to mock data
+- **Connection Status:** Detailed information about cross-chain token connections
+- **Summary Display:** Consolidated list of all deployed contracts at the end of tests
 
-### 7.2. Contract Service Implementation
+Example output from the demo script:
 
-- **Purpose:** Handle contract deployment and interaction across multiple chains.
-- **Core Functionality:**
-  - Chain provider management
-  - Contract deployment with proper constructor parameters
-  - Fee verification
-  - Transaction monitoring
-  - Error handling
+```
+=============== DEPLOYMENT SUCCESSFUL ===============
+CONTRACT ADDRESS: 0xcCB30B5b65c1ebDA767C7cdDbCDc01cA7c37B86F
+TRANSACTION HASH: 0x5adedc18a543fc5886b5290c947b56df11570f303e970a497a667af4c44c2b08
+EXPLORER URL: https://athens.explorer.zetachain.com/tx/0x5adedc18a543fc5886b5290c947b56df11570f303e970a497a667af4c44c2b08
+========================================================
 
-- **Service Structure:**
-  ```javascript
-  // Contract service for deployment
-  class ContractService {
-    constructor() {
-      // Initialize providers for different chains
-      this.providers = {};
-      this.setupProviders();
-    }
-    
-    setupProviders() {
-      // Set up providers for each supported chain
-      Object.keys(SUPPORTED_CHAINS).forEach(chainId => {
-        const rpcUrl = SUPPORTED_CHAINS[chainId].rpcUrl;
-        this.providers[chainId] = new ethers.JsonRpcProvider(rpcUrl);
-      });
-    }
-    
-    async deployEVMUniversalToken(chainId, tokenName, tokenSymbol, decimals, totalSupply, creatorWallet) {
-      try {
-        // Load bytecode and ABI
-        const bytecode = UNIVERSAL_TOKEN_BYTECODE;
-        const abi = UNIVERSAL_TOKEN_ABI;
-        
-        // Create wallet with private key
-        const wallet = new ethers.Wallet(process.env.DEPLOYER_PRIVATE_KEY, this.providers[chainId]);
-        
-        // Create contract factory
-        const factory = new ethers.ContractFactory(abi, bytecode, wallet);
-        
-        // Prepare constructor arguments
-        const args = [tokenName, tokenSymbol, decimals, totalSupply];
-        
-        // Deploy contract
-        const contract = await factory.deploy(...args);
-        await contract.deploymentTransaction().wait();
-        
-        return {
-          contractAddress: contract.address,
-          transactionHash: contract.deploymentTransaction().hash
-        };
-      } catch (error) {
-        console.error(`Error deploying token on chain ${chainId}: ${error.message}`);
-        throw error;
-      }
-    }
-  }
-  ```
+SUMMARY OF DEPLOYED CONTRACTS
+------------------------------------------------------
+Chain: ZetaChain Testnet (7001)
+Contract Address: 0xcCB30B5b65c1ebDA767C7cdDbCDc01cA7c37B86F
+Explorer URL: https://athens.explorer.zetachain.com/address/0xcCB30B5b65c1ebDA767C7cdDbCDc01cA7c37B86F
+------------------------------------------------------
+Chain: Sepolia (11155111)
+Contract Address: 0xc5575b84A7980a7305Bca23e07631234e5331d89
+Explorer URL: https://sepolia.etherscan.io/address/0xc5575b84A7980a7305Bca23e07631234e5331d89
+------------------------------------------------------
+```
 
-### 7.3. Contract Deployment Workflow
+### 7.4. Contract Deployment Workflow
 
 1. **Fee Verification:**
    - Verify that the token creator has paid the required ZETA fee.
@@ -366,7 +326,7 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
    - Continuously update deployment logs with current status.
    - Provide detailed error information if deployments fail.
 
-### 7.4. Error Handling & Validation
+### 7.5. Error Handling & Validation
 
 - **Bytecode Validation:**
   - Validate bytecode format before attempting deployment.
@@ -418,6 +378,40 @@ We've recently addressed critical issues with the bytecode.js file:
 3. **Testing Support:**
    - Added support for minimal test deployments
    - Implemented deployment verification utilities
+
+### 8.3. Implementation Progress
+
+We have successfully implemented the core components of the backend service:
+
+1. **Database Models:**
+   - `TokenConfiguration` model for storing token details
+   - `DeploymentLog` model for tracking deployment status per chain
+   - `TokenDistribution` model for tracking token distribution records
+   - Proper relationships and migrations set up
+
+2. **Service Layer:**
+   - `ContractService` for smart contract deployment and interaction
+   - `TokenService` for token configuration, deployment, and status management
+   - File upload handling for token icons and CSV distribution lists
+   - Transaction validation for fee payment
+
+3. **API Controllers:**
+   - `TokenController` with endpoints for token creation, deployment, and retrieval
+   - Authentication middleware for wallet-based authorization
+   - Proper error handling and validation
+
+4. **Testing Utilities:**
+   - Manual test scripts for contract deployment
+   - Test utilities for token configuration and deployment
+   - Database initialization scripts for development
+
+5. **Deployment Flow:**
+   - Clean sequential deployment starting from ZetaChain
+   - Connection of tokens across chains
+   - Status tracking and error handling
+   - Support for partial deployments
+
+This implementation closely follows the architecture outlined in the previous sections, with some practical adjustments based on development experience. The current implementation focuses on the contract deployment functionality, leaving token transfers to be handled by the frontend directly.
 
 ---
 
@@ -524,7 +518,7 @@ To integrate these contracts with the backend service, follow these steps:
 
 3. **Implement Cross-Chain Transfer Logic:**
    - Add new endpoints for cross-chain transfers
-   - Example endpoint: `POST /api/tokens/{tokenId}/transfer`
+   - Example endpoint: `POST /api/transfers`
    - Required parameters:
      - `source_chain_id`: The source chain ID
      - `destination_chain_id`: The destination chain ID
@@ -589,9 +583,72 @@ By following these integration steps and next steps, the backend service can be 
 
 ---
 
+## 10. Recent Implementation Details
+
+### 10.1 Contract Integration
+
+The backend now successfully integrates with smart contracts by:
+
+1. **Dynamic Artifact Loading:**
+   - Automatically loads contract artifacts from the smart-contracts directory
+   - Falls back to placeholder ABIs if compiled artifacts aren't available
+   - Provides helpful error messages when artifacts can't be loaded
+
+2. **Chain-Specific Deployment:**
+   - Automatically detects ZetaChain vs. EVM environments
+   - Uses appropriate contract constructor parameters per chain type
+   - Manages token connections between chains after deployment
+
+3. **Provider Management:**
+   - Maintains connection pools for multiple networks
+   - Handles RPC connection errors gracefully
+   - Formats private keys correctly regardless of input format
+
+### 10.2 Deployment Process Improvements
+
+The deployment flow has been refined to improve reliability:
+
+1. **Sequential Deployment:**
+   - Always deploys ZetaChain contract first
+   - Deploys EVM contracts after ZetaChain contract is confirmed
+   - Connects contracts after all deployments are complete
+
+2. **Robust Error Handling:**
+   - Tracks deployment status per chain
+   - Continues with other chains if one deployment fails
+   - Updates overall status as "partial" if some chains succeed
+
+3. **Fee Verification:**
+   - Verifies fee payment transaction receipt
+   - Validates payment amount and recipient
+   - Requires successful transaction confirmation
+
+### 10.3 Testing Tools
+
+New testing utilities have been added:
+
+1. **Contract Testing:**
+   - Test scripts for ZetaChain deployment
+   - Test scripts for EVM deployment
+   - Test scripts for cross-chain connection
+
+2. **Token Service Testing:**
+   - Test utilities for token configuration creation
+   - Test utilities for deployment initiation
+   - Test utilities for deployment log checking
+
+3. **Database Initialization:**
+   - Script for initializing database schemas
+   - Option for creating test data in development mode
+   - Clear documentation on usage
+
+These implementations provide a solid foundation for the Universal Token Launcher backend, focusing on reliable contract deployment across multiple chains.
+
+---
+
 ## Summary
 
-- **Database:** PostgreSQL with tables for users, token configurations, token distributions, deployment logs, and bridge transactions. Data is normalized with appropriate indexes, constraints, and foreign keys.
+- **Database:** PostgreSQL with tables for users, token configurations, token distributions, deployment logs, and transfer transactions. Data is normalized with appropriate indexes, constraints, and foreign keys.
 - **Authentication:** Web3 wallet-based, with signature verification and JWT for session management.
 - **File Storage:** AWS S3 (or equivalent) for CSV files and token icons, with secure access controls.
 - **APIs:** RESTful endpoints built with Express.js, using JSON payloads, with robust validation and error handling.

@@ -1,6 +1,6 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
-const { DISTRIBUTION_STATUS } = require('../config/constants');
+const sequelize = require('../db/config');
+const TokenConfiguration = require('./TokenConfiguration');
 
 const TokenDistribution = sequelize.define('TokenDistribution', {
   id: {
@@ -11,6 +11,7 @@ const TokenDistribution = sequelize.define('TokenDistribution', {
   tokenConfigId: {
     type: DataTypes.INTEGER,
     allowNull: false,
+    field: 'token_config_id',
     references: {
       model: 'token_configurations',
       key: 'id'
@@ -18,45 +19,37 @@ const TokenDistribution = sequelize.define('TokenDistribution', {
   },
   recipientAddress: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
+    field: 'recipient_address'
   },
   chainId: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
+    field: 'chain_id'
   },
   tokenAmount: {
-    type: DataTypes.DECIMAL(78, 18),
-    allowNull: false
+    type: DataTypes.DECIMAL,
+    allowNull: false,
+    field: 'token_amount'
   },
   status: {
     type: DataTypes.STRING,
     allowNull: false,
-    defaultValue: DISTRIBUTION_STATUS.PENDING,
-    validate: {
-      isIn: [Object.values(DISTRIBUTION_STATUS)]
-    }
+    defaultValue: 'pending'
   },
   transactionHash: {
     type: DataTypes.STRING,
-    allowNull: true
-  },
-  errorMessage: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
+    field: 'transaction_hash'
   }
 }, {
   tableName: 'token_distributions',
-  timestamps: true
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
+
+// Establish relationship
+TokenDistribution.belongsTo(TokenConfiguration, { foreignKey: 'tokenConfigId' });
+TokenConfiguration.hasMany(TokenDistribution, { foreignKey: 'tokenConfigId' });
 
 module.exports = TokenDistribution; 

@@ -168,6 +168,22 @@ This document outlines the recommended technologies for building the Universal T
   - Close all comment blocks properly, especially multiline comments
   - Test contract deployment with minimal tokens before scaling to complex deployments
 
+- **Database Interactions:**
+  - Use Sequelize transactions for multi-step operations
+  - Properly handle BigInt values when storing/retrieving from database
+  - Define proper indexes for frequently queried fields
+
+- **Contract Deployment:**
+  - Always deploy ZetaChain contracts first, then EVM chains
+  - Implement proper error handling for each deployment step
+  - Store deployment logs for each chain separately
+  - Use a background process for long-running deployments
+
+- **CSV Processing:**
+  - Validate CSV input format before processing
+  - Use proper CSV parser libraries (like csv-parser)
+  - Handle large CSV files asynchronously
+
 ---
 
 ## 9. Recommended Project Structure
@@ -188,34 +204,6 @@ frontend/
 │   │   ├── App.js              # Main app component
 │   │   └── index.js            # Entry point
 │   └── package.json            # Dependencies
-```
-
-### Backend Structure
-```
-backend/
-├── src/
-│   ├── constants/           # Constants including bytecode and ABIs
-│   │   ├── bytecode.js      # Contract bytecode and ABIs
-│   ├── api/                 # API routes
-│   │   ├── authRoutes.js
-│   │   ├── tokenRoutes.js
-│   │   └── ...
-│   ├── config/              # Configuration
-│   │   ├── constants.js     # Global constants
-│   │   └── ...
-│   ├── controllers/         # Request handlers
-│   │   ├── tokenController.js
-│   │   └── ...
-│   ├── models/              # Database models (Sequelize)
-│   │   ├── Token.js
-│   │   └── ...
-│   ├── services/            # Business logic
-│   │   ├── contractService.js
-│   │   └── ...
-│   ├── server.js            # Entry point
-│   └── tests/               # Test files
-├── .env                     # Environment variables
-└── package.json             # Dependencies
 ```
 
 This updated tech stack recommendation provides guidance based on real implementation experience with the Universal Token Launcher application, including lessons learned from debugging bytecode-related issues.
@@ -399,3 +387,437 @@ The application experienced critical errors related to the syntax in the `byteco
      - `PRIVATE_KEY`: Deployer wallet private key (with 0x prefix)
      - `TESTNET_PRIVATE_KEY`: Specific key for testnet deployment
      - Various API keys for block explorers
+
+## 15. Backend Implementation Details
+
+### 15.1 Primary Dependencies
+
+1. **Express.js (v4.18.x)** 
+   - **Status**: Implemented
+   - **Purpose**: Web server framework
+   - **Details**:
+     - Middleware setup for CORS, JSON parsing, etc.
+     - Router-based API organization
+
+2. **Sequelize (v6.37.x)**
+   - **Status**: Implemented
+   - **Purpose**: ORM for database interaction
+   - **Details**:
+     - Model definitions for token configuration, deployment logs, etc.
+     - Migration support for database schema management
+
+3. **ethers.js (v6.x)**
+   - **Status**: Implemented
+   - **Purpose**: Ethereum interaction library
+   - **Details**:
+     - Contract deployment and interaction
+     - Transaction management
+     - Provider pooling for multiple chains
+
+4. **multer**
+   - **Status**: Implemented
+   - **Purpose**: File upload handling
+   - **Details**:
+     - Processing multipart form data
+     - Storage configuration for token icons and CSVs
+
+5. **csv-parser**
+   - **Status**: Implemented
+   - **Purpose**: CSV file processing
+   - **Details**:
+     - Parsing CSV files for token distribution data
+
+### 15.2 API Endpoints
+
+1. **Token Configuration**
+   - **Status**: Implemented
+   - **Endpoint**: `POST /api/tokens`
+   - **Details**:
+     - Accepts token configuration data and files
+     - Creates database records for token and deployment logs
+   
+2. **Token Deployment**
+   - **Status**: Implemented
+   - **Endpoint**: `POST /api/tokens/:id/deploy`
+   - **Details**:
+     - Verifies fee payment transaction
+     - Initiates contract deployment process
+     - Updates deployment status
+
+3. **Token Status**
+   - **Status**: Implemented
+   - **Endpoint**: `GET /api/tokens/:id`
+   - **Details**:
+     - Returns token configuration details
+     - Includes deployment status
+   
+4. **Deployment Logs**
+   - **Status**: Implemented
+   - **Endpoint**: `GET /api/tokens/:id/logs`
+   - **Details**:
+     - Returns deployment logs for each chain
+     - Includes contract addresses and transaction hashes
+
+### 15.3 Key Components
+
+1. **ContractService**
+   - **Status**: Implemented
+   - **Purpose**: Smart contract deployment and interaction
+   - **Key Features**:
+     - Dynamic provider pooling for multiple chains
+     - Chain-specific contract deployment
+     - Fee transaction verification
+     - Cross-chain contract connection
+
+2. **TokenService**
+   - **Status**: Implemented
+   - **Purpose**: Token configuration and deployment management
+   - **Key Features**:
+     - Token configuration creation and validation
+     - Deployment process orchestration
+     - Status tracking and reporting
+     - Error handling and recovery
+
+3. **File Upload Utilities**
+   - **Status**: Implemented
+   - **Purpose**: Handle file uploads (icons, CSVs)
+   - **Key Features**:
+     - Storage configuration
+     - File type validation
+     - CSV parsing functionality
+     - URL generation for stored files
+
+4. **Authentication Middleware**
+   - **Status**: Basic Implementation
+   - **Purpose**: Verify user identity via wallet address
+   - **Key Features**:
+     - Extract wallet address from request
+     - Development mode for testing
+     - Preparation for JWT integration
+
+### 15.4 Database Models
+
+1. **TokenConfiguration**
+   - **Status**: Implemented
+   - **Purpose**: Store token configuration details
+   - **Key Fields**:
+     - Token name, symbol, decimals, total supply
+     - Creator wallet address
+     - Selected chains for deployment
+     - Deployment status
+
+2. **DeploymentLog**
+   - **Status**: Implemented
+   - **Purpose**: Track deployment status per chain
+   - **Key Fields**:
+     - Chain name and ID
+     - Contract address
+     - Transaction hash
+     - Status and error messages
+
+3. **TokenDistribution**
+   - **Status**: Implemented
+   - **Purpose**: Track token distribution records
+   - **Key Fields**:
+     - Recipient address
+     - Chain ID
+     - Token amount
+     - Status and transaction hash
+
+These implementation details provide a clear picture of the current state of the backend system, highlighting the core components and their interactions.
+
+## Testing Framework and Dependencies
+
+### 1. Testing Stack
+
+1. **Jest**
+   - **Status**: Implemented
+   - **Purpose**: Testing framework for unit and integration tests
+   - **Details**:
+     - Configuration in `jest.config.js`
+     - Support for JavaScript and TypeScript testing
+     - Mocking capabilities for external dependencies
+
+2. **Supertest**
+   - **Status**: Implemented
+   - **Purpose**: HTTP assertion library for API testing
+   - **Details**:
+     - Integration with Express.js endpoints
+     - Request simulation and response validation
+
+3. **Mock Implementations**
+   - **Status**: Implemented
+   - **Purpose**: Isolate code units for testing
+   - **Details**:
+     - Module mocking via `jest.mock()`
+     - Function mocking with `jest.fn()`
+     - Mocked return values with `mockReturnValue` and `mockResolvedValue`
+
+### 2. Best Practices
+
+#### 2.1 Unit Test Structure
+
+1. **File Organization**
+   - Test files should mirror the source structure
+   - Naming convention: `[filename].test.js`
+   - Tests should be organized in logical `describe` and `it` blocks
+
+2. **Test Isolation**
+   - Each test should run independently
+   - Use `beforeEach` and `afterEach` for setup/teardown
+   - Reset mocks between tests with `jest.clearAllMocks()`
+
+3. **Mock Placement**
+   - Always define mocks BEFORE importing tested modules
+   - Use factory functions for complex mock implementations
+   - Ensure variables used in factory functions are in scope
+
+#### 2.2 Mocking External Dependencies
+
+1. **File System Operations**
+   ```javascript
+   // Mock fs module while preserving original functionality
+   jest.mock('fs', () => ({
+     ...jest.requireActual('fs'),
+     existsSync: jest.fn().mockReturnValue(true),
+     createReadStream: jest.fn().mockImplementation(() => {
+       const { Readable } = require('stream');
+       const stream = new Readable();
+       stream.push('test data');
+       stream.push(null);
+       return stream;
+     })
+   }));
+   ```
+
+2. **Database Connections**
+   ```javascript
+   // Mock Sequelize models
+   jest.mock('../../../models', () => ({
+     TokenConfiguration: {
+       findByPk: jest.fn().mockResolvedValue({
+         id: 1,
+         token_name: 'Test Token',
+         // other properties
+       }),
+       create: jest.fn().mockResolvedValue({ id: 1 })
+     },
+     DeploymentLog: {
+       findAll: jest.fn().mockResolvedValue([]),
+       create: jest.fn().mockResolvedValue({})
+     }
+   }));
+   ```
+
+3. **HTTP Requests**
+   ```javascript
+   // Mock fetch or axios
+   jest.mock('node-fetch', () => 
+     jest.fn().mockResolvedValue({
+       ok: true,
+       json: jest.fn().mockResolvedValue({ result: 'success' })
+     })
+   );
+   ```
+
+#### 2.3 Mocking ethers.js v6
+
+Ethers.js v6 requires special consideration due to significant API changes from v5:
+
+1. **Provider Mocking**
+   ```javascript
+   jest.mock('ethers', () => ({
+     JsonRpcProvider: jest.fn().mockImplementation(() => ({
+       getNetwork: jest.fn().mockResolvedValue({ chainId: 1 }),
+       getSigner: jest.fn().mockReturnValue({
+         address: '0x1234567890123456789012345678901234567890',
+         signMessage: jest.fn().mockResolvedValue('0xsignature'),
+         connect: jest.fn().mockReturnThis()
+       }),
+       getTransaction: jest.fn().mockResolvedValue({
+         hash: '0x123',
+         to: '0x123',
+         value: BigInt('1000000000000000000')
+       }),
+       getTransactionReceipt: jest.fn().mockResolvedValue({
+         status: 1,
+         hash: '0x123'
+       })
+     })),
+     
+     Wallet: jest.fn().mockImplementation(() => ({
+       connect: jest.fn().mockReturnThis(),
+       provider: { getNetwork: jest.fn().mockResolvedValue({ chainId: 1 }) },
+       address: '0x1234567890123456789012345678901234567890',
+       signMessage: jest.fn().mockResolvedValue('0xsignature')
+     })),
+     
+     Contract: jest.fn().mockImplementation(() => ({
+       // Mock contract methods
+       balanceOf: jest.fn().mockResolvedValue(BigInt('1000000000000000000')),
+       transfer: jest.fn().mockResolvedValue({
+         hash: '0x123',
+         wait: jest.fn().mockResolvedValue({})
+       }),
+       // For events
+       filters: {
+         Transfer: jest.fn().mockReturnValue({})
+       },
+       queryFilter: jest.fn().mockResolvedValue([])
+     })),
+     
+     ContractFactory: jest.fn().mockImplementation(() => ({
+       deploy: jest.fn().mockResolvedValue({
+         target: '0x1234567890123456789012345678901234567890',
+         deploymentTransaction: jest.fn().mockReturnValue({
+           hash: '0x123',
+           wait: jest.fn().mockResolvedValue({})
+         })
+       })
+     })),
+     
+     // Important: Use BigInt rather than BN for v6
+     parseUnits: jest.fn().mockImplementation((value) => BigInt(value) * BigInt(10**18)),
+     
+     // For address validation
+     getAddress: jest.fn().mockImplementation((address) => {
+       if (typeof address !== 'string' || !address.match(/^0x[0-9a-fA-F]{40}$/)) {
+         throw new Error('Invalid address');
+       }
+       return address;
+     })
+   }));
+   ```
+
+2. **Testing Contract Interactions**
+   ```javascript
+   it('should deploy a token contract', async () => {
+     // Setup contract factory mock implementation
+     const deployMock = ethers.ContractFactory.mock.results[0].value.deploy;
+     deployMock.mockResolvedValue({
+       target: '0x1234567890123456789012345678901234567890',
+       deploymentTransaction: jest.fn().mockReturnValue({
+         hash: '0x123',
+         wait: jest.fn().mockResolvedValue({})
+       })
+     });
+     
+     // Call the method under test
+     const result = await contractService.deployToken('Test', 'TST', 18, '1000');
+     
+     // Verify the contract factory was created with correct params
+     expect(ethers.ContractFactory).toHaveBeenCalledWith(
+       expect.any(Array), // ABI
+       expect.stringContaining('0x'), // Bytecode
+       expect.anything() // Signer
+     );
+     
+     // Verify deploy was called with correct args
+     expect(deployMock).toHaveBeenCalledWith(
+       'Test', 'TST', 18, expect.any(BigInt)
+     );
+     
+     // Verify result
+     expect(result.contractAddress).toBe('0x1234567890123456789012345678901234567890');
+     expect(result.transactionHash).toBe('0x123');
+   });
+   ```
+
+3. **BigInt Handling**
+   - Ethers.js v6 uses native JavaScript BigInt instead of BN.js
+   - Always compare BigInt values with other BigInt values
+   - Convert string amounts to BigInt when needed
+   ```javascript
+   // Converting amounts
+   const amount = BigInt('1000000000000000000'); // 1 ETH
+   
+   // Adding
+   const newAmount = amount + BigInt(1);
+   
+   // Testing
+   expect(someFunction).toHaveBeenCalledWith(BigInt('1000000000000000000'));
+   ```
+
+### 3. Testing Challenges
+
+#### 3.1 Common Testing Issues
+
+1. **Scope Issues in Jest Mocks**
+   - Problem: Referencing undefined variables in mock factory functions
+   - Solution: Declare variables before the mock and ensure they're in scope
+
+2. **Asynchronous Testing**
+   - Problem: Tests not properly waiting for async operations
+   - Solution: Use `async/await` with every async test and proper error handling
+
+3. **Module Import Order**
+   - Problem: Tested modules being imported before mocks are defined
+   - Solution: Always mock dependencies before importing modules under test
+
+4. **Manual Mock Management**
+   - Problem: Mocks not being reset between tests
+   - Solution: Use `jest.clearAllMocks()` in `beforeEach`
+
+#### 3.2 Environment-Specific Testing
+
+1. **Testing with Environment Variables**
+   ```javascript
+   // In beforeAll
+   const originalEnv = process.env.NODE_ENV;
+   
+   // Before each test
+   process.env.NODE_ENV = 'test';
+   
+   // After all tests
+   afterAll(() => {
+     process.env.NODE_ENV = originalEnv;
+   });
+   ```
+
+2. **Testing File Operations**
+   - Create temporary directories in `beforeAll`
+   - Use unique filenames based on test run
+   - Clean up in `afterAll`
+   ```javascript
+   const testDir = path.join(__dirname, 'test-tmp');
+   
+   beforeAll(() => {
+     if (!fs.existsSync(testDir)) {
+       fs.mkdirSync(testDir, { recursive: true });
+     }
+   });
+   
+   afterAll(() => {
+     if (fs.existsSync(testDir)) {
+       fs.rmSync(testDir, { recursive: true, force: true });
+     }
+   });
+   ```
+
+### 4. Test Coverage Targets
+
+- Unit Tests: Target 80%+ coverage of utilities and services
+- Integration Tests: Cover all API endpoints and main workflows
+- Special focus areas:
+  - Contract deployment logic
+  - Blockchain transaction handling  
+  - Error recovery mechanisms
+  - File processing utilities
+
+### 5. Testing Progress
+
+We have made significant progress in testing the backend components:
+
+1. **Core Utilities**
+   - Chain information utilities fully tested
+   - File upload utilities partially tested
+   - CSV processing utilities partially tested
+
+2. **Services**
+   - TokenService fully tested with mocked dependencies
+   - ContractService tests in progress with challenges in mocking ethers.js v6
+
+3. **Next Testing Priorities**
+   - Complete API endpoint integration tests
+   - Improve ContractService test reliability
+   - Ensure cross-chain functionality is properly tested
