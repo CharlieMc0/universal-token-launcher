@@ -65,4 +65,10 @@ const TokenConfiguration = sequelize.define('TokenConfiguration', {
   updatedAt: 'updated_at'
 });
 
+// Association will be set up in DeploymentLog.js to avoid circular dependencies
+// TokenConfiguration.hasMany(DeploymentLog, { 
+//   foreignKey: 'tokenConfigId',
+//   as: 'deployments'
+// });
+
 module.exports = TokenConfiguration; 

@@ -83,7 +83,13 @@ const DeploymentLog = sequelize.define('DeploymentLog', {
 });
 
 // Establish relationship
-DeploymentLog.belongsTo(TokenConfiguration, { foreignKey: 'tokenConfigId' });
-TokenConfiguration.hasMany(DeploymentLog, { foreignKey: 'tokenConfigId' });
+DeploymentLog.belongsTo(TokenConfiguration, { 
+  foreignKey: 'tokenConfigId'
+});
+
+TokenConfiguration.hasMany(DeploymentLog, { 
+  foreignKey: 'tokenConfigId',
+  as: 'deployments'  // This alias matches what's used in the findUserUniversalTokens method
+});
 
 module.exports = DeploymentLog; 

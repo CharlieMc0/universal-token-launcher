@@ -279,9 +279,24 @@ const TransferTokens = ({ embedded = false }) => {
         try {
           setLoading(true);
           const tokens = await apiService.getUserTokens(address);
-          setUserTokens(tokens);
+          console.log('Tokens fetched successfully:', tokens);
+          
+          // Ensure tokens have the expected format and default values
+          const processedTokens = tokens.map(token => ({
+            id: token.id,
+            name: token.name || 'Unnamed Token',
+            symbol: token.symbol || 'UNK',
+            iconUrl: token.iconUrl || '/chain-logos/zetachain.svg',
+            deployedChains: token.deployedChains || [],
+            balances: token.balances || {},
+            chainInfo: token.chainInfo || []
+          }));
+          
+          setUserTokens(processedTokens);
         } catch (error) {
           console.error('Error fetching user tokens:', error);
+          // Keep the UI functional with empty tokens rather than breaking
+          setUserTokens([]);
         } finally {
           setLoading(false);
         }

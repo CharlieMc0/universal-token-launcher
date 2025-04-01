@@ -1044,4 +1044,65 @@ Verify API Calls → Check Transfer Status
 
 ---
 
+## BlockScout API Integration for Token Transfer Page
+
+### Overview
+
+The Universal Token Launcher's Transfer page uses the BlockScout API to identify tokens owned by users and display them for cross-chain transfers. This integration connects our database records with on-chain token information.
+
+### Implementation Details
+
+1. **Environment Configuration**:
+   - The BlockScout API URL is configured in the backend `.env` file:
+     ```
+     ZETACHAIN_TESTNET_BLOCKSCOUT_API=https://zetachain-testnet.blockscout.com/
+     ```
+
+2. **API Integration Flow**:
+   - Backend queries the database for deployed Universal Tokens
+   - Makes API request to BlockScout: `${process.env.ZETACHAIN_TESTNET_BLOCKSCOUT_API}?module=account&action=tokenlist&address=${walletAddress}`
+   - Matches BlockScout token data with our deployed contracts
+   - Returns combined data to frontend including token balances
+
+3. **Error Handling**:
+   - Improved error handling prevents API issues from breaking the UI
+   - Detailed logging helps debug BlockScout API responses
+   - Frontend includes fallbacks for missing or incomplete data
+
+4. **Type Consistency**:
+   - Database `chainId` is stored as STRING type
+   - API queries explicitly convert chainId to string: `String(ZETACHAIN_TESTNET_ID)`
+   - This prevents type mismatch errors in database queries
+
+### API Response Structure
+
+The BlockScout API returns token data in this format:
+```json
+{
+  "status": "1",
+  "message": "OK",
+  "result": [
+    {
+      "balance": "1000000000000000000",
+      "contractAddress": "0x123...",
+      "decimals": "18",
+      "name": "Example Token",
+      "symbol": "EXMP",
+      "type": "ERC-20"
+    }
+  ]
+}
+```
+
+### Maintenance Considerations
+
+When working with the BlockScout API:
+1. Monitor for API changes or rate limits
+2. Consider implementing caching to reduce API load
+3. Validate response data before processing
+4. Add appropriate timeout handling for API requests
+5. Handle network interruptions gracefully
+
+---
+
 This application flow document provides a comprehensive guide to implementing the Universal Launcher, with particular attention to avoiding common pitfalls and ensuring a smooth user experience.

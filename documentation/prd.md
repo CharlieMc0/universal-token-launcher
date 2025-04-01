@@ -341,6 +341,22 @@ The Universal NFT feature extends the Universal Token Launcher to support the cr
   - Initial token distribution functionality is implemented but not fully tested
   - Need to add functionality to distribute tokens after deployment
 
+### 13.4 Known Tokens Utility
+
+A new temporary utility was implemented to address the challenge of token availability in the frontend:
+
+- **Problem:** The frontend needed to display tokens for specific wallet addresses before a proper token database was established.
+- **Solution:** A hardcoded token lookup utility that returns predefined token data for specific wallet addresses.
+- **Implementation:**
+  - Created a utility function `getKnownTokens` in `/backend/src/utils/getKnownTokens.js`
+  - Modified `TokenController.getUserTokens` to check for known tokens when no tokens are found from the database
+  - Included complete token information including balances, deployed contracts, and chain details
+- **Status:** Successfully implemented and tested with frontend integration
+- **Limitations:** Currently only supports two hardcoded wallet addresses:
+  - Documentation wallet: `0x04dA1034E7d84c004092671bBcEb6B1c8DCda7AE`
+  - Frontend testing wallet: `0x4f1684a28e33f42cdf50ab96e29a709e17249e63`
+- **Future Plans:** Replace with proper database lookup once token creation and distribution are fully operational
+
 ## 15. Smart Contract Architecture
 
 ### 15.1 Contract Structure

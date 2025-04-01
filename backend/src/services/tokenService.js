@@ -6,7 +6,7 @@ const { SUPPORTED_CHAINS } = require('../constants/chains');
 const { ZETACHAIN_ID, ZETACHAIN_TESTNET_ID } = require('../constants/bytecode');
 const { Sequelize } = require('sequelize');
 const { logger, logDeployment } = require('../utils/logger');
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { Op } = require('sequelize');
 
 class TokenService {
@@ -849,10 +849,29 @@ class TokenService {
   async findUserUniversalTokens(walletAddress) {
     logger.info(`Finding universal tokens for wallet: ${walletAddress}`);
     try {
+      // Define known contract addresses from documentation
+      const knownContracts = {
+        // ZetaChain Testnet (documentation mentions this contract address)
+        '0x51d5D00dfB9e1f4D60BBD6eda288F44Fb3158E16': {
+          tokenName: 'Universal Token',
+          tokenSymbol: 'UTKN',
+          chainId: String(ZETACHAIN_TESTNET_ID),
+          isDocumented: true
+        },
+        // Sepolia Testnet
+        '0x0b3D12246660b41f982f07CdCd27536a79a16296': {
+          tokenName: 'Universal Token',
+          tokenSymbol: 'UTKN',
+          chainId: '11155111', // Sepolia chain ID
+          isDocumented: true
+        }
+      };
+
       // 1. Get all *successful* ZetaChain Universal Token contract deployments from our DB
+      logger.info('Querying database for ZetaChain token contracts');
       const ourZetaChainDeployments = await DeploymentLog.findAll({
         where: {
-          chainId: ZETACHAIN_TESTNET_ID,
+          chainId: String(ZETACHAIN_TESTNET_ID),
           status: 'success',
           contractAddress: { [Op.ne]: null } // Ensure contract address exists
         },
@@ -860,104 +879,222 @@ class TokenService {
         raw: true, // Get plain data objects
       });
 
-      if (!ourZetaChainDeployments || ourZetaChainDeployments.length === 0) {
-        logger.info('No ZetaChain contracts found deployed by this application.');
-        return []; // No tokens deployed by us on ZetaChain yet
+      console.log(`[DEBUG] Found ${ourZetaChainDeployments?.length || 0} ZetaChain contract deployments in database`);
+      
+      if (ourZetaChainDeployments && ourZetaChainDeployments.length > 0) {
+        console.log(`[DEBUG] First contract: ${JSON.stringify(ourZetaChainDeployments[0])}`);
       }
 
       // Create a map for quick lookup: zetaContractAddress -> tokenConfigId
-      const ourZetaContractsMap = new Map(
-        ourZetaChainDeployments.map(d => [d.contractAddress.toLowerCase(), d.tokenConfigId])
-      );
+      const ourZetaContractsMap = new Map();
+      
+      if (ourZetaChainDeployments && ourZetaChainDeployments.length > 0) {
+        ourZetaChainDeployments.forEach(d => {
+          ourZetaContractsMap.set(d.contractAddress.toLowerCase(), d.tokenConfigId);
+        });
+      }
+      
       const ourZetaContractAddresses = Array.from(ourZetaContractsMap.keys());
       logger.info(`Found ${ourZetaContractAddresses.length} unique ZetaChain contracts deployed by us.`);
 
-
-      // 2. Query Blockscout API for tokens held by the user on ZetaChain Testnet
-      const blockscoutUrl = `${ZETACHAIN_TESTNET_BLOCKSCOUT_API}?module=account&action=tokenlist&address=${walletAddress}`;
-      logger.info(`Querying Blockscout: ${blockscoutUrl}`);
+      // 2. Query Blockscout API v2 for tokens held by the user on ZetaChain Testnet
+      // Use the v2 API format as per example
+      const baseBlockscoutUrl = process.env.ZETACHAIN_TESTNET_BLOCKSCOUT_API || 'https://zetachain-testnet.blockscout.com/api';
+      // Remove the trailing '/api' if present to construct the base URL
+      const baseUrl = baseBlockscoutUrl.endsWith('/api') 
+        ? baseBlockscoutUrl.slice(0, -4) 
+        : baseBlockscoutUrl;
+      
+      console.log(`[DEBUG] Environment variable ZETACHAIN_TESTNET_BLOCKSCOUT_API: ${process.env.ZETACHAIN_TESTNET_BLOCKSCOUT_API}`);
+      console.log(`[DEBUG] Constructed baseUrl: ${baseUrl}`);
+      
+      const blockscoutApiUrl = `${baseUrl}/v2/addresses/${walletAddress}/tokens?type=ERC-20%2CERC-721%2CERC-1155`;
+      logger.info(`Querying Blockscout v2 API: ${blockscoutApiUrl}`);
+      
+      // Log the API URL for debugging
+      console.log(`Making Blockscout API v2 request to: ${blockscoutApiUrl}`);
       
       let userTokensFromApi = [];
       try {
-        const response = await fetch(blockscoutUrl);
-        if (!response.ok) {
-          throw new Error(`Blockscout API request failed with status ${response.status}: ${await response.text()}`);
-        }
-        const data = await response.json();
-        
-        if (data.status === '1' && Array.isArray(data.result)) {
-          userTokensFromApi = data.result;
-          logger.info(`Blockscout returned ${userTokensFromApi.length} tokens for ${walletAddress}`);
-        } else if (data.status === '0' && data.message === 'No tokens found') {
-           logger.info(`Blockscout found no tokens for ${walletAddress}`);
-           // This is not an error, the user simply holds no tokens
+        // Add API key if available
+        const headers = {};
+        if (process.env.BLOCKSCOUT_API_KEY) {
+          console.log(`[DEBUG] Using API key: ${process.env.BLOCKSCOUT_API_KEY.substring(0, 4)}...`);
+          headers['api-key'] = process.env.BLOCKSCOUT_API_KEY;
         } else {
-          // Handle other potential Blockscout errors or unexpected responses
-          throw new Error(`Blockscout API returned unexpected status or data: ${JSON.stringify(data)}`);
+          console.log(`[DEBUG] No API key found in environment variables`);
+        }
+        
+        console.log(`[DEBUG] Making fetch request with headers:`, headers);
+        
+        try {
+          const response = await fetch(blockscoutApiUrl, { headers });
+          console.log(`[DEBUG] Response status:`, response.status);
+          console.log(`[DEBUG] Response headers:`, Object.fromEntries([...response.headers]));
+          
+          // Log the raw response for debugging
+          const responseText = await response.text();
+          console.log(`Blockscout API v2 raw response sample: ${responseText.substring(0, 500)}...`);
+          
+          if (!response.ok) {
+            throw new Error(`Blockscout API v2 request failed with status ${response.status}: ${responseText}`);
+          }
+          
+          // Parse JSON after we've already read the text
+          let data;
+          try {
+            data = JSON.parse(responseText);
+            console.log(`[DEBUG] Parsed JSON data structure keys:`, Object.keys(data));
+          } catch (parseError) {
+            throw new Error(`Failed to parse Blockscout API v2 response: ${parseError.message}, Response: ${responseText.substring(0, 200)}...`);
+          }
+          
+          if (data && data.items && Array.isArray(data.items)) {
+            userTokensFromApi = data.items;
+            console.log(`[DEBUG] Found ${userTokensFromApi.length} tokens, first token keys:`, 
+              userTokensFromApi.length > 0 ? Object.keys(userTokensFromApi[0]) : '[]');
+            
+            if (userTokensFromApi.length > 0 && userTokensFromApi[0].token) {
+              console.log(`[DEBUG] First token structure:`, Object.keys(userTokensFromApi[0].token));
+              console.log(`[DEBUG] First token address:`, userTokensFromApi[0].token.address);
+            }
+            
+            logger.info(`Blockscout v2 returned ${userTokensFromApi.length} tokens for ${walletAddress}`);
+            
+            // Log a sample token for debugging
+            if (userTokensFromApi.length > 0) {
+              console.log(`Sample token data: ${JSON.stringify(userTokensFromApi[0])}`);
+            }
+          } else {
+            // Handle case where no tokens are found
+            console.log(`[DEBUG] No items array found in response or empty items`);
+            logger.info(`Blockscout v2 found no tokens for ${walletAddress}`);
+          }
+        } catch (fetchError) {
+          console.error(`[ERROR] Fetch operation failed:`, fetchError);
+          throw fetchError;
         }
       } catch (apiError) {
-         logger.error(`Blockscout API call failed: ${apiError.message}`);
-         // Decide if we should throw or return empty. Returning empty might be safer UX.
-         // Throwing error to signal potential issues with the explorer API.
-         throw new Error(`Failed to fetch token list from block explorer: ${apiError.message}`);
+         logger.error(`Blockscout API v2 call failed: ${apiError.message}`);
+         // Return empty array instead of throwing - better UX when API has issues
+         console.error(`Blockscout API error details:`, apiError);
+         return []; // Return empty array instead of throwing error
       }
 
-
-      // 3. Find the intersection: Which of the user's tokens are ones deployed by our app?
-      const matchingTokenConfigIds = new Set();
-      userTokensFromApi.forEach(token => {
-        const contractAddressLower = token.contractAddress?.toLowerCase();
-        if (contractAddressLower && ourZetaContractsMap.has(contractAddressLower)) {
-           // This is a Universal Token deployed by our app, held by the user
-           matchingTokenConfigIds.add(ourZetaContractsMap.get(contractAddressLower));
-        }
-      });
+      // 3. Find universal tokens: match with DB deployments OR known contract addresses
+      console.log(`[DEBUG] Looking for matching tokens in ${userTokensFromApi.length} user tokens`);
       
-      const uniqueMatchingConfigIds = Array.from(matchingTokenConfigIds);
-      logger.info(`Found ${uniqueMatchingConfigIds.length} matching universal token configurations for ${walletAddress}`);
-
-      if (uniqueMatchingConfigIds.length === 0) {
-        return []; // User holds none of our deployed universal tokens
+      // Array to store matching token data (both from DB and known contracts)
+      const matchingTokens = [];
+      
+      // First check for matches with database deployments
+      if (ourZetaContractsMap.size > 0) {
+        console.log(`[DEBUG] Checking against ${ourZetaContractAddresses.length} app-deployed contracts`);
+        
+        // For each token held by user, check if it's in our database
+        for (const token of userTokensFromApi) {
+          const contractAddressLower = token.token?.address?.toLowerCase();
+          console.log(`[DEBUG] Checking token address: ${contractAddressLower}`);
+          
+          if (contractAddressLower && ourZetaContractsMap.has(contractAddressLower)) {
+            // This is a Universal Token deployed by our app, held by the user
+            const tokenConfigId = ourZetaContractsMap.get(contractAddressLower);
+            console.log(`[DEBUG] Found matching token with config ID: ${tokenConfigId}`);
+            
+            // Get the full token configuration
+            const tokenConfig = await TokenConfiguration.findByPk(tokenConfigId, {
+              include: [{
+                model: DeploymentLog,
+                as: 'deployments',
+                where: { status: 'success', contractAddress: { [Op.ne]: null } },
+                attributes: ['chainId', 'contractAddress'],
+                required: false
+              }]
+            });
+            
+            if (tokenConfig) {
+              // Prepare deployment contracts map
+              const deployedContracts = {};
+              const balances = {};
+              
+              if (tokenConfig.deployments && Array.isArray(tokenConfig.deployments)) {
+                tokenConfig.deployments.forEach(depLog => {
+                  deployedContracts[depLog.chainId] = depLog.contractAddress;
+                  balances[depLog.chainId] = "0"; // Default balance
+                });
+              }
+              
+              // Add balance from BlockScout
+              balances[ZETACHAIN_TESTNET_ID] = token.value || "0";
+              
+              // Add to results
+              matchingTokens.push({
+                id: tokenConfig.id,
+                tokenName: tokenConfig.tokenName,
+                tokenSymbol: tokenConfig.tokenSymbol,
+                iconUrl: tokenConfig.iconUrl,
+                deployedContracts: deployedContracts,
+                balances: balances,
+                source: 'database'
+              });
+            }
+          }
+        }
       }
-
-      // 4. Fetch full TokenConfiguration details for the matching tokens
-      const matchingTokenConfigs = await TokenConfiguration.findAll({
-        where: {
-          id: { [Op.in]: uniqueMatchingConfigIds }
-        },
-        include: [{
-          model: DeploymentLog,
-          as: 'deployments', // Make sure this alias matches your model definition
-          where: { status: 'success', contractAddress: { [Op.ne]: null } },
-          attributes: ['chainId', 'contractAddress'], // Only fetch needed fields
-          required: false // Use left join in case some configs have no successful deployments (shouldn't happen ideally)
-        }],
-        order: [['createdAt', 'DESC']] // Optional: order results
-      });
-
-      // 5. Structure the response data
-      const result = matchingTokenConfigs.map(config => {
-        const deployedContracts = {};
-        if (config.deployments && Array.isArray(config.deployments)) {
-           config.deployments.forEach(depLog => {
-             deployedContracts[depLog.chainId] = depLog.contractAddress;
-           });
-        }
-        return {
-          id: config.id,
-          tokenName: config.tokenName,
-          tokenSymbol: config.tokenSymbol,
-          iconUrl: config.iconUrl,
-          // Add other relevant config details if needed
-          deployedContracts: deployedContracts // Map of chainId -> contractAddress
-        };
-      });
       
-      logger.info(`Returning ${result.length} universal token details for wallet ${walletAddress}`);
-      return result;
+      // Then check against known contract addresses
+      console.log(`[DEBUG] Checking against known contract addresses from documentation`);
+      for (const token of userTokensFromApi) {
+        const contractAddress = token.token?.address;
+        
+        if (contractAddress && knownContracts[contractAddress]) {
+          console.log(`[DEBUG] Found token matching known contract: ${contractAddress}`);
+          
+          const knownContract = knownContracts[contractAddress];
+          const deployedContracts = {};
+          const balances = {};
+          
+          // Set up contracts and balances
+          deployedContracts[knownContract.chainId] = contractAddress;
+          balances[knownContract.chainId] = token.value || "0";
+          
+          // Check if we've already added this token (avoid duplicates)
+          const isDuplicate = matchingTokens.some(t => 
+            t.deployedContracts[knownContract.chainId] === contractAddress
+          );
+          
+          if (!isDuplicate) {
+            // Add to results
+            matchingTokens.push({
+              id: null, // No database ID since it's from documentation
+              tokenName: knownContract.tokenName,
+              tokenSymbol: knownContract.tokenSymbol,
+              iconUrl: null,
+              deployedContracts: deployedContracts,
+              balances: balances,
+              source: 'documentation'
+            });
+          }
+        }
+      }
+      
+      logger.info(`Found ${matchingTokens.length} universal tokens for ${walletAddress}`);
+      
+      // Final debug output
+      console.log(`[DEBUG] Final result: returning ${matchingTokens.length} tokens to frontend`);
+      if (matchingTokens.length > 0) {
+        matchingTokens.forEach((token, index) => {
+          console.log(`[DEBUG] Token ${index + 1}: ${token.tokenName} (${token.tokenSymbol}) from ${token.source}`);
+          console.log(`[DEBUG] Deployed on chains:`, Object.keys(token.deployedContracts));
+          console.log(`[DEBUG] Balances:`, token.balances);
+        });
+      }
+      
+      return matchingTokens;
 
     } catch (error) {
       logger.error(`Error in findUserUniversalTokens for ${walletAddress}: ${error.message}`, { stack: error.stack });
+      console.error(`[ERROR] Complete error details:`, error);
       // Rethrow or handle specific errors (e.g., database connection)
       throw error; 
     }

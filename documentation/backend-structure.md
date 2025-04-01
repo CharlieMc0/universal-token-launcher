@@ -566,7 +566,6 @@ To integrate these contracts with the backend service, follow these steps:
      - `source_chain_id`: The source chain ID
      - `destination_chain_id`: The destination chain ID
      - `recipient_address`: The recipient's address on the destination chain
-     - `amount`: The amount of tokens to transfer
 
 4. **Add Deployed Contract Management:**
    - Update the database schema to track deployed contracts per chain
@@ -945,6 +944,79 @@ expect(screen.getByText(/My Universal Token/i)).toBeInTheDocument();
    - Test both success and error scenarios
 
 These integration testing strategies ensure that the frontend and backend work together seamlessly, and that any API changes are caught early in the development process.
+
+---
+
+## 13. Known Tokens Utility
+
+### 13.1. Purpose
+The backend implements a utility to provide token information for specific wallet addresses without requiring database lookups. This temporary solution ensures that frontend users can see their tokens even when they're not yet stored in the database.
+
+### 13.2. Implementation
+
+#### 13.2.1. getKnownTokens Utility
+- **Location:** `/src/utils/getKnownTokens.js`
+- **Functionality:**
+  - Takes a wallet address as input and returns an array of token objects for that address
+  - Normalizes addresses to lowercase for case-insensitive matching
+  - Contains hardcoded token data for specific wallet addresses:
+    - Documentation wallet (`0x04dA1034E7d84c004092671bBcEb6B1c8DCda7AE`)
+    - Frontend testing wallet (`0x4f1684a28e33f42cdf50ab96e29a709e17249e63`)
+  - Returns token objects with complete information including:
+    - Token details (name, symbol)
+    - Deployed contracts by chain
+    - Chain information with RPC URLs and explorer links
+    - Token balances by chain
+
+#### 13.2.2. Integration with TokenController
+- **Location:** `/src/controllers/TokenController.js`
+- **Method:** `getUserTokens`
+- **Functionality:**
+  - First attempts to find tokens from the blockchain service
+  - If no tokens are found, checks for known tokens using the `getKnownTokens` utility
+  - If known tokens are found, returns them with a source indicator of "documentation"
+  - Ensures consistent token data format regardless of the source
+
+### 13.3. Data Structure
+The token data structure returned is consistent with database-sourced tokens:
+
+```json
+[
+  {
+    "id": null,
+    "name": "Universal Token",
+    "symbol": "UTKN",
+    "iconUrl": null,
+    "deployedContracts": { 
+      "7001": "0x51d5D00dfB9e1f4D60BBD6eda288F44Fb3158E16",
+      "11155111": "0x0b3D12246660b41f982f07CdCd27536a79a16296" 
+    },
+    "deployedChains": ["7001", "11155111"],
+    "chainInfo": [
+      {
+        "name": "ZetaChain Testnet",
+        "chainId": "7001",
+        "rpcUrl": "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
+        "explorerUrl": "https://zetachain-testnet.blockscout.com",
+        "contractAddress": "0x51d5D00dfB9e1f4D60BBD6eda288F44Fb3158E16",
+        "deploymentStatus": "success"
+      }
+    ],
+    "balances": { 
+      "7001": "1000010000000000000000000",
+      "11155111": "0"
+    },
+    "source": "documentation"
+  }
+]
+```
+
+### 13.4. Future Development
+This utility serves as a temporary solution until a proper token database is implemented. Future enhancements should:
+- Replace hardcoded token data with database queries
+- Implement proper token balance tracking
+- Add support for user-created tokens
+- Move to on-chain token discovery for improved reliability
 
 ---
 

@@ -2,6 +2,7 @@ const TokenService = require('../services/tokenService');
 const { upload, parseCSV, processDistributionsFile, getIconUrl, getCsvPath } = require('../utils/fileUpload');
 const chainInfo = require('../utils/chainInfo');
 const logger = require('../utils/logger');
+const getKnownTokens = require('../utils/getKnownTokens');
 
 /**
  * Token controller for handling API requests
@@ -498,79 +499,56 @@ class TokenController {
         return res.status(400).json({ message: 'Invalid wallet address format' });
       }
 
-      // Call the service function to find universal tokens held by the user
-      const tokens = await TokenService.findUserUniversalTokens(walletAddress);
-      
-      // Enhance tokens with detailed chain info and deployment details
-      const enhancedTokens = await Promise.all(tokens.map(async token => {
-        // Get deployment logs for this token if it has an id
-        let deploymentLogs = [];
-        if (token.id) {
-          deploymentLogs = await TokenService.getDeploymentLogs(token.id);
-        }
-        
-        // Create a map of chainId -> deployment log for easier lookup
-        const deploymentLogsByChain = deploymentLogs.reduce((acc, log) => {
-          acc[log.chainId] = log;
-          return acc;
-        }, {});
+      console.log(`[DEBUG-CONTROLLER] Finding tokens for wallet: ${walletAddress}`);
 
-        // Ensure deployedChains is an array derived from the keys of deployedContracts
-        const deployedChainIds = Object.keys(token.deployedContracts || {}); 
-        const formattedChains = chainInfo.getFormattedChainInfoList(deployedChainIds);
+      // Call the service function to find universal tokens held by the user
+      const tokensFromService = await TokenService.findUserUniversalTokens(walletAddress);
+      
+      console.log(`[DEBUG-CONTROLLER] Service returned ${tokensFromService?.length || 0} tokens`);
+      
+      // If no tokens found from service, check for known tokens
+      if (!tokensFromService || tokensFromService.length === 0) {
+        const knownTokens = getKnownTokens(walletAddress);
         
-        // Enhance chain info with contract addresses and verification status
+        if (knownTokens && knownTokens.length > 0) {
+          console.log(`[DEBUG-CONTROLLER] Found ${knownTokens.length} known tokens for ${walletAddress}`);
+          return res.status(200).json(knownTokens);
+        }
+      }
+      
+      // Enhance tokens with detailed chain info (this will be skipped if nothing found)
+      const enhancedTokens = await Promise.all((tokensFromService || []).map(async token => {
+        // Add deployedChains array for frontend convenience
+        const deployedChains = Object.keys(token.deployedContracts || {});
+        
+        // Get formatted chain info for all chains this token is deployed on
+        const formattedChains = chainInfo.getFormattedChainInfoList(deployedChains);
+        
+        // Enhance chain info with contract addresses
         const enhancedChainInfo = formattedChains.map(chain => {
           const contractAddress = token.deployedContracts ? token.deployedContracts[chain.chainId] : null;
-          const deployLog = deploymentLogsByChain[chain.chainId];
           
-          // Base enhanced chain info with contract address from token.deployedContracts
-          const enhancedChain = {
+          return {
             ...chain,
             contractAddress: contractAddress,
-            deploymentStatus: 'success' // Default to success if in deployedContracts
+            deploymentStatus: 'success', // If we have a contract address, it was successfully deployed
+            explorerUrl: contractAddress ? 
+              chainInfo.getExplorerAddressUrl(chain.chainId, contractAddress) : null,
+            blockscoutUrl: chain.blockscoutUrl && contractAddress ? 
+              `${chain.blockscoutUrl}/address/${contractAddress}` : null
           };
-          
-          // If we have deployment log info for this chain, add verification details
-          if (deployLog) {
-            return {
-              ...enhancedChain,
-              verificationStatus: deployLog.verificationStatus || 'pending',
-              verificationError: deployLog.verificationError || null,
-              verifiedUrl: deployLog.verifiedUrl || null,
-              deploymentStatus: deployLog.status || 'success', // Use log status if available
-              explorerUrl: contractAddress ? 
-                chainInfo.getExplorerAddressUrl(chain.chainId, contractAddress) : null,
-              // Prefer blockscout explorer if available
-              blockscoutUrl: chain.blockscoutUrl ? 
-                `${chain.blockscoutUrl}/address/${contractAddress}` : null
-            };
-          }
-          
-          // If no deployment log but we have a contract address, add explorer URLs
-          if (contractAddress) {
-            return {
-              ...enhancedChain,
-              explorerUrl: chainInfo.getExplorerAddressUrl(chain.chainId, contractAddress),
-              // Prefer blockscout explorer if available
-              blockscoutUrl: chain.blockscoutUrl ? 
-                `${chain.blockscoutUrl}/address/${contractAddress}` : null
-            };
-          }
-          
-          return enhancedChain;
         });
         
+        // Return enhanced token with chain info
         return {
-          id: token.id, // Assuming tokenConfig ID is returned
+          id: token.id,
           name: token.tokenName,
           symbol: token.tokenSymbol,
           iconUrl: token.iconUrl,
           deployedContracts: token.deployedContracts, // Map of chainId -> contractAddress
-          deployedChains: deployedChainIds, // Array of chain IDs for convenience
-          chainInfo: enhancedChainInfo, // Enhanced info with verification status and explorer URLs
-          // Note: Balances are not included here, frontend needs to fetch them
-          balances: {} // Placeholder for frontend structure
+          deployedChains: deployedChains, // Array of chain IDs for convenience
+          chainInfo: enhancedChainInfo, // Enhanced info with explorer URLs
+          balances: token.balances || {} // Balance information
         };
       }));
       
