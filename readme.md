@@ -248,3 +248,69 @@ npm run connect-tokens -- --zeta-address 0x1234... --add-chain 11155111:0xabcd..
 ## Development
 
 This project uses TypeScript, Sequelize, and Express. Ensure all new code follows the existing patterns and includes proper error handling.
+
+## Project Structure
+
+- `frontend/` - React frontend application
+- `backend/` - Node.js/Express backend server
+- `documentation/` - Project design docs and specifications
+- `smart-contracts/` - Smart contract code for token deployment
+
+## Setup Instructions
+
+### Environment Configuration
+
+1. Copy `.env.example` to `.env` and update the values:
+```bash
+cp .env.example .env
+```
+
+2. Configure the database settings and RPC URLs in the `.env` file
+
+### Backend Setup
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+### Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+## Development Notes
+
+### API Service FormData Handling
+
+When uploading files with FormData (like token icons), do not manually set the Content-Type header. Let the browser set it automatically with the correct boundary value:
+
+```javascript
+// Correct way to send FormData:
+fetch('/api/upload', {
+  method: 'POST',
+  body: formData,
+  // Do NOT set Content-Type header for FormData
+})
+```
+
+### Testing API Endpoints
+
+You can use tools like Postman or curl to test API endpoints. For endpoints that accept file uploads, ensure you're using the correct multipart/form-data format.
+
+## Troubleshooting
+
+### Invalid JSON Format Error
+
+If you get an error like "SyntaxError: Unexpected token '-', \"------WebK\"... is not valid JSON", it usually means the client is sending FormData but the server is trying to parse it as JSON. Make sure you're not setting the Content-Type header when sending FormData.
+
+### Database Connection Issues
+
+If the backend can't connect to PostgreSQL, check:
+1. Database service is running
+2. Credentials in `.env` are correct
+3. Database and user with proper permissions exist

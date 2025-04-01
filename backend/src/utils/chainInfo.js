@@ -144,6 +144,17 @@ class ChainInfoService {
       '84531': '#0052FF' // Base Goerli
     };
     
+    // Define blockscout explorers for supported chains
+    const blockscoutExplorers = {
+      // ZetaChain networks
+      '7000': 'https://explorer.zetachain.com',
+      '7001': 'https://athens.explorer.zetachain.com',
+      // Base networks
+      '8453': 'https://base.blockscout.com',
+      '84531': 'https://base-sepolia.blockscout.com',
+      // You can add other blockscout explorers here as they become available
+    };
+    
     return {
       ...chain,
       color: networkColors[chainId] || '#888888',
@@ -152,7 +163,9 @@ class ChainInfoService {
                  chain.name.toLowerCase().includes('goerli') ||
                  chain.name.toLowerCase().includes('sepolia') ||
                  chain.name.toLowerCase().includes('mumbai'),
-      isSupported: true
+      isSupported: true,
+      // Add blockscout URL if available
+      blockscoutUrl: blockscoutExplorers[chainId] || null
     };
   }
 

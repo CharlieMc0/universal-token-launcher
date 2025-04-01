@@ -77,6 +77,7 @@ const DeploymentLog = sequelize.define('DeploymentLog', {
 }, {
   tableName: 'deployment_logs',
   timestamps: true,
+  underscored: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at'
 });

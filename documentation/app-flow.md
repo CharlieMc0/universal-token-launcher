@@ -219,132 +219,119 @@ This document provides a comprehensive walkthrough of the user journey through t
 1. **Fee Payment**
    - User clicks "Deploy Token" button
    - System validates form inputs
-   - System sends token creation request to backend
-   - System requests fee payment transaction
+   - System sends token creation request to backend (`POST /api/tokens`)
+   - System requests fee payment transaction (using `wagmi` `sendTransactionAsync`)
    - User approves transaction in wallet
-   - System waits for transaction confirmation
+   - System waits for transaction confirmation on-chain (using `publicClient.getTransactionReceipt`)
+   - System notifies backend about fee payment (`POST /api/tokens/:id/deploy`)
 
-2. **Deployment Status Tracking**
-   - System displays deployment pending state
-   - System polls for deployment status updates
-   - System updates UI based on deployment progress
+2. **Deployment Status Tracking & Polling**
+   - System displays deployment pending state (`deploymentStatus` = `INITIATED` or `POLLING`)
+   - **Frontend polls backend periodically (`useEffect` hook):**
+     - Calls `apiService.getToken(tokenId)` to check overall `deployment_status`.
+     - If status is `completed` or `failed`, polling stops.
+     - If still `pending` or similar, polling continues.
+   - System updates UI with meaningful status messages (e.g., "Backend is deploying contracts...").
 
-3. **Deployment Completion**
-   - System displays success message when deployment completes
-   - System shows deployed contract addresses on each chain
-   - User can view details or return to dashboard
+3. **Deployment Completion / Confirmation**
+   - **If backend status is `completed`:**
+     - System fetches detailed deployment logs (`apiService.getDeploymentLogs(tokenId)`).
+     - System updates state (`deploymentStatus` = `COMPLETED`).
+     - **System renders the `DeploymentConfirmation` component:**
+       - Displays a success message.
+       - Shows the `tokenId`.
+       - Lists each successfully deployed contract (`chain_name`, `contract_address`).
+       - Shows contract verification status (`verificationStatus`) using badges.
+       - Provides links to view contracts on block explorers (`verifiedUrl` or fallback).
+       - Offers a button to start a new deployment (resets the form).
+   - **If backend status is `failed`:**
+     - System fetches deployment logs (if available).
+     - System updates state (`deploymentStatus` = `FAILED_DEPLOYMENT`).
+     - System displays an error message, potentially including details from the logs.
+     - Offers a button to start over.
 
 ### Key Technical Considerations
 - **Transaction Handling**
   ```javascript
-  // Fee payment with proper error handling
+  // Fee payment and deploy API call (simplified)
   try {
-    // Create token configuration first
-    const response = await apiService.createToken(formDataToSend);
-    setDeploymentDetails(response);
+    // ... (Create Token Config) ...
+    setCreatedTokenId(response.tokenId);
+    setDeploymentStatus(DEPLOYMENT_STATUS.PAYING);
 
-    // Handle fee payment
-    const feeInWei = ethers.parseEther(ZETA_FEE.toString());
-    
-    // IMPORTANT: Don't convert BigInt to string
-    const txResult = await sendTransaction({
-      to: UNIVERSAL_TOKEN_SERVICE_WALLET,
-      value: feeInWei
-    });
-    
-    if (!txResult || !txResult.hash) {
-      throw new Error('Transaction failed: No transaction hash returned');
-    }
-    
-    // Wait for transaction confirmation before continuing
-    setProcessingStep('Waiting for transaction confirmation (this may take 10-15 seconds)...');
-    
-    let confirmed = false;
-    let attempts = 0;
-    const maxAttempts = 20; // 20 attempts * 1.5 seconds = 30 seconds max wait time
-    
-    while (!confirmed && attempts < maxAttempts) {
-      try {
-        attempts++;
-        
-        // Try to get transaction receipt to check if confirmed
-        const txReceipt = await publicClient.getTransactionReceipt({ 
-          hash: txResult.hash 
-        });
-        
-        if (txReceipt && txReceipt.status === 'success') {
-          confirmed = true;
-          console.log('Transaction confirmed:', txReceipt);
-        } else {
-          // Wait before trying again
-          await new Promise(resolve => setTimeout(resolve, 1500));
-        }
-      } catch (error) {
-        console.log(`Waiting for confirmation (attempt ${attempts}/${maxAttempts})...`);
-        // Wait before trying again
-        await new Promise(resolve => setTimeout(resolve, 1500));
-      }
-    }
-    
+    // ... (Process Fee Payment Transaction with Confirmation) ...
+    const feeTxHash = txHashString; // Assume hash is retrieved
+
+    // ... (Wait for Transaction Confirmation) ...
     if (!confirmed) {
-      throw new Error('Transaction confirmation timed out. The transaction may still complete - please check your wallet and retry later if needed.');
+      throw new Error('Transaction confirmation timed out...');
     }
-    
-    // Only now proceed with the API call
-    await apiService.deployToken(response.id, {
-      fee_paid_tx: txResult.hash
-    });
-    
-    setDeploymentStatus('pending');
+
+    // Notify backend to start deployment
+    await apiService.deployToken(tokenId, { fee_paid_tx: feeTxHash });
+    setDeploymentStatus(DEPLOYMENT_STATUS.INITIATED); // <<<< START POLLING HERE
+    setProcessingStep('Deployment initiated with backend! Polling for status...');
+
   } catch (error) {
-    console.error('Error:', error);
-    setDeploymentStatus('error');
-    setErrors({...errors, submission: error.message});
+    console.error('Error during creation/payment/deploy call:', error);
+    setErrors({ ...errors, submission: error.message });
+    // Set appropriate failure status (e.g., FAILED_PAYMENT or FAILED_DEPLOYMENT)
+    setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT);
   }
   ```
 
 - **Status Polling**
   ```javascript
-  // Poll for deployment status updates
+  // Poll for deployment status updates using useEffect
   useEffect(() => {
     let intervalId;
 
-    if (deploymentStatus === 'pending' && deploymentDetails?.id) {
-      intervalId = setInterval(async () => {
-        try {
-          const logs = await apiService.getDeploymentLogs(deploymentDetails.id);
-          const updatedDetails = await apiService.getToken(deploymentDetails.id);
-          
-          setDeploymentDetails({
-            ...updatedDetails,
-            deployments: logs
-          });
+    const pollStatus = async () => {
+      if (!createdTokenId) return;
+      console.log(`Polling status for Token ID: ${createdTokenId}`);
+      setProcessingStep('Checking deployment status...');
 
-          // Check deployment status
-          if (updatedDetails.deployment_status === 'completed') {
-            setDeploymentStatus('success');
-            clearInterval(intervalId);
-          } else if (updatedDetails.deployment_status === 'failed') {
-            setDeploymentStatus('error');
-            clearInterval(intervalId);
-          }
-        } catch (error) {
-          console.error('Error polling deployment status:', error);
+      try {
+        const tokenData = await apiService.getToken(createdTokenId);
+
+        if (tokenData.deployment_status === 'completed') {
+          const logs = await apiService.getDeploymentLogs(createdTokenId);
+          setDeploymentLogs(logs);
+          setDeploymentStatus(DEPLOYMENT_STATUS.COMPLETED);
+          clearInterval(intervalId);
+        } else if (tokenData.deployment_status === 'failed') {
+          const logs = await apiService.getDeploymentLogs(createdTokenId);
+          setDeploymentLogs(logs);
+          setErrors({ ...errors, submission: `Deployment failed: ${tokenData.error_message || 'Unknown reason'}` });
+          setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
+          clearInterval(intervalId);
+        } else {
+          setDeploymentStatus(DEPLOYMENT_STATUS.POLLING);
+          setProcessingStep('Backend is deploying contracts...');
         }
-      }, 5000); // Poll every 5 seconds
+      } catch (error) {
+        console.error('Polling error:', error);
+        // Handle polling errors, maybe stop after too many failures
+      }
+    };
+
+    if (deploymentStatus === DEPLOYMENT_STATUS.INITIATED || deploymentStatus === DEPLOYMENT_STATUS.POLLING) {
+      pollStatus(); // Initial check
+      intervalId = setInterval(pollStatus, 5000); // Poll every 5 seconds
     }
 
-    return () => {
+    return () => { // Cleanup interval
       if (intervalId) clearInterval(intervalId);
     };
-  }, [deploymentStatus, deploymentDetails?.id]);
+  }, [deploymentStatus, createdTokenId, errors]); // Dependencies
   ```
 
 - **User Experience During Deployment**
-  - Show clear loading indicators
-  - Provide meaningful status messages
-  - Display contract addresses as they become available
-  - Handle errors gracefully with retry options
+  - Show clear loading indicators and status messages during payment, confirmation, and polling.
+  - Display the fee transaction hash with an explorer link immediately.
+  - Provide meaningful status messages reflecting the current stage (paying fee, confirming tx, initiating deployment, polling status, deploying contracts).
+  - On completion, clearly display the `DeploymentConfirmation` component with all details.
+  - Handle errors gracefully, distinguishing between payment failures (with retry option) and deployment failures (with start over option).
 
 ---
 

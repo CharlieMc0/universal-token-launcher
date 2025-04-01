@@ -252,8 +252,8 @@
     "supertest": "^6.3.3"
   },
   "scripts": {
-    "start": "node dist/index.js",
-    "dev": "nodemon src/index.ts",
+    "start": "nodemon src/index.ts",
+    "dev": "ts-node src/index.ts",
     "build": "tsc",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
@@ -277,7 +277,10 @@
     "logs": "node scripts/viewLogs.js",
     "logs:deployment": "node scripts/viewLogs.js --file=deployment.log",
     "logs:error": "node scripts/viewLogs.js --file=error.log",
-    "check-deployment": "node scripts/checkDeploymentStatus.js"
+    "check-deployment": "node scripts/checkDeploymentStatus.js",
+    "db:reset": "node src/scripts/reset-database.js",
+    "db:backup": "node src/scripts/backup-database.js",
+    "db:backup:full": "node src/scripts/backup-database.js --with-data"
   },
   "keywords": [],
   "author": "",

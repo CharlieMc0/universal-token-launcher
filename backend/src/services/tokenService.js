@@ -6,6 +6,8 @@ const { SUPPORTED_CHAINS } = require('../constants/chains');
 const { ZETACHAIN_ID, ZETACHAIN_TESTNET_ID } = require('../constants/bytecode');
 const { Sequelize } = require('sequelize');
 const { logger, logDeployment } = require('../utils/logger');
+const fetch = require('node-fetch');
+const { Op } = require('sequelize');
 
 class TokenService {
   /**
@@ -665,24 +667,45 @@ class TokenService {
       }
 
       // Step 5: Update overall deployment status
-      const allLogs = await DeploymentLog.findAll({
-        where: { tokenConfigId: id }
-      });
+      const allLogs = await DeploymentLog.findAll({ where: { tokenConfigId: id } });
 
       const failedLogs = allLogs.filter(log => log.status === 'failed');
       const successLogs = allLogs.filter(log => log.status === 'success');
-      const pendingLogs = allLogs.filter(log => ['pending', 'deploying'].includes(log.status));
+      // Check for logs actively deploying/retrying
+      const activeDeployLogs = allLogs.filter(log => ['deploying', 'retrying'].includes(log.status));
+      // Check for logs stuck in initial pending or verification processing
+      // Note: 'processing' might be a status used by verificationService
+      const stuckLogs = allLogs.filter(log => ['pending', 'processing'].includes(log.status)); 
 
-      let newStatus = 'completed';
+      let newStatus;
 
-      if (failedLogs.length === allLogs.length) {
-        newStatus = 'failed';
+      if (activeDeployLogs.length > 0) {
+          // If anything is actively deploying or retrying, the overall status is still deploying
+          newStatus = 'deploying';
+      } else if (failedLogs.length === allLogs.length) {
+          // All attempts failed
+          newStatus = 'failed';
       } else if (successLogs.length === allLogs.length) {
-        newStatus = 'completed';
-      } else if (pendingLogs.length > 0) {
-        newStatus = 'deploying';
+          // All succeeded (and none are actively deploying/stuck)
+          newStatus = 'completed';
       } else if (failedLogs.length > 0) {
-        newStatus = 'partial';
+          // Some failed, none are actively deploying/retrying (implies some succeeded or are stuck)
+          newStatus = 'partial';
+      } else if (stuckLogs.length > 0) {
+           // None failed, none actively deploying, but some are stuck in pending/processing
+           logger.warn(`Deployment ${id} has stuck logs in pending/processing state. Treating as partial.`, { stuckLogCount: stuckLogs.length });
+           newStatus = 'partial'; // Treat as incomplete/partial
+      } else {
+           // Fallback case if logic misses something
+           const totalAccounted = successLogs.length + failedLogs.length + activeDeployLogs.length + stuckLogs.length;
+           // Check if all logs are accounted for and at least one succeeded
+           if (totalAccounted === allLogs.length && successLogs.length > 0) {
+               logger.warn(`All logs accounted for for deployment ${id}. Assuming 'completed' based on ${successLogs.length} successes.`);
+               newStatus = 'completed';
+           } else {
+              logger.warn(`Unexpected log state combination for deployment ${id}. Defaulting to partial.`, { logCount: allLogs.length, successCount: successLogs.length, failedCount: failedLogs.length, activeCount: activeDeployLogs.length, stuckCount: stuckLogs.length });
+              newStatus = 'partial'; // Safer default
+           }
       }
 
       logger.info(`Updating deployment status for token ${id}`, {
@@ -690,7 +713,7 @@ class TokenService {
         newStatus,
         successCount: successLogs.length,
         failedCount: failedLogs.length,
-        pendingCount: pendingLogs.length,
+        pendingCount: stuckLogs.length,
         totalCount: allLogs.length
       });
       
@@ -699,7 +722,7 @@ class TokenService {
       logDeployment('complete', id, 'all', newStatus, {
         successCount: successLogs.length,
         failedCount: failedLogs.length,
-        pendingCount: pendingLogs.length,
+        pendingCount: stuckLogs.length,
         totalCount: allLogs.length
       });
     } catch (error) {
@@ -799,7 +822,7 @@ class TokenService {
     try {
       const logs = await DeploymentLog.findAll({
         where: { tokenConfigId: tokenId },
-        order: [['updatedAt', 'DESC']]
+        order: [['created_at', 'DESC']]
       });
       
       logger.debug(`Retrieved deployment logs`, {
@@ -814,6 +837,129 @@ class TokenService {
         error: error.message
       });
       throw error;
+    }
+  }
+
+  /**
+   * Finds Universal Tokens deployed by this application that are held by a specific user.
+   * Queries Blockscout API for tokens held on ZetaChain and matches against database records.
+   * @param {string} walletAddress - The user's wallet address.
+   * @returns {Promise<Array>} - List of token configurations held by the user, including deployed contract addresses.
+   */
+  async findUserUniversalTokens(walletAddress) {
+    logger.info(`Finding universal tokens for wallet: ${walletAddress}`);
+    try {
+      // 1. Get all *successful* ZetaChain Universal Token contract deployments from our DB
+      const ourZetaChainDeployments = await DeploymentLog.findAll({
+        where: {
+          chainId: ZETACHAIN_TESTNET_ID,
+          status: 'success',
+          contractAddress: { [Op.ne]: null } // Ensure contract address exists
+        },
+        attributes: ['contractAddress', 'tokenConfigId'], // Select only needed fields
+        raw: true, // Get plain data objects
+      });
+
+      if (!ourZetaChainDeployments || ourZetaChainDeployments.length === 0) {
+        logger.info('No ZetaChain contracts found deployed by this application.');
+        return []; // No tokens deployed by us on ZetaChain yet
+      }
+
+      // Create a map for quick lookup: zetaContractAddress -> tokenConfigId
+      const ourZetaContractsMap = new Map(
+        ourZetaChainDeployments.map(d => [d.contractAddress.toLowerCase(), d.tokenConfigId])
+      );
+      const ourZetaContractAddresses = Array.from(ourZetaContractsMap.keys());
+      logger.info(`Found ${ourZetaContractAddresses.length} unique ZetaChain contracts deployed by us.`);
+
+
+      // 2. Query Blockscout API for tokens held by the user on ZetaChain Testnet
+      const blockscoutUrl = `${ZETACHAIN_TESTNET_BLOCKSCOUT_API}?module=account&action=tokenlist&address=${walletAddress}`;
+      logger.info(`Querying Blockscout: ${blockscoutUrl}`);
+      
+      let userTokensFromApi = [];
+      try {
+        const response = await fetch(blockscoutUrl);
+        if (!response.ok) {
+          throw new Error(`Blockscout API request failed with status ${response.status}: ${await response.text()}`);
+        }
+        const data = await response.json();
+        
+        if (data.status === '1' && Array.isArray(data.result)) {
+          userTokensFromApi = data.result;
+          logger.info(`Blockscout returned ${userTokensFromApi.length} tokens for ${walletAddress}`);
+        } else if (data.status === '0' && data.message === 'No tokens found') {
+           logger.info(`Blockscout found no tokens for ${walletAddress}`);
+           // This is not an error, the user simply holds no tokens
+        } else {
+          // Handle other potential Blockscout errors or unexpected responses
+          throw new Error(`Blockscout API returned unexpected status or data: ${JSON.stringify(data)}`);
+        }
+      } catch (apiError) {
+         logger.error(`Blockscout API call failed: ${apiError.message}`);
+         // Decide if we should throw or return empty. Returning empty might be safer UX.
+         // Throwing error to signal potential issues with the explorer API.
+         throw new Error(`Failed to fetch token list from block explorer: ${apiError.message}`);
+      }
+
+
+      // 3. Find the intersection: Which of the user's tokens are ones deployed by our app?
+      const matchingTokenConfigIds = new Set();
+      userTokensFromApi.forEach(token => {
+        const contractAddressLower = token.contractAddress?.toLowerCase();
+        if (contractAddressLower && ourZetaContractsMap.has(contractAddressLower)) {
+           // This is a Universal Token deployed by our app, held by the user
+           matchingTokenConfigIds.add(ourZetaContractsMap.get(contractAddressLower));
+        }
+      });
+      
+      const uniqueMatchingConfigIds = Array.from(matchingTokenConfigIds);
+      logger.info(`Found ${uniqueMatchingConfigIds.length} matching universal token configurations for ${walletAddress}`);
+
+      if (uniqueMatchingConfigIds.length === 0) {
+        return []; // User holds none of our deployed universal tokens
+      }
+
+      // 4. Fetch full TokenConfiguration details for the matching tokens
+      const matchingTokenConfigs = await TokenConfiguration.findAll({
+        where: {
+          id: { [Op.in]: uniqueMatchingConfigIds }
+        },
+        include: [{
+          model: DeploymentLog,
+          as: 'deployments', // Make sure this alias matches your model definition
+          where: { status: 'success', contractAddress: { [Op.ne]: null } },
+          attributes: ['chainId', 'contractAddress'], // Only fetch needed fields
+          required: false // Use left join in case some configs have no successful deployments (shouldn't happen ideally)
+        }],
+        order: [['createdAt', 'DESC']] // Optional: order results
+      });
+
+      // 5. Structure the response data
+      const result = matchingTokenConfigs.map(config => {
+        const deployedContracts = {};
+        if (config.deployments && Array.isArray(config.deployments)) {
+           config.deployments.forEach(depLog => {
+             deployedContracts[depLog.chainId] = depLog.contractAddress;
+           });
+        }
+        return {
+          id: config.id,
+          tokenName: config.tokenName,
+          tokenSymbol: config.tokenSymbol,
+          iconUrl: config.iconUrl,
+          // Add other relevant config details if needed
+          deployedContracts: deployedContracts // Map of chainId -> contractAddress
+        };
+      });
+      
+      logger.info(`Returning ${result.length} universal token details for wallet ${walletAddress}`);
+      return result;
+
+    } catch (error) {
+      logger.error(`Error in findUserUniversalTokens for ${walletAddress}: ${error.message}`, { stack: error.stack });
+      // Rethrow or handle specific errors (e.g., database connection)
+      throw error; 
     }
   }
 }

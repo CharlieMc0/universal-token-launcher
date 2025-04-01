@@ -98,6 +98,55 @@ This document outlines the recommended technologies for building the Universal T
   - **Ensure only one prefix layer is used** (avoid duplicate prefix issue)
     *Rationale:* Versioning allows for backward compatibility, but must be implemented consistently.
 
+- **Enhanced Response Format:**
+  - **Rich contract information for each chain**
+    *Rationale:* Providing detailed per-chain information in the API response simplifies frontend implementation and improves user experience.
+  - **Information included:**
+    - Contract addresses
+    - Verification status and details
+    - Explorer and Blockscout URLs
+    - Deployment status per chain
+    - Direct links to verified contract source
+  - **Consistent schema across endpoints**
+    *Rationale:* Using the same chainInfo format in all token-related endpoints ensures consistent frontend handling.
+
+- **ChainInfo Schema Documentation:**
+  - **Basic Chain Properties:**
+    - `name`: Full chain name (e.g., "ZetaChain Testnet")
+    - `chainId`: Chain identifier as string (e.g., "7001")
+    - `rpcUrl`: JSON-RPC endpoint URL for the chain
+    - `explorerUrl`: Base URL for the standard block explorer 
+    - `isZetaChain`: Boolean indicating whether this is a ZetaChain network
+    - `color`: Hex color code for UI display (e.g., "#00B386")
+    - `shortName`: Abbreviated name for UI display (e.g., "ZetaChain")
+    - `isTestnet`: Boolean indicating whether this is a testnet network
+    - `isSupported`: Boolean indicating whether this chain is fully supported
+    - `blockscoutUrl`: Base URL for Blockscout explorer if available
+  
+  - **Contract Deployment Properties:**
+    - `contractAddress`: Deployed token contract address on this chain
+    - `deploymentStatus`: Current deployment status
+      - "pending": Initial state before deployment begins
+      - "deploying": Deployment in progress
+      - "success": Successfully deployed
+      - "failed": Deployment failed
+      - "retrying": Retry attempt in progress
+    
+  - **Verification Properties:**
+    - `verificationStatus`: Status of contract verification
+      - "pending": Not yet verified
+      - "processing": Verification in progress
+      - "verified": Successfully verified
+      - "failed": Verification failed
+    - `verificationError`: Error message if verification failed
+    - `verifiedUrl`: Direct URL to verified contract source code
+    
+  - **Explorer URLs:**
+    - `explorerUrl`: Full URL to view the contract on the standard explorer
+    - `blockscoutUrl`: Full URL to view the contract on Blockscout (if applicable)
+    
+  *Rationale:* Comprehensive schema documentation ensures consistent handling across all parts of the application.
+
 ---
 
 ## 6. Blockchain Integration

@@ -174,6 +174,7 @@ Styles:
 Container Types:
 - FormContainer: Used for grouped form elements with section titles
 - FeeInfo: Light blue background (rgba(60, 157, 242, 0.1)), 16px padding, 8px border radius
+- ConfirmationContainer / Results Display: Can reuse `FormContainer` styles. Lists within (like deployment logs) should use item styles with distinct backgrounds (e.g., `rgba(255, 255, 255, 0.05)`), clear separation, and display status/links effectively.
 
 ---
 

@@ -15,6 +15,13 @@ This backend service provides APIs for creating, managing, and deploying univers
   - Automatic source code dependency resolution for verification
   - Status tracking and polling for verification completion
   - Explorer URLs for verified contracts
+- Enhanced API responses for tokens:
+  - Added detailed contract information for each chain in chainInfo array
+  - Included contract addresses and deployment status for each chain
+  - Added verification status (verified, pending, failed) for deployed contracts
+  - Included explorer URLs and Blockscout URLs for easy contract viewing
+  - Provided links to verified contract source code
+  - Consistently formatted chainInfo across all token-related endpoints
 - Enhanced testing framework for contract deployment and token management:
   - Improved output display of contract addresses and transaction hashes in tests
   - Created comprehensive demo script for full token flow demonstration
@@ -417,6 +424,60 @@ The following endpoints are planned:
 - `POST /api/tokens/:id/deploy` - Deploy a token
 - `GET /api/tokens/:id/verification` - Get verification status for deployed contracts
 
+All token-related endpoints now return enhanced responses that include detailed information for each chain in the `chainInfo` array:
+
+```json
+{
+  "id": 32,
+  "creatorWallet": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
+  "tokenName": "My Universal Token",
+  "tokenSymbol": "MUT",
+  "iconUrl": "/uploads/icons/icon-1743539938071-325605596.png",
+  "decimals": 18,
+  "totalSupply": "1000000000000000000000",
+  "deploymentStatus": "completed",
+  "chainInfo": [
+    {
+      "name": "ZetaChain Testnet",
+      "chainId": "7001",
+      "rpcUrl": "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
+      "explorerUrl": "https://athens.explorer.zetachain.com",
+      "isZetaChain": true,
+      "color": "#00B386",
+      "shortName": "ZetaChain",
+      "isTestnet": true,
+      "isSupported": true,
+      "blockscoutUrl": "https://athens.explorer.zetachain.com",
+      "contractAddress": "0x1234567890abcdef1234567890abcdef12345678",
+      "verificationStatus": "verified",
+      "verificationError": null,
+      "verifiedUrl": "https://athens.explorer.zetachain.com/address/0x1234567890abcdef1234567890abcdef12345678/contracts#address-tabs",
+      "deploymentStatus": "success",
+      "explorerUrl": "https://athens.explorer.zetachain.com/address/0x1234567890abcdef1234567890abcdef12345678"
+    },
+    {
+      "name": "Sepolia",
+      "chainId": "11155111",
+      "rpcUrl": "https://ethereum-sepolia.publicnode.com",
+      "explorerUrl": "https://sepolia.etherscan.io",
+      "isZetaChain": false,
+      "color": "#627EEA",
+      "shortName": "Sepolia",
+      "isTestnet": true,
+      "isSupported": true,
+      "contractAddress": "0x9876543210fedcba9876543210fedcba98765432",
+      "verificationStatus": "verified",
+      "verificationError": null,
+      "verifiedUrl": "https://sepolia.etherscan.io/address/0x9876543210fedcba9876543210fedcba98765432#code",
+      "deploymentStatus": "success",
+      "explorerUrl": "https://sepolia.etherscan.io/address/0x9876543210fedcba9876543210fedcba98765432"
+    }
+  ]
+}
+```
+
+This enhanced structure makes it easy for the frontend to display rich information about the deployment status and contract verification for each chain.
+
 ## Recommended Next Steps
 
 1. **Implement User Authentication**
@@ -624,6 +685,84 @@ const formattedChain = chainInfo.getFormattedChainInfo('7001');
 // Generate an explorer URL for a transaction
 const explorerUrl = chainInfo.getExplorerTxUrl('7001', '0x123...');
 ```
+
+## ChainInfo Schema
+
+The chainInfo schema has been enhanced to include detailed information about contract deployment and verification status. This schema is consistently used across all token-related API endpoints.
+
+### Basic Chain Properties
+
+- `name`: Full chain name (e.g., "ZetaChain Testnet")
+- `chainId`: Chain identifier as string (e.g., "7001")
+- `rpcUrl`: JSON-RPC endpoint URL for the chain
+- `explorerUrl`: Base URL for the standard block explorer 
+- `isZetaChain`: Boolean indicating whether this is a ZetaChain network
+- `color`: Hex color code for UI display (e.g., "#00B386")
+- `shortName`: Abbreviated name for UI display (e.g., "ZetaChain")
+- `isTestnet`: Boolean indicating whether this is a testnet network
+- `isSupported`: Boolean indicating whether this chain is fully supported
+- `blockscoutUrl`: Base URL for Blockscout explorer if available (specific to ZetaChain and Base networks)
+
+### Contract Deployment Properties
+
+- `contractAddress`: Deployed token contract address on this chain
+- `deploymentStatus`: Current deployment status
+  - "pending": Initial state before deployment begins
+  - "deploying": Deployment in progress
+  - "success": Successfully deployed
+  - "failed": Deployment failed
+  - "retrying": Retry attempt in progress
+
+### Verification Properties
+
+- `verificationStatus`: Status of contract verification
+  - "pending": Not yet verified
+  - "processing": Verification in progress
+  - "verified": Successfully verified
+  - "failed": Verification failed
+- `verificationError`: Error message if verification failed
+- `verifiedUrl`: Direct URL to verified contract source code
+
+### Explorer URLs
+
+- `explorerUrl`: Full URL to view the contract on the standard explorer
+- `blockscoutUrl`: Full URL to view the contract on Blockscout (if applicable)
+
+### Example Usage in Frontend
+
+```javascript
+// Display contract addresses and status
+function renderContractInfo(chainInfo) {
+  return chainInfo.map(chain => (
+    <div key={chain.chainId} className="chain-card" style={{ borderColor: chain.color }}>
+      <h3>{chain.name}</h3>
+      <div className="contract-address">
+        {chain.contractAddress ? (
+          <a href={chain.explorerUrl} target="_blank" rel="noopener noreferrer">
+            {chain.contractAddress.slice(0, 6) + '...' + chain.contractAddress.slice(-4)}
+          </a>
+        ) : (
+          <span>Not deployed yet</span>
+        )}
+      </div>
+      <div className="status-badge">
+        {chain.deploymentStatus === 'success' ? (
+          <span className="success">Deployed</span>
+        ) : (
+          <span className={chain.deploymentStatus}>{chain.deploymentStatus}</span>
+        )}
+      </div>
+      {chain.verificationStatus === 'verified' && (
+        <a href={chain.verifiedUrl} className="verified-badge" target="_blank" rel="noopener noreferrer">
+          Verified Source
+        </a>
+      )}
+    </div>
+  ));
+}
+```
+
+This enhanced schema provides a consistent interface for frontend developers to display rich information about token deployment across multiple chains.
 
 ## Token Distribution CSV Format
 

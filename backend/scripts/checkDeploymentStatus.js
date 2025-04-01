@@ -37,7 +37,7 @@ async function checkDeploymentStatus(tokenId) {
     // Find all deployment logs for this token
     const deploymentLogs = await DeploymentLog.findAll({
       where: { tokenConfigId: tokenId },
-      order: [['updatedAt', 'DESC']]
+      order: [['created_at', 'DESC']]
     });
     
     console.log('\n=== DEPLOYMENT LOGS ===');

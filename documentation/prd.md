@@ -108,6 +108,13 @@ The Universal Launcher is a web application that allows non-developer users (fam
   - Etherscan and compatible explorers for other EVM chains
   - Store verification status and explorer URLs for frontend display
   - Provide proper error handling for failed verifications
+- **Enhanced API Responses:** Include detailed contract and deployment information in token responses:
+  - Contract addresses for each deployed chain
+  - Verification status (verified, pending, failed) for each contract
+  - Explorer URLs for easy contract viewing
+  - Blockscout URLs for networks using Blockscout explorers
+  - Deployment status (pending, deploying, success, failed) for each chain
+  - Links to verified contract source code
 
 ## 7. Architecture & Workflow
 

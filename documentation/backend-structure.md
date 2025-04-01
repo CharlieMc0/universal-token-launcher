@@ -151,7 +151,15 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   
 - **GET /api/tokens/{id}**
   - **Description:** Retrieve status and details for a token configuration.
-  - **Response:** Token details including name, symbol, supply, deployment status, and contract addresses.
+  - **Response:** Token details including name, symbol, supply, deployment status, and per-chain information:
+    - Chain information (name, ID, RPC URL, explorer URL)
+    - Contract addresses on each chain
+    - Contract verification status (verified, pending, failed)
+    - Contract verification error (if applicable)
+    - Links to verified contract source code
+    - Contract deployment status (pending, deploying, success, failed)
+    - Explorer URLs for direct contract viewing
+    - Blockscout URLs for networks using Blockscout
 
 - **POST /api/tokens/{id}/deploy**
   - **Description:** Trigger the deployment process after fee payment.
@@ -161,7 +169,7 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 
 - **GET /api/tokens/{id}/deployments**
   - **Description:** Get deployment logs for a specific token.
-  - **Response:** Array of deployment logs with chain-specific status and contract addresses.
+  - **Response:** Array of deployment logs with chain-specific status, contract addresses, verification details, and explorer URLs.
 
 #### 4.2.2. Transfer Transactions
 - **POST /api/transfers**
@@ -184,6 +192,41 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 - **Validation:**  
   - Use Express validator or similar middleware for input validation.
   - Return 400 Bad Request for invalid inputs, 401 Unauthorized for missing/invalid JWTs, and 500 for unexpected errors.
+
+### 4.4. Enhanced Response Format for Tokens
+
+The token API endpoints return enhanced information for each supported chain:
+
+```json
+{
+  "id": 1,
+  "tokenName": "My Token",
+  "tokenSymbol": "MTK",
+  "decimals": 18,
+  "totalSupply": "1000000",
+  "chainInfo": [
+    {
+      "name": "ZetaChain Testnet",
+      "chainId": "7001",
+      "rpcUrl": "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
+      "explorerUrl": "https://athens.explorer.zetachain.com",
+      "isZetaChain": true,
+      "color": "#00B386",
+      "shortName": "ZetaChain",
+      "isTestnet": true,
+      "blockscoutUrl": "https://athens.explorer.zetachain.com",
+      "contractAddress": "0x1234567890abcdef1234567890abcdef12345678",
+      "verificationStatus": "verified",
+      "verificationError": null,
+      "verifiedUrl": "https://athens.explorer.zetachain.com/address/0x1234...5678/contracts#address-tabs",
+      "deploymentStatus": "success",
+      "explorerUrl": "https://athens.explorer.zetachain.com/address/0x1234...5678"
+    }
+  ]
+}
+```
+
+This enhanced format enables the frontend to display rich information about the deployment status and contract verification for each chain, improving the user experience by providing direct links to block explorers and clear status indicators.
 
 ---
 

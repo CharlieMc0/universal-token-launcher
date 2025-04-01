@@ -1,6 +1,7 @@
 const TokenService = require('../services/tokenService');
 const { upload, parseCSV, processDistributionsFile, getIconUrl, getCsvPath } = require('../utils/fileUpload');
 const chainInfo = require('../utils/chainInfo');
+const logger = require('../utils/logger');
 
 /**
  * Token controller for handling API requests
@@ -119,13 +120,19 @@ class TokenController {
 
       // Enhance response with formatted chain information
       const formattedChains = chainInfo.getFormattedChainInfoList(selectedChains);
+      
+      // Add deployment status as 'pending' for all chains at creation time
+      const enhancedChainInfo = formattedChains.map(chain => ({
+        ...chain,
+        deploymentStatus: 'pending'
+      }));
 
       // Return token configuration with ID
       res.status(201).json({
         message: 'Token configuration created successfully',
         tokenId: tokenConfig.id,
         ...tokenConfig.toJSON(),
-        chainInfo: formattedChains, // Add formatted chain info
+        chainInfo: enhancedChainInfo, // Add formatted chain info with deployment status
         distributions: {
           count: distributionsJson ? distributionsJson.length : 0,
           source: req.files && req.files.distributions_csv ? 'csv' : 'json'
@@ -188,14 +195,53 @@ class TokenController {
         process.env.DEBUG !== 'true' ? creatorWallet : null
       );
 
-      // Enhance tokens with formatted chain info
-      const enhancedTokens = tokens.map(token => {
+      // Enhance tokens with formatted chain info and contract addresses
+      const enhancedTokens = await Promise.all(tokens.map(async token => {
+        // Get deployment logs for this token to enhance chain info
+        const deploymentLogs = await TokenService.getDeploymentLogs(token.id);
+        
+        // Create a map of chainId -> deployment log for easier lookup
+        const deploymentLogsByChain = deploymentLogs.reduce((acc, log) => {
+          acc[log.chainId] = log;
+          return acc;
+        }, {});
+
+        // Get basic formatted chain info
         const formattedChains = chainInfo.getFormattedChainInfoList(token.selectedChains);
+        
+        // Enhance chain info with contract addresses and verification status
+        const enhancedChainInfo = formattedChains.map(chain => {
+          const deployLog = deploymentLogsByChain[chain.chainId];
+          
+          // If we have deployment info for this chain, add it to the chain info
+          if (deployLog) {
+            return {
+              ...chain,
+              contractAddress: deployLog.contractAddress || null,
+              verificationStatus: deployLog.verificationStatus || 'pending',
+              verificationError: deployLog.verificationError || null,
+              verifiedUrl: deployLog.verifiedUrl || null,
+              deploymentStatus: deployLog.status || 'pending',
+              explorerUrl: deployLog.contractAddress ? 
+                chainInfo.getExplorerAddressUrl(chain.chainId, deployLog.contractAddress) : null,
+              // Prefer blockscout explorer if available
+              blockscoutUrl: chain.blockscoutUrl ? 
+                `${chain.blockscoutUrl}/address/${deployLog.contractAddress}` : null
+            };
+          }
+          
+          // If no deployment log, default status is 'pending'
+          return {
+            ...chain,
+            deploymentStatus: 'pending'
+          };
+        });
+
         return {
           ...token.toJSON(),
-          chainInfo: formattedChains
+          chainInfo: enhancedChainInfo
         };
-      });
+      }));
 
       res.status(200).json(enhancedTokens);
     } catch (error) {
@@ -215,19 +261,58 @@ class TokenController {
     try {
       const { id } = req.params;
       const creatorWallet = req.wallet;
+      const isDebugMode = process.env.DEBUG === 'true' || req.headers['x-debug-mode'] === 'true';
 
       const token = await TokenService.getTokenById(id);
 
       // Check ownership in production/auth mode
-      if (process.env.DEBUG !== 'true' && token.creatorWallet !== creatorWallet) {
+      if (!isDebugMode && token.creatorWallet !== creatorWallet) {
         return res.status(403).json({ message: 'Unauthorized access to token configuration' });
       }
 
-      // Enhance token with formatted chain info
+      // Get deployment logs to enhance chain info with contract addresses and verification status
+      const deploymentLogs = await TokenService.getDeploymentLogs(id);
+      
+      // Create a map of chainId -> deployment log for easier lookup
+      const deploymentLogsByChain = deploymentLogs.reduce((acc, log) => {
+        acc[log.chainId] = log;
+        return acc;
+      }, {});
+
+      // Get basic formatted chain info
       const formattedChains = chainInfo.getFormattedChainInfoList(token.selectedChains);
+      
+      // Enhance chain info with contract addresses and verification status
+      const enhancedChainInfo = formattedChains.map(chain => {
+        const deployLog = deploymentLogsByChain[chain.chainId];
+        
+        // If we have deployment info for this chain, add it to the chain info
+        if (deployLog) {
+          return {
+            ...chain,
+            contractAddress: deployLog.contractAddress || null,
+            verificationStatus: deployLog.verificationStatus || 'pending',
+            verificationError: deployLog.verificationError || null,
+            verifiedUrl: deployLog.verifiedUrl || null,
+            deploymentStatus: deployLog.status || 'pending',
+            explorerUrl: deployLog.contractAddress ? 
+              chainInfo.getExplorerAddressUrl(chain.chainId, deployLog.contractAddress) : null,
+            // Prefer blockscout explorer if available
+            blockscoutUrl: chain.blockscoutUrl ? 
+              `${chain.blockscoutUrl}/address/${deployLog.contractAddress}` : null
+          };
+        }
+        
+        // If no deployment log, default status is 'pending'
+        return {
+          ...chain,
+          deploymentStatus: 'pending'
+        };
+      });
+
       const enhancedToken = {
         ...token.toJSON(),
-        chainInfo: formattedChains
+        chainInfo: enhancedChainInfo
       };
 
       res.status(200).json(enhancedToken);
@@ -248,16 +333,19 @@ class TokenController {
     try {
       const { id } = req.params;
       const creatorWallet = req.wallet;
+      const isDebugMode = process.env.DEBUG === 'true' || req.headers['x-debug-mode'] === 'true';
 
       // Check ownership in production/auth mode
-      if (process.env.DEBUG !== 'true') {
+      if (!isDebugMode) {
         const token = await TokenService.getTokenById(id);
         if (token.creatorWallet !== creatorWallet) {
           return res.status(403).json({ message: 'Unauthorized access to deployment logs' });
         }
       }
 
+      logger.info(`[Controller] Fetching deployment logs for tokenId: ${id}`);
       const logs = await TokenService.getDeploymentLogs(id);
+      logger.info(`[Controller] Received ${logs ? logs.length : 0} logs from TokenService for tokenId: ${id}`);
       
       // Enhance logs with explorer URLs if transaction hash exists
       const enhancedLogs = logs.map(log => {
@@ -276,9 +364,13 @@ class TokenController {
         // Add formatted chain info
         enhancedLog.chainInfo = chainInfo.getFormattedChainInfo(log.chainId);
         
+        // Ensure deploymentStatus is included explicitly for consistency
+        enhancedLog.deploymentStatus = log.status || 'pending';
+        
         return enhancedLog;
       });
       
+      logger.info(`[Controller] Sending ${enhancedLogs.length} enhanced logs for tokenId: ${id}`);
       res.status(200).json(enhancedLogs);
     } catch (error) {
       console.error(`Error getting deployment logs: ${error.message}`);
@@ -312,8 +404,8 @@ class TokenController {
         }
       }
 
-      // Deploy token
-      await TokenService.deployToken(id, fee_paid_tx);
+      // Deploy token - DO NOT AWAIT HERE, let it run in background
+      TokenService.deployToken(id, fee_paid_tx);
 
       // Get ZetaChain explorer URL for the fee transaction
       const zetaChainId = chainInfo.getPrimaryZetaChainId();
@@ -384,6 +476,108 @@ class TokenController {
       console.error(`Error adding token distributions: ${error.message}`);
       res.status(error.message.includes('not found') ? 404 : 500).json({
         message: `Failed to add distributions: ${error.message}`
+      });
+    }
+  }
+
+  /**
+   * Get universal tokens held by a specific user wallet address.
+   * This involves querying a block explorer for tokens held on ZetaChain
+   * and matching them against tokens deployed by this application.
+   * @param {Request} req - Express request object
+   * @param {Response} res - Express response object
+   */
+  async getUserTokens(req, res) {
+    try {
+      const { walletAddress } = req.params;
+      
+      // Validate wallet address format (basic check)
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        return res.status(400).json({ message: 'Invalid wallet address format' });
+      }
+
+      // Call the service function to find universal tokens held by the user
+      const tokens = await TokenService.findUserUniversalTokens(walletAddress);
+      
+      // Enhance tokens with detailed chain info and deployment details
+      const enhancedTokens = await Promise.all(tokens.map(async token => {
+        // Get deployment logs for this token if it has an id
+        let deploymentLogs = [];
+        if (token.id) {
+          deploymentLogs = await TokenService.getDeploymentLogs(token.id);
+        }
+        
+        // Create a map of chainId -> deployment log for easier lookup
+        const deploymentLogsByChain = deploymentLogs.reduce((acc, log) => {
+          acc[log.chainId] = log;
+          return acc;
+        }, {});
+
+        // Ensure deployedChains is an array derived from the keys of deployedContracts
+        const deployedChainIds = Object.keys(token.deployedContracts || {}); 
+        const formattedChains = chainInfo.getFormattedChainInfoList(deployedChainIds);
+        
+        // Enhance chain info with contract addresses and verification status
+        const enhancedChainInfo = formattedChains.map(chain => {
+          const contractAddress = token.deployedContracts ? token.deployedContracts[chain.chainId] : null;
+          const deployLog = deploymentLogsByChain[chain.chainId];
+          
+          // Base enhanced chain info with contract address from token.deployedContracts
+          const enhancedChain = {
+            ...chain,
+            contractAddress: contractAddress,
+            deploymentStatus: 'success' // Default to success if in deployedContracts
+          };
+          
+          // If we have deployment log info for this chain, add verification details
+          if (deployLog) {
+            return {
+              ...enhancedChain,
+              verificationStatus: deployLog.verificationStatus || 'pending',
+              verificationError: deployLog.verificationError || null,
+              verifiedUrl: deployLog.verifiedUrl || null,
+              deploymentStatus: deployLog.status || 'success', // Use log status if available
+              explorerUrl: contractAddress ? 
+                chainInfo.getExplorerAddressUrl(chain.chainId, contractAddress) : null,
+              // Prefer blockscout explorer if available
+              blockscoutUrl: chain.blockscoutUrl ? 
+                `${chain.blockscoutUrl}/address/${contractAddress}` : null
+            };
+          }
+          
+          // If no deployment log but we have a contract address, add explorer URLs
+          if (contractAddress) {
+            return {
+              ...enhancedChain,
+              explorerUrl: chainInfo.getExplorerAddressUrl(chain.chainId, contractAddress),
+              // Prefer blockscout explorer if available
+              blockscoutUrl: chain.blockscoutUrl ? 
+                `${chain.blockscoutUrl}/address/${contractAddress}` : null
+            };
+          }
+          
+          return enhancedChain;
+        });
+        
+        return {
+          id: token.id, // Assuming tokenConfig ID is returned
+          name: token.tokenName,
+          symbol: token.tokenSymbol,
+          iconUrl: token.iconUrl,
+          deployedContracts: token.deployedContracts, // Map of chainId -> contractAddress
+          deployedChains: deployedChainIds, // Array of chain IDs for convenience
+          chainInfo: enhancedChainInfo, // Enhanced info with verification status and explorer URLs
+          // Note: Balances are not included here, frontend needs to fetch them
+          balances: {} // Placeholder for frontend structure
+        };
+      }));
+      
+      res.status(200).json(enhancedTokens);
+    } catch (error) {
+      console.error(`Error getting user tokens for ${req.params.walletAddress}: ${error.message}`);
+      // Consider more specific error handling (e.g., for Blockscout API errors)
+      res.status(500).json({
+        message: `Failed to get user tokens: ${error.message}`
       });
     }
   }

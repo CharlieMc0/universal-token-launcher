@@ -22,6 +22,9 @@ router.get('/tokens/:id', TokenController.getTokenById);
 router.get('/tokens/:id/logs', TokenController.getDeploymentLogs);
 router.post('/tokens/:id/deploy', TokenController.deployToken);
 
+// Add route for getting tokens held by a specific user
+router.get('/users/:walletAddress/tokens', TokenController.getUserTokens);
+
 // CSV upload and processing route
 router.post('/distributions/csv', upload.single('distributions_csv'), TokenController.uploadDistributionsCSV);
 

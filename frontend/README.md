@@ -36,38 +36,60 @@ The application includes robust transaction handling for token deployment:
 
 ### Transaction Features
 
-- **Progressive Status Updates:** Shows step-by-step progress during token creation and deployment
-- **Transaction Retry:** Provides a retry button when transactions fail, with up to 3 retry attempts
-- **Clear Error Messages:** Displays detailed error information with specific messages for common issues
-- **Immediate Token ID Display:** Shows token ID as soon as it's created, even if transaction fails
-- **Wallet Connection Verification:** Ensures wallet is connected before attempting transactions
-- **Chain ID Specification:** Explicitly sets chain ID to ensure transactions happen on the correct network
-- **Transaction Hash Display:** Shows the transaction hash with link to ZetaChain block explorer
-- **Wallet Readiness Check:** Verifies wallet client is fully initialized before attempting transactions
-- **Transaction Confirmation:** Waits for blockchain confirmation before notifying the backend
+- **Progressive Status Updates:** Shows step-by-step progress during token creation, fee payment, transaction confirmation, backend deployment initiation, and status polling.
+- **Transaction Retry:** Provides a retry button when fee payment transactions fail, with up to 3 retry attempts.
+- **Clear Error Messages:** Displays detailed error information for transaction failures, confirmation timeouts, and backend deployment failures.
+- **Immediate Token ID Display:** Shows token ID as soon as the configuration is created.
+- **Wallet Connection Verification:** Ensures wallet is connected before attempting transactions.
+- **Chain ID Specification:** Explicitly sets chain ID to ensure fee transactions happen on the correct network (ZetaChain).
+- **Transaction Hash Display:** Shows the fee payment transaction hash with a link to ZetaChain block explorer.
+- **Wallet Readiness Check:** Verifies wallet client is fully initialized before attempting transactions.
+- **Transaction Confirmation:** Waits for on-chain confirmation of the fee payment before notifying the backend.
+- **Deployment Status Polling:** After initiating deployment with the backend, the frontend polls periodically to check the final deployment status (`completed` or `failed`).
+- **Deployment Confirmation Display:** Renders a detailed confirmation view (`DeploymentConfirmation` component) upon successful completion, showing deployed contracts, chains, verification status, and explorer links.
 
 ### Transaction Workflow
 
 1. **Pre-Transaction Validation:**
-   - Ensures wallet is properly connected
-   - Verifies user is on ZetaChain network
-   - Confirms wallet client is fully ready
-   
-2. **Transaction Preparation:**
-   - Clearly communicates waiting for wallet signature
-   - Prepares transaction parameters with explicit chain ID
-   - Handles common error scenarios with specific error messages
-   
-3. **Transaction Confirmation:**
-   - Displays transaction hash immediately after submission
-   - Shows block explorer link for transaction tracking
-   - Polls for transaction confirmation on the blockchain
-   - Only notifies backend API after transaction is confirmed
-   
-4. **Error Recovery:**
-   - Provides retry functionality with attempt tracking
-   - Shows clear error messages based on error type
-   - Preserves token ID even if transaction fails
+   - Ensures wallet is properly connected.
+   - Verifies user is on ZetaChain network.
+   - Confirms wallet client is fully ready.
+   - Validates form inputs.
+
+2. **Token Configuration Creation:**
+   - Frontend calls `POST /api/tokens` with configuration data.
+   - Backend creates the `TokenConfiguration` record and returns the `tokenId`.
+
+3. **Fee Payment Transaction:**
+   - Frontend prompts user to sign the fee payment transaction (1 ZETA to service wallet).
+   - Clearly communicates waiting for wallet signature.
+   - Prepares transaction parameters with explicit `chainId` (ZetaChain).
+   - Handles common error scenarios (user rejection, insufficient funds).
+
+4. **On-Chain Transaction Confirmation:**
+   - Displays fee transaction hash immediately after submission.
+   - Shows block explorer link for transaction tracking.
+   - Polls the blockchain (`publicClient.getTransactionReceipt`) until the fee transaction is confirmed (`status: 'success'`).
+   - Handles confirmation timeouts or reverted transactions.
+
+5. **Backend Deployment Initiation:**
+   - After fee transaction confirmation, frontend calls `POST /api/tokens/:id/deploy` with the confirmed fee transaction hash.
+   - Backend starts the asynchronous contract deployment process.
+
+6. **Deployment Status Polling:**
+   - Frontend enters a polling state (`useEffect` hook).
+   - Periodically calls `GET /api/tokens/:id` to check the `deployment_status` field.
+   - Updates UI with messages like "Backend is deploying contracts...".
+
+7. **Deployment Completion/Failure:**
+   - **If status becomes `completed`:**
+     - Polling stops.
+     - Frontend calls `GET /api/tokens/:id/logs` to fetch detailed deployment results.
+     - Frontend renders the `DeploymentConfirmation` component with the logs.
+   - **If status becomes `failed`:**
+     - Polling stops.
+     - Frontend may call `GET /api/tokens/:id/logs` to get partial results or error details.
+     - Frontend displays an error message indicating deployment failure.
 
 ### Common Transaction Issues & Solutions
 

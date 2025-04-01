@@ -5,13 +5,16 @@ const getCurrentWallet = (req, res, next) => {
   // Check if request includes a wallet address in headers or query params
   const wallet = req.headers['x-wallet-address'] || req.query.wallet;
   
-  if (!wallet && process.env.DEBUG !== 'true') {
+  // Check for debug mode via environment variable or debug header
+  const isDebugMode = process.env.DEBUG === 'true' || req.headers['x-debug-mode'] === 'true';
+  
+  if (!wallet && !isDebugMode) {
     return res.status(401).json({ message: 'No wallet address provided' });
   }
   
   // For development/testing, allow setting a test wallet
-  if (process.env.DEBUG === 'true' && !wallet) {
-    req.wallet = process.env.TEST_WALLET_PRIVATE_KEY;
+  if (isDebugMode && !wallet) {
+    req.wallet = process.env.TEST_WALLET_ADDRESS; // Using correct env var for test wallet
     console.log(`[DEBUG] Using test wallet: ${req.wallet}`);
     return next();
   }
