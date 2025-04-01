@@ -17,8 +17,9 @@ import './App.css';
 
 // Import pages
 import HomePage from './pages/Home';
-import LaunchPage from './pages/Launch';
+import CreatePage from './pages/Create';
 import TransferPage from './pages/Transfer';
+import BuyPage from './pages/Buy';
 // Import Layout
 import Layout from './components/layout/Layout';
 
@@ -54,7 +55,7 @@ const connectors = connectorsForWallets([
     groupName: 'Recommended',
     wallets: [
       metaMaskWallet({ chains }),
-      coinbaseWallet({ appName: 'Universal Token Launcher', chains }),
+      coinbaseWallet({ appName: 'Universal Launcher', chains }),
     ],
   },
 ]);
@@ -81,8 +82,9 @@ function App() {
         <Router>
           <Routes>
             <Route path="/" element={<Layout><HomePage /></Layout>} />
-            <Route path="/launch" element={<Layout><LaunchPage /></Layout>} />
+            <Route path="/create" element={<Layout><CreatePage /></Layout>} />
             <Route path="/transfer" element={<Layout><TransferPage /></Layout>} />
+            <Route path="/buy" element={<Layout><BuyPage /></Layout>} />
             {/* Add more routes as needed */}
           </Routes>
         </Router>

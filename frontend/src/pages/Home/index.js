@@ -28,40 +28,50 @@ const HeroSubtitle = styled.p`
   color: var(--text-secondary);
 `;
 
-const ButtonGroup = styled.div`
+const ActionGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: 800px;
+  width: 100%;
+  margin-top: 20px;
+`;
+
+const ActionCard = styled(Link)`
+  background-color: ${props => props.primary ? 'var(--accent-primary)' : 'transparent'};
+  color: white;
+  border: 1px solid ${props => props.primary ? 'var(--accent-primary)' : 'var(--border)'};
+  padding: 32px 20px;
+  border-radius: 12px;
+  text-align: center;
+  text-decoration: none;
+  transition: all 0.2s ease;
   display: flex;
-  gap: 16px;
-  margin-top: 16px;
-`;
-
-const PrimaryButton = styled(Link)`
-  background-color: var(--accent-primary);
-  color: white;
-  padding: 14px 32px;
-  border-radius: 8px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   
   &:hover {
-    opacity: 0.9;
-    transform: translateY(-2px);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    background-color: ${props => props.primary ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.05)'};
   }
 `;
 
-const SecondaryButton = styled(Link)`
-  background-color: transparent;
-  color: white;
-  padding: 14px 32px;
-  border-radius: 8px;
+const ActionIcon = styled.div`
+  font-size: 32px;
+  margin-bottom: 16px;
+`;
+
+const ActionTitle = styled.h3`
+  font-size: 20px;
   font-weight: 600;
-  text-decoration: none;
-  border: 1px solid var(--border);
-  transition: all 0.2s ease;
-  
-  &:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-  }
+  margin-bottom: 8px;
+`;
+
+const ActionDescription = styled.p`
+  font-size: 14px;
+  color: ${props => props.primary ? 'rgba(255, 255, 255, 0.8)' : 'var(--text-secondary)'};
 `;
 
 const FeaturesSection = styled.section`
@@ -115,19 +125,35 @@ const HomePage = () => {
     <>
       <HeroSection>
         <HeroTitle>
-          Deploy Universal Tokens across <Highlight>Multiple Chains</Highlight>
+          Deploy Universal Tokens & NFTs across <Highlight>Multiple Chains</Highlight>
         </HeroTitle>
         <HeroSubtitle>
-          The Universal Token Launcher allows you to configure and deploy tokens on multiple chains with a single transaction, powered by ZetaChain's cross-chain technology.
+          The Universal Launcher allows you to configure and deploy tokens and NFTs on multiple chains with a single transaction, powered by ZetaChain's cross-chain technology.
         </HeroSubtitle>
-        <ButtonGroup>
-          <PrimaryButton to="/launch">Launch Your Token</PrimaryButton>
-          <SecondaryButton to="/transfer">Transfer Tokens</SecondaryButton>
-        </ButtonGroup>
+        
+        <ActionGrid>
+          <ActionCard to="/create">
+            <ActionIcon>🚀</ActionIcon>
+            <ActionTitle>Create</ActionTitle>
+            <ActionDescription>Launch tokens or NFT collections that work seamlessly across multiple blockchains</ActionDescription>
+          </ActionCard>
+          
+          <ActionCard to="/transfer">
+            <ActionIcon>⛓️</ActionIcon>
+            <ActionTitle>Transfer</ActionTitle>
+            <ActionDescription>Move your tokens and NFTs between any supported blockchain networks</ActionDescription>
+          </ActionCard>
+          
+          <ActionCard to="/buy">
+            <ActionIcon>💰</ActionIcon>
+            <ActionTitle>Buy</ActionTitle>
+            <ActionDescription>Purchase NFTs using cross-chain assets and see your upcoming token marketplace</ActionDescription>
+          </ActionCard>
+        </ActionGrid>
       </HeroSection>
 
       <FeaturesSection>
-        <SectionTitle>Why Use Universal Token Launcher</SectionTitle>
+        <SectionTitle>Why Use Universal Launcher</SectionTitle>
         <FeatureGrid>
           <FeatureCard>
             <FeatureIcon>🚀</FeatureIcon>
@@ -150,6 +176,22 @@ const HomePage = () => {
             <FeatureTitle>Cost Efficient</FeatureTitle>
             <FeatureText>
               Pay a single fee in ZETA to deploy your token across multiple chains.
+            </FeatureText>
+          </FeatureCard>
+
+          <FeatureCard>
+            <FeatureIcon>🖼️</FeatureIcon>
+            <FeatureTitle>Universal NFTs</FeatureTitle>
+            <FeatureText>
+              Create NFT collections that work seamlessly across multiple blockchains.
+            </FeatureText>
+          </FeatureCard>
+          
+          <FeatureCard>
+            <FeatureIcon>💰</FeatureIcon>
+            <FeatureTitle>Multi-Asset Purchase</FeatureTitle>
+            <FeatureText>
+              Buy NFTs using any ZRC20 asset, including Bitcoin, and mint on your preferred chain.
             </FeatureText>
           </FeatureCard>
         </FeatureGrid>

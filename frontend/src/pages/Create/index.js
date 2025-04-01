@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import TransferTokens from './TransferTokens';
-import TransferNFTPage from '../TransferNFT';
+import LaunchPage from '../Launch';
+import LaunchNFTPage from '../LaunchNFT';
 
 // Styled Components
 const PageContainer = styled.div`
@@ -11,7 +11,7 @@ const PageContainer = styled.div`
 `;
 
 const PageTitle = styled.h1`
-  margin-bottom: 16px;
+  margin-bottom: 32px;
   text-align: center;
 `;
 
@@ -50,14 +50,14 @@ const ContentContainer = styled.div`
   width: 100%;
 `;
 
-const TransferPage = () => {
+const CreatePage = () => {
   const [activeTab, setActiveTab] = useState('token'); // 'token' or 'nft'
   
   return (
     <PageContainer>
-      <PageTitle>Transfer Digital Assets</PageTitle>
+      <PageTitle>Create Digital Assets</PageTitle>
       <PageDescription>
-        Move your tokens or NFTs between chains effortlessly with ZetaChain's cross-chain technology.
+        Launch tokens or NFT collections that work seamlessly across multiple blockchains with ZetaChain technology.
       </PageDescription>
       
       <ToggleContainer>
@@ -66,22 +66,22 @@ const TransferPage = () => {
           position="left"
           onClick={() => setActiveTab('token')}
         >
-          Transfer Tokens
+          Create Token
         </ToggleButton>
         <ToggleButton 
           active={activeTab === 'nft'} 
           position="right"
           onClick={() => setActiveTab('nft')}
         >
-          Transfer NFTs
+          Create NFT Collection
         </ToggleButton>
       </ToggleContainer>
       
       <ContentContainer>
-        {activeTab === 'token' ? <TransferTokens embedded={true} /> : <TransferNFTPage embedded={true} />}
+        {activeTab === 'token' ? <LaunchPage embedded={true} /> : <LaunchNFTPage embedded={true} />}
       </ContentContainer>
     </PageContainer>
   );
 };
 
-export default TransferPage; 
+export default CreatePage; 

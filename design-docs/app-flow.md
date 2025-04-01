@@ -1,6 +1,6 @@
-# Universal Token Launcher Application Flow
+# Universal Launcher Application Flow
 
-This document provides a comprehensive walkthrough of the user journey through the Universal Token Launcher application, with special attention to potential pain points and best practices based on our implementation experience.
+This document provides a comprehensive walkthrough of the user journey through the Universal Launcher application, with special attention to potential pain points and best practices based on our implementation experience.
 
 ---
 
@@ -82,26 +82,82 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 2. Token Creation Interface
+## 2. Create Flow
 
 ### Flow Stages
-1. **Form Input**
+1. **Asset Type Selection**
+   - User arrives at the Create page
+   - User selects between "Create Token" or "Create NFT Collection" using toggle buttons
+   - System shows the appropriate creation form based on selection
+
+2. **Token Creation Form** (when "Create Token" is selected)
    - User enters token details (name, symbol, total supply, decimals)
    - User uploads token icon
-   - System displays icon preview
    - User selects target chains for deployment
+   - User configures token distribution
 
-2. **Distribution Configuration**
-   - User adds recipient addresses and amounts manually or via CSV upload
-   - System validates addresses and CSV format
-   - System displays distribution preview
+3. **NFT Collection Creation Form** (when "Create NFT Collection" is selected)
+   - User enters collection details (name, description, quantity, price)
+   - User uploads collection artwork
+   - User selects target chains for deployment
+   - User optionally configures free NFT distribution
 
-3. **Fee Information**
+4. **Fee Information**
    - System displays required deployment fee (1 ZETA)
    - System shows user's current ZETA balance
    - System validates sufficient balance for deployment
 
 ### Key Technical Considerations
+- **Toggle Implementation**
+  ```javascript
+  const [activeTab, setActiveTab] = useState('token'); // 'token' or 'nft'
+  
+  return (
+    <PageContainer>
+      <PageTitle>Create Digital Assets</PageTitle>
+      <PageDescription>
+        Launch tokens or NFT collections that work seamlessly across multiple blockchains with ZetaChain technology.
+      </PageDescription>
+      
+      <ToggleContainer>
+        <ToggleButton 
+          active={activeTab === 'token'} 
+          position="left"
+          onClick={() => setActiveTab('token')}
+        >
+          Create Token
+        </ToggleButton>
+        <ToggleButton 
+          active={activeTab === 'nft'} 
+          position="right"
+          onClick={() => setActiveTab('nft')}
+        >
+          Create NFT Collection
+        </ToggleButton>
+      </ToggleContainer>
+      
+      {activeTab === 'token' ? <LaunchPage embedded={true} /> : <LaunchNFTPage embedded={true} />}
+    </PageContainer>
+  );
+  ```
+
+- **Embedded Page Design**
+  - Original pages are reused with an `embedded` prop
+  - When embedded, page titles and padding are adjusted
+  ```javascript
+  const PageContainer = styled.div`
+    max-width: ${props => props.embedded ? '100%' : '800px'};
+    margin: 0 auto;
+    padding: ${props => props.embedded ? '0' : '40px 20px'};
+  `;
+
+  const PageTitle = styled.h1`
+    margin-bottom: 32px;
+    text-align: center;
+    display: ${props => props.embedded ? 'none' : 'block'};
+  `;
+  ```
+
 - **Form Data Preparation**
   ```javascript
   // Correctly prepare form data with exact field names
@@ -157,7 +213,7 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 3. Token Deployment Process
+## 3. Asset Deployment Process
 
 ### Flow Stages
 1. **Fee Payment**
@@ -258,35 +314,62 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 4. Token Transfer Flow
+## 4. Transfer Flow
 
 ### Flow Stages
-1. **Token Selection**
+1. **Asset Type Selection**
+   - User arrives at the Transfer page
+   - User selects between "Transfer Tokens" or "Transfer NFTs" using toggle buttons
+   - System shows the appropriate transfer interface based on selection
+
+2. **Token Transfer Interface** (when "Transfer Tokens" is selected)
    - User views all their tokens grouped by name
    - Each token shows balances across different chains
    - User clicks on a token+chain combination to select as source
-   - Selected token+chain is highlighted
+   - User selects destination chains
+   - User enters transfer amount and recipient address (optional)
 
-2. **Destination Selection**
-   - Selected token card appears below
-   - Shows source chain and current balance
-   - Displays all available destination chains as tiles
-   - User can select multiple destination chains
-   - "Coming Soon" chains are disabled
-
-3. **Transfer Details**
-   - User enters transfer amount
-   - Optional recipient address (defaults to user's address)
-   - Shows available balance for reference
-   - Submit button enabled when all required fields are filled
-
-4. **Transfer Processing**
-   - User clicks "Transfer Tokens"
-   - System initiates cross-chain transfer
-   - Shows transaction hash with link to explorer
-   - Displays success message with transfer details
+3. **NFT Transfer Interface** (when "Transfer NFTs" is selected)
+   - User views all their NFT collections
+   - User selects an NFT to transfer
+   - User selects a destination chain
+   - User enters recipient address
+   - System processes the NFT transfer
 
 ### Key Technical Considerations
+- **Toggle Implementation**
+  ```javascript
+  const [activeTab, setActiveTab] = useState('token'); // 'token' or 'nft'
+  
+  return (
+    <PageContainer>
+      <PageTitle>Transfer Digital Assets</PageTitle>
+      <PageDescription>
+        Move your tokens or NFTs between chains effortlessly with ZetaChain's cross-chain technology.
+      </PageDescription>
+      
+      <ToggleContainer>
+        <ToggleButton 
+          active={activeTab === 'token'} 
+          position="left"
+          onClick={() => setActiveTab('token')}
+        >
+          Transfer Tokens
+        </ToggleButton>
+        <ToggleButton 
+          active={activeTab === 'nft'} 
+          position="right"
+          onClick={() => setActiveTab('nft')}
+        >
+          Transfer NFTs
+        </ToggleButton>
+      </ToggleContainer>
+      
+      {activeTab === 'token' ? <TransferTokens embedded={true} /> : <TransferNFTPage embedded={true} />}
+    </PageContainer>
+  );
+  ```
+
 - **Token Data Structure**
   ```javascript
   const token = {
@@ -362,18 +445,90 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 5. Additional Workflows
+## 5. Buy Flow
 
-### Token Management & Transfer
+### Flow Stages
+1. **Asset Type Selection**
+   - User arrives at the Buy page
+   - User selects between "Buy Tokens" or "Buy NFTs" using toggle buttons
+   - System shows the appropriate purchasing interface based on selection
+
+2. **NFT Purchase Interface** (when "Buy NFTs" is selected)
+   - User views available NFT collections
+   - User selects a collection to purchase from
+   - User selects ZRC20 payment asset (including Bitcoin)
+   - User selects destination chain for minting
+   - User selects quantity and completes purchase
+
+3. **Token Purchase Interface** (when "Buy Tokens" is selected)
+   - System displays "Coming Soon" message
+   - Future implementation will allow purchasing tokens with ZRC20 assets
+
+### Key Technical Considerations
+- **Toggle Implementation**
+  ```javascript
+  const [activeTab, setActiveTab] = useState('nft'); // 'token' or 'nft'
+  
+  return (
+    <PageContainer>
+      <PageTitle>Buy Digital Assets</PageTitle>
+      <PageDescription>
+        Purchase tokens or NFTs using any ZRC20 asset, including Bitcoin, and receive them on your preferred chain.
+      </PageDescription>
+      
+      <ToggleContainer>
+        <ToggleButton 
+          active={activeTab === 'token'} 
+          position="left"
+          onClick={() => setActiveTab('token')}
+        >
+          Buy Tokens
+        </ToggleButton>
+        <ToggleButton 
+          active={activeTab === 'nft'} 
+          position="right"
+          onClick={() => setActiveTab('nft')}
+        >
+          Buy NFTs
+        </ToggleButton>
+      </ToggleContainer>
+      
+      {activeTab === 'nft' ? (
+        <BuyNFTPage embedded={true} />
+      ) : (
+        <ComingSoon>
+          <ComingSoonTitle>Token Marketplace Coming Soon</ComingSoonTitle>
+          <ComingSoonText>
+            Our token marketplace is currently under development. Soon you'll be able to purchase tokens using any ZRC20 asset!
+          </ComingSoonText>
+        </ComingSoon>
+      )}
+    </PageContainer>
+  );
+  ```
+
+- **Payment Options Implementation**
+  ```javascript
+  // Handle payment asset selection
+  const handlePaymentAssetSelect = (asset) => {
+    setSelectedPaymentAsset(asset);
+  };
+  
+  // Handle mint chain selection
+  const handleMintChainSelect = (chain) => {
+    setSelectedMintChain(chain);
+  };
+  ```
+
+---
+
+## 6. Additional Workflows
+
+### Asset Management Dashboard
 1. **Dashboard View**
-   - Show all created tokens with summary information
-   - Display token balances across chains
-   - Provide options to view details or transfer tokens
-
-2. **Token Transfer**
-   - Allow selection of source and destination chains
-   - Show estimated fees and transaction times
-   - Process and track cross-chain transfers
+   - Show all created assets with summary information
+   - Display token balances and NFT holdings across chains
+   - Provide options to view details or perform actions
 
 ### Technical Considerations
 - **Native Balance Checking**
@@ -386,7 +541,7 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 6. Error Handling & Recovery
+## 7. Error Handling & Recovery
 
 ### Common Error Scenarios
 1. **Wallet Connection Errors**
@@ -440,7 +595,7 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 7. Best Practices & Lessons Learned
+## 8. Best Practices & Lessons Learned
 
 ### Frontend Best Practices
 1. **Wallet Integration**
@@ -473,14 +628,26 @@ This document provides a comprehensive walkthrough of the user journey through t
 
 ---
 
-## 8. Flow Diagrams
+## 9. Flow Diagrams
 
-### Main User Flow
+### Main User Flows
 ```
-Landing Page → Connect Wallet → Switch to ZetaChain →
-Token Creation Form → Enter Details → Upload Icon →
+Landing Page → Connect Wallet → Switch to ZetaChain
+
+CREATE FLOW:
+Create Page → Toggle Asset Type → Enter Details → 
 Add Distributions → Validate & Deploy → Pay Fee →
 Monitor Deployment → View Success
+
+TRANSFER FLOW:
+Transfer Page → Toggle Asset Type → Select Asset →
+Select Destination → Enter Amount/Recipient → Submit →
+View Transaction Status
+
+BUY FLOW:
+Buy Page → Toggle Asset Type → Select Collection →
+Select Payment Asset → Select Destination Chain →
+Enter Quantity → Complete Purchase
 ```
 
 ### Error Recovery Flows
@@ -492,5 +659,4 @@ Deployment Error → View Details → Retry Deployment
 
 ---
 
-This application flow document provides a comprehensive guide to implementing the Universal Token Launcher, with particular attention to avoiding common pitfalls and ensuring a smooth user experience.
-```
+This application flow document provides a comprehensive guide to implementing the Universal Launcher, with particular attention to avoiding common pitfalls and ensuring a smooth user experience.

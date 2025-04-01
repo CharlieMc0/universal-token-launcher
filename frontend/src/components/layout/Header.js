@@ -77,18 +77,21 @@ const Header = () => {
   return (
     <HeaderContainer>
       <LogoContainer to="/">
-        <Logo>Universal <LogoHighlight>Token Launcher</LogoHighlight></Logo>
+        <Logo>Universal <LogoHighlight>Launcher</LogoHighlight></Logo>
       </LogoContainer>
       
       <Navigation>
         <NavLink to="/" active={location.pathname === '/' ? 1 : 0}>
           Home
         </NavLink>
-        <NavLink to="/launch" active={location.pathname === '/launch' ? 1 : 0}>
-          Launch Token
+        <NavLink to="/create" active={location.pathname === '/create' ? 1 : 0}>
+          Create
         </NavLink>
         <NavLink to="/transfer" active={location.pathname === '/transfer' ? 1 : 0}>
-          Transfer Tokens
+          Transfer
+        </NavLink>
+        <NavLink to="/buy" active={location.pathname === '/buy' ? 1 : 0}>
+          Buy
         </NavLink>
       </Navigation>
       

@@ -22,16 +22,22 @@ const ZETACHAIN_ID = 7001; // Athens Testnet
 const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x123456789012345678901234567890'; // Replace with actual wallet
 
 const PageContainer = styled.div`
-  padding: 24px;
-  max-width: 800px;
+  max-width: ${props => props.embedded ? '100%' : '800px'};
   margin: 0 auto;
+  padding: ${props => props.embedded ? '0' : '40px 20px'};
+`;
+
+const PageTitle = styled.h1`
+  margin-bottom: 32px;
+  text-align: center;
+  display: ${props => props.embedded ? 'none' : 'block'};
 `;
 
 const FormContainer = styled.div`
   background-color: var(--card-bg);
   border-radius: 12px;
   padding: 24px;
-  margin-top: 24px;
+  margin-bottom: 32px;
 `;
 
 const SectionTitle = styled.h2`
@@ -55,9 +61,9 @@ const FormGroup = styled.div`
 `;
 
 const ButtonContainer = styled.div`
-  margin-top: 32px;
   display: flex;
   justify-content: center;
+  margin-top: 32px;
 `;
 
 const SubmitButton = styled.button`
@@ -65,19 +71,20 @@ const SubmitButton = styled.button`
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 12px 24px;
+  padding: 14px 32px;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
   
   &:hover {
-    background-color: #2987d8;
+    opacity: 0.9;
   }
   
   &:disabled {
-    background-color: #6c7a89;
+    background-color: #666;
     cursor: not-allowed;
+    opacity: 0.7;
   }
 `;
 
@@ -108,6 +115,7 @@ const ErrorMessage = styled.div`
   color: var(--error);
   padding: 12px;
   border-radius: 8px;
+  background-color: rgba(255, 82, 82, 0.1);
   margin-top: 16px;
   text-align: center;
 `;
@@ -134,7 +142,7 @@ const ToggleButton = styled.button`
   }
 `;
 
-const LaunchPage = () => {
+const LaunchPage = ({ embedded = false }) => {
   const { address, isConnected } = useAccount();
   const currentChainId = useChainId();
   const isZetaChainNetwork = currentChainId === ZETACHAIN_ID;
@@ -337,31 +345,34 @@ const LaunchPage = () => {
   
   if (!isConnected) {
     return (
-      <PageContainer>
-        <SectionTitle>Launch Token</SectionTitle>
-        <p>Please connect your wallet to continue.</p>
+      <PageContainer embedded={embedded}>
+        <PageTitle embedded={embedded}>Launch Token</PageTitle>
+        <FormContainer>
+          <p>Please connect your wallet to continue.</p>
+        </FormContainer>
       </PageContainer>
     );
   }
   
   return (
-    <PageContainer>
-      <SectionTitle>Launch Token</SectionTitle>
+    <PageContainer embedded={embedded}>
+      <PageTitle embedded={embedded}>Launch Token</PageTitle>
       
       {!isZetaChainNetwork && (
-        <ErrorMessage>
-          You need to be on ZetaChain network to launch a token.
-          <SubmitButton 
-            onClick={handleSwitchNetwork}
-            style={{ marginTop: '12px', width: 'auto', display: 'block', marginLeft: 'auto', marginRight: 'auto' }}
-          >
-            Switch to ZetaChain
-          </SubmitButton>
-        </ErrorMessage>
+        <FormContainer>
+          <ErrorMessage>
+            You need to be on ZetaChain network to launch a token.
+            <ButtonContainer>
+              <SubmitButton onClick={handleSwitchNetwork}>
+                Switch to ZetaChain
+              </SubmitButton>
+            </ButtonContainer>
+          </ErrorMessage>
+        </FormContainer>
       )}
       
-      <FormContainer>
-        <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit}>
+        <FormContainer>
           <SectionTitle>Token Information</SectionTitle>
           
           <FormRow>
@@ -446,7 +457,9 @@ const LaunchPage = () => {
               />
             </FormGroup>
           </FormRow>
+        </FormContainer>
           
+        <FormContainer>
           <SectionTitle>Initial Distribution (Optional)</SectionTitle>
           
           <DistributionToggle>
@@ -511,9 +524,11 @@ const LaunchPage = () => {
               </FormGroup>
             </FormRow>
           )}
+        </FormContainer>
           
+        <FormContainer>
+          <SectionTitle>Fee Information</SectionTitle>
           <FeeSection>
-            <SectionTitle>Fee Information</SectionTitle>
             <FeeRow>
               <FeeName>Deployment Fee</FeeName>
               <FeeAmount>{ZETA_FEE} ZETA</FeeAmount>
@@ -541,8 +556,8 @@ const LaunchPage = () => {
               {isSubmitting ? 'Processing...' : 'Launch Token'}
             </SubmitButton>
           </ButtonContainer>
-        </form>
-      </FormContainer>
+        </FormContainer>
+      </form>
     </PageContainer>
   );
 };

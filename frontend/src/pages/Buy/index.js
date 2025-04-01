@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import TransferTokens from './TransferTokens';
-import TransferNFTPage from '../TransferNFT';
+import BuyNFTPage from '../BuyNFT';
 
 // Styled Components
 const PageContainer = styled.div`
-  max-width: 800px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 40px 20px;
 `;
@@ -46,18 +45,33 @@ const ToggleButton = styled.button`
   }
 `;
 
-const ContentContainer = styled.div`
-  width: 100%;
+const ComingSoon = styled.div`
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 60px 32px;
+  text-align: center;
+  margin-top: 20px;
 `;
 
-const TransferPage = () => {
-  const [activeTab, setActiveTab] = useState('token'); // 'token' or 'nft'
+const ComingSoonTitle = styled.h2`
+  font-size: 28px;
+  margin-bottom: 16px;
+`;
+
+const ComingSoonText = styled.p`
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin: 0 auto 24px;
+`;
+
+const BuyPage = () => {
+  const [activeTab, setActiveTab] = useState('nft'); // 'token' or 'nft'
   
   return (
     <PageContainer>
-      <PageTitle>Transfer Digital Assets</PageTitle>
+      <PageTitle>Buy Digital Assets</PageTitle>
       <PageDescription>
-        Move your tokens or NFTs between chains effortlessly with ZetaChain's cross-chain technology.
+        Purchase tokens or NFTs using any ZRC20 asset, including Bitcoin, and receive them on your preferred chain.
       </PageDescription>
       
       <ToggleContainer>
@@ -66,22 +80,29 @@ const TransferPage = () => {
           position="left"
           onClick={() => setActiveTab('token')}
         >
-          Transfer Tokens
+          Buy Tokens
         </ToggleButton>
         <ToggleButton 
           active={activeTab === 'nft'} 
           position="right"
           onClick={() => setActiveTab('nft')}
         >
-          Transfer NFTs
+          Buy NFTs
         </ToggleButton>
       </ToggleContainer>
       
-      <ContentContainer>
-        {activeTab === 'token' ? <TransferTokens embedded={true} /> : <TransferNFTPage embedded={true} />}
-      </ContentContainer>
+      {activeTab === 'nft' ? (
+        <BuyNFTPage embedded={true} />
+      ) : (
+        <ComingSoon>
+          <ComingSoonTitle>Token Marketplace Coming Soon</ComingSoonTitle>
+          <ComingSoonText>
+            Our token marketplace is currently under development. Soon you'll be able to purchase tokens using any ZRC20 asset!
+          </ComingSoonText>
+        </ComingSoon>
+      )}
     </PageContainer>
   );
 };
 
-export default TransferPage; 
+export default BuyPage; 

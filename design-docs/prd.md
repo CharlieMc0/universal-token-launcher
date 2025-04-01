@@ -1,8 +1,8 @@
-# Universal Token Launcher Product Requirements Document
+# Universal Launcher Product Requirements Document
 
 ## 1. Overview
 
-The Universal Token Launcher is a web application that allows non-developer users (familiar with Web3 wallets) to deploy a Universal Token across multiple EVM chains with a simple, single-signed transaction. Leveraging ZetaChain's interoperability via Standard Contracts, the app minimizes the token creator's manual steps while automating cross-chain contract deployments and token distributions. Unlike traditional bridging, Universal Tokens are designed for transferring tokens between chains as needed.
+The Universal Launcher is a web application that allows non-developer users (familiar with Web3 wallets) to deploy Universal Tokens and NFTs across multiple EVM chains with simple, single-signed transactions. Leveraging ZetaChain's interoperability via Standard Contracts, the app minimizes the creator's manual steps while automating cross-chain contract deployments and asset distributions. Unlike traditional bridging, Universal assets are designed for transferring between chains as needed.
 
 ## 2. Objectives
 
@@ -127,6 +127,10 @@ The Universal Token Launcher is a web application that allows non-developer user
 
 - **Style:** Modern, futuristic, yet clean and minimal.
 - **Design:** Clear forms and buttons, with an emphasis on intuitive navigation.
+- **Navigation Structure:** Three main tabs:
+  - **Create:** Toggle between token creation and NFT collection creation
+  - **Transfer:** Toggle between token transfers and NFT transfers
+  - **Buy:** Toggle between buying tokens (coming soon) and buying NFTs
 - **Feedback:** Real-time validations, notifications for fee status, deployment progress, and transfer confirmations.
 - **Terminology:** All references to "bridging" have been updated to "transfers" for clarity.
 
@@ -139,15 +143,16 @@ The Universal Token Launcher is a web application that allows non-developer user
 
 ## 10. Success Criteria
 
-- **For Token Creators:**
-  - Ability to configure and launch a Universal Token in under 5 minutes using a single fee payment.
-  - Automated deployment on all selected chains with accurate token distribution.
-- **For Token Holders:**
-  - Seamless token transfer experience across chains with clear status updates.
-  - Reliable burning and minting mechanisms that ensure token integrity.
+- **For Creators:**
+  - Ability to configure and launch Universal assets in under 5 minutes using a single fee payment.
+  - Automated deployment on all selected chains with accurate distribution.
+- **For Asset Holders:**
+  - Seamless transfer experience across chains with clear status updates.
+  - Reliable burning and minting mechanisms that ensure asset integrity.
 - **Overall System:**
   - Backend reliability and robust cross-chain messaging.
-  - Effective demonstration of ZetaChain's cross-chain interoperability for token transfers.
+  - Effective demonstration of ZetaChain's cross-chain interoperability for transfers.
+  - Unified user interface that clearly separates asset types while maintaining a consistent experience.
 
 ## 11. Future Enhancements
 
@@ -156,8 +161,91 @@ The Universal Token Launcher is a web application that allows non-developer user
 - **Advanced Validations:** Implement dynamic fee calculations and enhanced CSV validations.
 - **Enhanced UI/UX:** Integrate designer mockups and possibly mobile responsiveness for a more polished look.
 - **Analytics & Monitoring:** Add dashboards for monitoring cross-chain transactions and transfer statuses.
+- **Token Marketplace:** Complete the token purchasing functionality to complement the NFT marketplace.
 
-## 12. References
+## 12. Universal NFT Feature
+
+### 12.1 Overview
+
+The Universal NFT feature extends the Universal Token Launcher to support the creation, purchase, and transfer of NFTs across multiple blockchains. Unlike traditional NFTs, Universal NFTs can be minted on any supported chain and transferred seamlessly between chains using ZetaChain's interoperability.
+
+### 12.2 Features & Functional Requirements
+
+#### 12.2.1 NFT Collection Creation
+
+- **Collection Configuration Panel:**
+  - **Input Fields:** Collection Name, Description, Quantity, Price
+  - **Image Upload:** Allow creators to upload collection artwork/images
+  - **Free Distribution:** Option to distribute free NFTs to a list of addresses (reusing existing token distribution functionality)
+  
+- **Fee Verification & Payment:**
+  - Similar to token creation, display a hardcoded ZETA fee
+  - Verify wallet has sufficient ZETA balance
+  - Process single transaction payment to Universal Token Service wallet
+
+#### 12.2.2 NFT Purchase
+
+- **ZRC20 Payment Support:**
+  - Allow users to purchase NFTs using any ZRC20 asset, including Bitcoin
+  - Display supported payment options with current balance
+  
+- **Cross-Chain Minting:**
+  - Allow users to select any chain for NFT minting, independent of the payment chain
+  - Example: Pay with BTC (on Bitcoin chain) and mint on BASE or ZetaChain
+  - Display clear option selection for both payment asset and destination chain
+
+- **Purchase Confirmation:**
+  - Show transaction preview with fees and estimated completion time
+  - Process payment and track minting status with clear notifications
+
+#### 12.2.3 NFT Transfer
+
+- **NFT Dashboard:**
+  - Display all owned Universal NFTs grouped by collection
+  - Show which chain each NFT currently exists on
+  
+- **Transfer Interface:**
+  - Allow selection of source NFT and destination chain
+  - Process cross-chain transfer (burning and minting) with status updates
+  - Maintain NFT metadata and properties across chains
+
+### 12.3 User Stories & Acceptance Criteria
+
+#### User Story 1: NFT Creator – Launch a Universal NFT Collection
+
+- **Story:** As a creator, I want to configure and launch my NFT collection across multiple chains with minimal technical complexity.
+- **Acceptance Criteria:**
+  - I can enter collection details (name, description, quantity, price)
+  - I can upload artwork for my NFT collection
+  - I can optionally specify addresses for free distribution
+  - Upon fee payment, the collection is deployed and available for purchase
+
+#### User Story 2: NFT Buyer – Purchase with Any ZRC20 Asset
+
+- **Story:** As a buyer, I want to purchase an NFT using my preferred cryptocurrency and receive it on my preferred chain.
+- **Acceptance Criteria:**
+  - I can select any ZRC20 asset, including Bitcoin, for payment
+  - I can choose any supported chain to receive my NFT
+  - The purchase process completes with clear status updates
+  - I can view my newly purchased NFT in my dashboard
+
+#### User Story 3: NFT Holder – Transfer NFT Between Chains
+
+- **Story:** As an NFT holder, I want to move my NFT from one chain to another easily.
+- **Acceptance Criteria:**
+  - I can view all my NFTs across different chains
+  - I can select an NFT and initiate a transfer to another chain
+  - The transfer process burns the NFT on the source chain and mints it on the destination chain
+  - I receive clear status notifications throughout the process
+
+### 12.4 Technical Requirements
+
+- **Smart Contracts:** Utilize ZetaChain's interoperability for cross-chain NFT management
+- **Metadata Storage:** Ensure NFT metadata is preserved during cross-chain transfers
+- **ZRC20 Integration:** Support payment with any ZRC20 asset through ZetaChain
+- **Transaction Handling:** Process complex cross-chain operations with proper error handling and status tracking
+
+## 13. References
 
 - [ZetaChain Standard Contracts](https://github.com/zeta-chain/standard-contracts/)
 - Latest ZetaChain documentation and contract deployment guides.
