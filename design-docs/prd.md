@@ -84,26 +84,25 @@ The Universal Launcher is a web application that allows non-developer users (fam
 
 ### 6.1 Frontend
 
-- **Technologies:** HTML, CSS (with a modern, sleek design), and vanilla JavaScript.
-- **Wallet Integration:** Use Web3 libraries (ethers.js or web3.js) for connecting to wallets (e.g., MetaMask).
 - **Technologies:** React.js with Create React App, along with styled-components for component-scoped styling.
 - **Wallet Integration:** Utilize wagmi (v2.x) in conjunction with ethers.js (v6.x) and @rainbow-me/rainbowkit for efficient wallet connections.
 - **UI/UX:** Simple, intuitive, and responsive design for desktop (with potential mobile support in future iterations).
 
 ### 6.2 Backend
 
-- **Language:** Preferably Python (or NodeJS if necessary).
+- **Language:** Node.js with Express framework for API development
 - **Functionality:**
   - **Deployer Service:** Monitors for fee payment, verifies the token creator's wallet, and initiates deployment on selected chains.
   - **Contract Deployment:** Automatically deploys Universal Token contracts across chosen EVM chains using ZetaChain Standard Contracts.
   - **Token Distribution:** Processes the CSV input and triggers minting/distribution transactions.
 - **Transfer Processing:** Handles token transfers (burn on source, mint on destination) securely via cross-chain messaging.
 
-### 6.3 Integration with ZetaChain
+### 6.3 Smart Contract Integration
 
-- **Smart Contracts:** Utilize existing Universal Token contracts from the [ZetaChain Standard Contracts](https://github.com/zeta-chain/standard-contracts/) repository.
-- **Fee Handling:** The ZETA fee is fixed; no dynamic gas price adjustments required for the MVP.
-- **Transfer Mechanism:** Replace traditional bridging terminology with "transfers" that reflect burning and minting operations.
+- **Bytecode Management:** Store contract bytecode and ABIs in properly structured JavaScript modules.
+- **Contract Factory:** Use ethers.js to create contract factories for deployment.
+- **Transaction Handling:** Implement robust transaction monitoring and receipt validation.
+- **Error Recovery:** Include mechanisms to handle common blockchain transaction issues.
 
 ## 7. Architecture & Workflow
 
@@ -120,8 +119,11 @@ The Universal Launcher is a web application that allows non-developer users (fam
 ### 7.2 Components
 
 - **Frontend:** Provides interfaces for token configuration, fee payment, and token transfers.
-- **Backend Deployer Service:** Automates contract deployment, token distribution, and cross-chain transfer messaging.
-- **Blockchain Interaction:** Leverages Web3 libraries to interact with ZetaChain and connected chains.
+- **Backend Services:**
+  - **API Layer:** Express.js RESTful endpoints for token configuration and deployment management.
+  - **Contract Service:** Manages bytecode loading, contract deployment, and transaction monitoring.
+  - **Database Layer:** PostgreSQL with Sequelize ORM for storing token configurations, deployment logs, and transfer records.
+- **Blockchain Interaction:** Leverages ethers.js to interact with ZetaChain and connected chains.
 
 ## 8. UI/UX Requirements
 
@@ -140,6 +142,7 @@ The Universal Launcher is a web application that allows non-developer users (fam
 - **Smart Contract Security:** Use battle-tested contract examples from ZetaChain's Standard Contracts.
 - **Fee Verification:** Backend deployer must verify the token creator's ZETA balance before initiating deployment.
 - **Transfer Integrity:** Cross-chain transfers should include measures to ensure that tokens are securely burned on the source chain and minted correctly on the destination chain.
+- **Bytecode Validation:** Implement checks to ensure contract bytecode is valid and properly formatted.
 
 ## 10. Success Criteria
 
@@ -162,6 +165,7 @@ The Universal Launcher is a web application that allows non-developer users (fam
 - **Enhanced UI/UX:** Integrate designer mockups and possibly mobile responsiveness for a more polished look.
 - **Analytics & Monitoring:** Add dashboards for monitoring cross-chain transactions and transfer statuses.
 - **Token Marketplace:** Complete the token purchasing functionality to complement the NFT marketplace.
+- **Smart Contract Upgrades:** Replace minimal ERC20 implementations with actual Universal Token contracts from standard-contracts repository.
 
 ## 12. Universal NFT Feature
 
@@ -245,7 +249,107 @@ The Universal NFT feature extends the Universal Token Launcher to support the cr
 - **ZRC20 Integration:** Support payment with any ZRC20 asset through ZetaChain
 - **Transaction Handling:** Process complex cross-chain operations with proper error handling and status tracking
 
-## 13. References
+## 13. Current Implementation Status & Known Issues
+
+### 13.1 Implementation Status
+
+- **Smart Contracts:**
+  - ✅ Successfully created Hardhat project for contract development
+  - ✅ Implemented base UniversalToken contract with core ERC20 functionality
+  - ✅ Implemented ZetaChainUniversalToken for cross-chain transfers from ZetaChain
+  - ✅ Implemented EVMUniversalToken for cross-chain transfers from other EVM chains
+  - ✅ Deployed contracts to ZetaChain Testnet (address: 0x51d5D00dfB9e1f4D60BBD6eda288F44Fb3158E16)
+  - ✅ Deployed contracts to Sepolia Testnet (address: 0x0b3D12246660b41f982f07CdCd27536a79a16296)
+  - ✅ Implemented and tested cross-chain connectivity
+  - ✅ Successfully simulated cross-chain transfers
+  
+- **Backend:**
+  - Basic Express.js server setup completed
+  - Database models and migrations implemented
+  - Authentication via Web3 wallet signature
+  - Token configuration and deployment endpoints
+  - Contract service for deployment operations
+
+- **Frontend:**
+  - React application with wagmi integration
+  - Wallet connection functionality
+  - Basic navigation and layout components
+
+### 13.2 Fixed Issues
+
+- **Bytecode.js Syntax Errors:**
+  - Fixed issue with unclosed comment blocks
+  - Properly formatted bytecode string literals
+  - Added proper documentation
+
+- **API Error Handling:**
+  - Implemented standardized error responses
+  - Added detailed logging for deployment issues
+  
+- **Contract Deployment Issues:**
+  - Addressed private key formatting issues
+  - Implemented proper RPC URL configuration
+  - Added support for ZetaChain Testnet
+
+### 13.3 Known Limitations
+
+- **Contract Implementation:**
+  - Current implementation simulates cross-chain messaging but doesn't use actual ZetaChain connectors
+  - Need to integrate with official ZetaChain gateway and omnichain contracts
+  - Real implementation will require integration with ZetaChain's cross-chain messaging protocol
+
+- **Error Recovery:**
+  - Limited retry mechanisms for failed deployments
+  - Insufficient error details for complex deployment failures
+
+- **Testing Coverage:**
+  - Limited testing of contract deployment on multiple chains
+  - Need comprehensive integration tests
+
+## 15. Smart Contract Architecture
+
+### 15.1 Contract Structure
+
+The Universal Token Launcher uses a hierarchical contract structure:
+
+1. **Base UniversalToken Contract:**
+   - Extends OpenZeppelin's ERC20 and Ownable
+   - Provides basic token functionality (mint, burn, transfer)
+   - Customizable decimals
+
+2. **ZetaChainUniversalToken:**
+   - Deployed on ZetaChain
+   - Tracks connected contracts on other chains
+   - Handles cross-chain messaging and token transfers
+   - Manages token minting and burning for cross-chain operations
+
+3. **EVMUniversalToken:**
+   - Deployed on EVM chains (Ethereum, Polygon, Base, etc.)
+   - Connects to the ZetaChain contract
+   - Handles cross-chain transfers to/from ZetaChain
+   - Manages token burning and minting for cross-chain operations
+
+### 15.2 Cross-Chain Mechanism
+
+The cross-chain token transfer mechanism works as follows:
+1. User initiates a transfer from chain A to chain B
+2. Tokens are burned on chain A
+3. A cross-chain message is sent to the ZetaChain contract
+4. ZetaChain relays the message to chain B
+5. Tokens are minted on chain B
+
+### 15.3 Deployed Contracts
+
+The contracts have been successfully deployed to the following networks:
+
+- **ZetaChain Testnet:**
+  - ZetaChainUniversalToken: `0x51d5D00dfB9e1f4D60BBD6eda288F44Fb3158E16`
+
+- **Sepolia Testnet:**
+  - EVMUniversalToken: `0x0b3D12246660b41f982f07CdCd27536a79a16296`
+
+## 14. References
 
 - [ZetaChain Standard Contracts](https://github.com/zeta-chain/standard-contracts/)
 - Latest ZetaChain documentation and contract deployment guides.
+- [Ethers.js Documentation](https://docs.ethers.org/v6/) for contract deployment reference.

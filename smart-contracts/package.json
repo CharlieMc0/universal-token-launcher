@@ -1,0 +1,30 @@
+{
+  "name": "smart-contracts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "deploy-local": "hardhat run scripts/deploy.ts --network hardhat",
+    "deploy-zetachain": "hardhat run scripts/deploy.ts --network zetachain",
+    "deploy-zetachain-testnet": "hardhat run scripts/deploy.ts --network zetachain_testnet",
+    "deploy-sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "deploy-mumbai": "hardhat run scripts/deploy.ts --network mumbai",
+    "connect-tokens": "hardhat run scripts/connect-tokens.ts",
+    "connect-tokens-testnet": "hardhat run scripts/connect-tokens.ts --network zetachain_testnet",
+    "connect-tokens-sepolia": "hardhat run scripts/connect-tokens.ts --network sepolia",
+    "simulate-transfer": "hardhat run scripts/simulate-transfer.ts",
+    "simulate-transfer-testnet": "hardhat run scripts/simulate-transfer.ts --network zetachain_testnet",
+    "simulate-transfer-sepolia": "hardhat run scripts/simulate-transfer.ts --network sepolia"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.2.0",
+    "dotenv": "^16.4.7",
+    "hardhat": "^2.22.19"
+  }
+}
