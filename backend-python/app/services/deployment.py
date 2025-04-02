@@ -1,6 +1,5 @@
 """Deployment service for universal token contracts."""
 
-import asyncio
 from sqlalchemy.orm import Session
 from typing import Dict, List, Any
 
@@ -39,7 +38,9 @@ class DeploymentService:
         Returns:
             Dict with deployment results
         """
-        logger.info(f"Deploying token {token_config['token_name']} on {len(selected_chains)} chains")
+        logger.info(
+            f"Deploying token {token_config['token_name']} on {len(selected_chains)} chains"
+        )
         
         # Create deployment record
         deployment = TokenModel(
@@ -79,7 +80,7 @@ class DeploymentService:
         # First deploy to ZetaChain (required for cross-chain functionality)
         zeta_chain_id = 7001  # ZetaChain Testnet
         if "7001" in selected_chains or "zeta_testnet" in selected_chains:
-            logger.info(f"Deploying ZetaChain contract...")
+            logger.info("Deploying ZetaChain contract...")
             
             # Connect to ZetaChain
             web3 = get_web3(zeta_chain_id)
@@ -94,14 +95,17 @@ class DeploymentService:
                     "message": "Failed to connect to ZetaChain"
                 }
             
-            # Prepare constructor arguments
+            # Prepare constructor arguments with proper type conversion
+            # ZetaChainUniversalToken(name_, symbol_, decimals_, initialSupply, initialOwner)
             constructor_args = [
-                deployer_address,  # Initial owner
-                token_config["token_name"],  # Token name
-                token_config["token_symbol"],  # Token symbol
-                # Additional args for ZetaChain contract 
-                # (gateway address, gas limit, etc.)
+                str(token_config["token_name"]),      # name (string)
+                str(token_config["token_symbol"]),    # symbol (string)
+                int(token_config["decimals"]),        # decimals (uint8)
+                int(token_config["total_supply"]),    # initialSupply (uint256)
+                deployer_address                      # initialOwner (address)
             ]
+            
+            logger.info(f"ZetaChain constructor args: {constructor_args}")
             
             # In development mode, use a try-except block to handle deployments
             try:
@@ -120,7 +124,8 @@ class DeploymentService:
                     # Update deployment record
                     deployment.zc_contract_address = zc_result["contract_address"]
                 else:
-                    deployment.error_message = f"ZetaChain deployment failed: {zc_result.get('message', 'Unknown error')}"
+                    error_msg = zc_result.get('message', 'Unknown error')
+                    deployment.error_message = f"ZetaChain deployment failed: {error_msg}"
             except Exception as e:
                 logger.error(f"ZetaChain deployment failed: {str(e)}")
                 deployment_result["zetaChain"] = {
@@ -150,14 +155,18 @@ class DeploymentService:
                 }
                 continue
             
-            # Prepare constructor arguments
+            # Prepare constructor arguments with proper type conversion
+            # EVMUniversalToken(name, symbol, decimals, initialSupply, chainId, owner)
             constructor_args = [
-                deployer_address,  # Initial owner
-                token_config["token_name"],  # Token name
-                token_config["token_symbol"],  # Token symbol
-                # If ZetaChain contract was deployed, add its address
-                deployment.zc_contract_address if deployment.zc_contract_address else None
+                str(token_config["token_name"]),      # name (string)
+                str(token_config["token_symbol"]),    # symbol (string)
+                int(token_config["decimals"]),        # decimals (uint8)
+                int(token_config["total_supply"]),    # initialSupply (uint256)
+                numeric_chain_id,                     # currentChainId (uint256)
+                deployer_address                      # initialOwner (address)
             ]
+            
+            logger.info(f"EVM constructor args: {constructor_args}")
             
             # In development mode, use a try-except block to handle deployments
             try:
@@ -174,7 +183,7 @@ class DeploymentService:
                 
                 if evm_result["success"]:
                     # Update deployment record with connected chain
-                    if "connected_chains_json" not in deployment.connected_chains_json:
+                    if not deployment.connected_chains_json:
                         deployment.connected_chains_json = {}
                     
                     deployment.connected_chains_json[chain_id] = {
@@ -192,7 +201,8 @@ class DeploymentService:
         # Update deployment status
         has_errors = (
             (deployment_result["zetaChain"].get("error", False)) or
-            any(chain.get("error", False) for chain in deployment_result["evmChains"].values())
+            any(chain.get("error", False) 
+                for chain in deployment_result["evmChains"].values())
         )
         
         if has_errors and not deployment.connected_chains_json:

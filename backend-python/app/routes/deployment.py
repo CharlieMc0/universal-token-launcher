@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import Dict, Any, List
 
 from app.models import TokenSchema, TokenVerifySchema, TokenResponse
 from app.services.deployment import deployment_service
@@ -9,6 +10,7 @@ from app.services.verification import verification_service
 from app.db import get_db
 from app.utils.logger import logger
 from app.config import Config
+from app.utils.chain_config import get_supported_chains
 
 router = APIRouter(prefix="/api", tags=["deployment"])
 
@@ -156,22 +158,28 @@ async def verify_contract(verify_data: TokenVerifySchema):
         )
 
 
-@router.get(
-    "/chains",
-    status_code=status.HTTP_200_OK,
-    description="Get all supported chains"
-)
-async def get_chains():
-    """Get a list of all supported chains."""
-    try:
-        return {
-            "success": True,
-            "chains": Config.CHAINS
-        }
+@router.get("/chains", summary="Get supported chains")
+async def get_chains(testnet_only: bool = False, mainnet_only: bool = False):
+    """
+    Get a list of supported blockchain networks.
     
-    except Exception as e:
-        logger.error(f"Failed to get chains: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get chains: {str(e)}"
-        ) 
+    Optionally filter by testnet or mainnet.
+    """
+    chains = get_supported_chains(testnet_only, mainnet_only)
+    
+    # Format the response to be more frontend-friendly
+    formatted_chains = []
+    for chain_id, chain_info in chains.items():
+        formatted_chains.append({
+            "id": chain_id,
+            "name": chain_info["name"],
+            "currency": chain_info["currency_symbol"],
+            "testnet": chain_info["testnet"],
+            "isZetaChain": "ZetaChain" in chain_info["name"],
+            "enabled": chain_info.get("enabled", True)
+        })
+    
+    return {
+        "success": True,
+        "chains": formatted_chains
+    } 

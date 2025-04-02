@@ -1,0 +1,164 @@
+{
+  "1": {
+    "name": "Ethereum Mainnet",
+    "rpc_url": "https://eth.llamarpc.com",
+    "explorer_url": "https://etherscan.io",
+    "blockscout_url": null,
+    "currency_symbol": "ETH",
+    "testnet": false,
+    "enabled": false
+  },
+  "137": {
+    "name": "Polygon Mainnet",
+    "rpc_url": "https://polygon-rpc.com",
+    "explorer_url": "https://polygonscan.com",
+    "blockscout_url": null,
+    "currency_symbol": "MATIC",
+    "testnet": false,
+    "enabled": false
+  },
+  "56": {
+    "name": "Binance Smart Chain",
+    "rpc_url": "https://bsc-dataseed.binance.org",
+    "explorer_url": "https://bscscan.com",
+    "blockscout_url": null,
+    "currency_symbol": "BNB",
+    "testnet": false,
+    "enabled": false
+  },
+  "97": {
+    "name": "Binance Smart Chain Testnet",
+    "rpc_url": "https://data-seed-prebsc-1-s1.binance.org:8545",
+    "explorer_url": "https://testnet.bscscan.com",
+    "blockscout_url": null,
+    "currency_symbol": "BNB",
+    "testnet": true,
+    "enabled": true
+  },
+  "7000": {
+    "name": "ZetaChain",
+    "rpc_url": "https://zetachain-mainnet.g.allthatnode.com/archive/evm",
+    "explorer_url": null,
+    "blockscout_url": "https://explorer.zetachain.com",
+    "currency_symbol": "ZETA",
+    "testnet": false,
+    "enabled": false
+  },
+  "7001": {
+    "name": "ZetaChain Testnet",
+    "rpc_url": "https://zetachain-athens.g.allthatnode.com/archive/evm",
+    "explorer_url": "https://explorer.athens.zetachain.com",
+    "blockscout_url": "https://zetachain-testnet.blockscout.com/",
+    "currency_symbol": "ZETA",
+    "testnet": true,
+    "enabled": true
+  },
+  "11155111": {
+    "name": "Sepolia Testnet",
+    "rpc_url": "https://ethereum-sepolia.publicnode.com",
+    "explorer_url": "https://sepolia.etherscan.io",
+    "blockscout_url": null,
+    "currency_symbol": "ETH",
+    "testnet": true,
+    "enabled": true
+  },
+  "42161": {
+    "name": "Arbitrum One",
+    "rpc_url": "https://arb1.arbitrum.io/rpc",
+    "explorer_url": "https://arbiscan.io",
+    "blockscout_url": null,
+    "currency_symbol": "ETH", 
+    "testnet": false,
+    "enabled": false
+  },
+  "421614": {
+    "name": "Arbitrum Sepolia",
+    "rpc_url": "https://sepolia-rollup.arbitrum.io/rpc",
+    "explorer_url": "https://sepolia.arbiscan.io",
+    "blockscout_url": null,
+    "currency_symbol": "ETH",
+    "testnet": true,
+    "enabled": false
+  },
+  "8453": {
+    "name": "Base",
+    "rpc_url": "https://mainnet.base.org",
+    "explorer_url": "https://basescan.org",
+    "blockscout_url": null,
+    "currency_symbol": "ETH",
+    "testnet": false,
+    "enabled": false
+  },
+  "84532": {
+    "name": "Base Sepolia",
+    "rpc_url": "https://sepolia.base.org",
+    "explorer_url": "https://sepolia.basescan.org",
+    "blockscout_url": null,
+    "currency_symbol": "ETH",
+    "testnet": true,
+    "enabled": false
+  },
+  "43114": {
+    "name": "Avalanche C-Chain",
+    "rpc_url": "https://api.avax.network/ext/bc/C/rpc",
+    "explorer_url": "https://snowtrace.io",
+    "blockscout_url": null,
+    "currency_symbol": "AVAX",
+    "testnet": false,
+    "enabled": false
+  },
+  "43113": {
+    "name": "Avalanche Fuji Testnet",
+    "rpc_url": "https://api.avax-test.network/ext/bc/C/rpc",
+    "explorer_url": "https://testnet.snowtrace.io",
+    "blockscout_url": null,
+    "currency_symbol": "AVAX",
+    "testnet": true,
+    "enabled": false
+  },
+  "1399811149": {
+    "name": "Solana",
+    "rpc_url": "https://api.mainnet-beta.solana.com",
+    "explorer_url": "https://explorer.solana.com",
+    "blockscout_url": null,
+    "currency_symbol": "SOL",
+    "testnet": false,
+    "enabled": false
+  },
+  "1399811148": {
+    "name": "Solana Testnet",
+    "rpc_url": "https://api.testnet.solana.com",
+    "explorer_url": "https://explorer.solana.com/?cluster=testnet",
+    "blockscout_url": null,
+    "currency_symbol": "SOL",
+    "testnet": true,
+    "enabled": false
+  },
+  "784": {
+    "name": "SUI",
+    "rpc_url": "https://fullnode.mainnet.sui.io:443",
+    "explorer_url": "https://explorer.sui.io",
+    "blockscout_url": null,
+    "currency_symbol": "SUI",
+    "testnet": false,
+    "enabled": false
+  },
+  "7840": {
+    "name": "SUI Testnet",
+    "rpc_url": "https://fullnode.testnet.sui.io:443",
+    "explorer_url": "https://explorer.sui.io/?network=testnet",
+    "blockscout_url": null,
+    "currency_symbol": "SUI",
+    "testnet": true,
+    "enabled": false
+  },
+  "0": {
+    "name": "TON Testnet",
+    "rpc_url": "https://testnet.toncenter.com/api/v2/jsonRPC",
+    "explorer_url": "https://testnet.tonscan.org",
+    "blockscout_url": null,
+    "currency_symbol": "TON",
+    "testnet": true,
+    "enabled": false
+  }
+}

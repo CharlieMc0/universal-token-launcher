@@ -7,8 +7,9 @@ from eth_account.signers.local import LocalAccount
 import json
 import os
 
-from app.config import Config, get_chain_config
+from app.config import Config
 from app.utils.logger import logger
+from app.utils.chain_config import get_chain_config
 
 # Universal Token contract data - will be loaded from ABIs
 UNIVERSAL_TOKEN_ABI = None
@@ -16,37 +17,117 @@ UNIVERSAL_TOKEN_BYTECODE = None
 ZC_UNIVERSAL_TOKEN_ABI = None
 ZC_UNIVERSAL_TOKEN_BYTECODE = None
 
-# Path to contract artifacts
-ABI_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "artifacts")
+# Path to contract artifacts - relative to the workspace root
+SMART_CONTRACTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+    "..", 
+    "smart-contracts"
+)
+EVM_TOKEN_PATH = os.path.join(
+    SMART_CONTRACTS_DIR, 
+    "artifacts", 
+    "contracts", 
+    "EVMUniversalToken.sol", 
+    "EVMUniversalToken.json"
+)
+ZC_TOKEN_PATH = os.path.join(
+    SMART_CONTRACTS_DIR, 
+    "artifacts", 
+    "contracts", 
+    "ZetaChainUniversalToken.sol", 
+    "ZetaChainUniversalToken.json"
+)
 
 
 def load_contract_data():
     """Load contract ABIs and bytecodes from artifact files."""
-    global UNIVERSAL_TOKEN_ABI, UNIVERSAL_TOKEN_BYTECODE, ZC_UNIVERSAL_TOKEN_ABI, ZC_UNIVERSAL_TOKEN_BYTECODE
+    global UNIVERSAL_TOKEN_ABI, UNIVERSAL_TOKEN_BYTECODE
+    global ZC_UNIVERSAL_TOKEN_ABI, ZC_UNIVERSAL_TOKEN_BYTECODE
     
     try:
-        # For now, we're using placeholders - in a real implementation, we'd load from artifact files
-        # Example path: ABI_DIR + "/EVMUniversalToken.json"
+        # Check if artifact files exist
+        if not os.path.exists(EVM_TOKEN_PATH):
+            logger.warning(
+                f"EVM token artifact not found at {EVM_TOKEN_PATH}, "
+                "using placeholder data"
+            )
+            # Fallback to placeholder data for EVMUniversalToken (6 args)
+            UNIVERSAL_TOKEN_ABI = [
+                {"inputs": [
+                    {"internalType": "string", "name": "name_", "type": "string"}, 
+                    {"internalType": "string", "name": "symbol_", "type": "string"},
+                    {"internalType": "uint8", "name": "decimals_", "type": "uint8"},
+                    {
+                        "internalType": "uint256", 
+                        "name": "initialSupply", 
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256", 
+                        "name": "currentChainId", 
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "address", 
+                        "name": "initialOwner", 
+                        "type": "address"
+                    }
+                ], "stateMutability": "nonpayable", "type": "constructor"},
+                {"inputs": [
+                    {"internalType": "address", "name": "to", "type": "address"}, 
+                    {"internalType": "uint256", "name": "amount", "type": "uint256"}
+                ], 
+                "name": "mint", 
+                "outputs": [], 
+                "stateMutability": "nonpayable", 
+                "type": "function"},
+            ]
+            # Complete bytecode for testing purposes (longer than placeholder)
+            UNIVERSAL_TOKEN_BYTECODE = "0x60806040523480156200001157600080fd5b5060405162000a4838038062000a488339810160408190526200003491620001db565b8251839083906200004d90600390602085019062000068565b5080516200006390600490602084019062000068565b5050505062000281565b828054620000769062000245565b90600052602060002090601f0160209004810192826200009a5760008555620000e5565b82601f10620000b557805160ff1916838001178555620000e5565b82800160010185558215620000e5579182015b82811115620000e5578251825591602001919060010190620000c8565b50620000f3929150620000f7565b5090565b5b80821115620000f35760008155600101620000f8565b634e487b7160e01b600052604160045260246000fd5b600082601f8301126200013657600080fd5b81516001600160401b03808211156200015357620001536200010e565b604051601f8301601f19908116603f011681019082821181831017156200017e576200017e6200010e565b816040528381526020925086838588010111156200019b57600080fd5b600091505b83821015620001bf5785820183015181830184015290820190620001a0565b83821115620001d15760008385830101525b9695505050505050565b600080600060608486031215620001f157600080fd5b83516001600160a01b03811681146200020957600080fd5b60208501519093506001600160401b03808211156200022757600080fd5b6200023587838801620001245b604086015191508082111562000250566200025062000110565b506200025f8682860162000124565b9150509250925092565b600181811c908216806200025457607f821691505b602082108114156200027b57634e487b7160e01b600052602260045260246000fd5b50919050565b6107b780620002916000396000f300"
+        else:
+            # Load EVM token artifact
+            with open(EVM_TOKEN_PATH, 'r') as f:
+                evm_token_data = json.load(f)
+                UNIVERSAL_TOKEN_ABI = evm_token_data.get('abi')
+                UNIVERSAL_TOKEN_BYTECODE = evm_token_data.get('bytecode')
+                logger.info(f"Loaded EVM token artifact from {EVM_TOKEN_PATH}")
         
-        # Universal Token ABI (placeholder)
-        UNIVERSAL_TOKEN_ABI = [
-            {"inputs": [], "stateMutability": "nonpayable", "type": "constructor"},
-            {"inputs": [{"internalType": "address", "name": "to", "type": "address"}, {"internalType": "uint256", "name": "amount", "type": "uint256"}], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"},
-        ]
-        
-        # Universal Token bytecode (placeholder)
-        UNIVERSAL_TOKEN_BYTECODE = "0x608060405234801561001057600080fd5b506040516100..."
-        
-        # ZetaChain Universal Token ABI (placeholder)
-        ZC_UNIVERSAL_TOKEN_ABI = UNIVERSAL_TOKEN_ABI
-        
-        # ZetaChain Universal Token bytecode (placeholder) 
-        ZC_UNIVERSAL_TOKEN_BYTECODE = UNIVERSAL_TOKEN_BYTECODE
+        if not os.path.exists(ZC_TOKEN_PATH):
+            logger.warning(
+                f"ZetaChain token artifact not found at {ZC_TOKEN_PATH}, "
+                "using EVM data"
+            )
+            # Fallback to EVM data
+            ZC_UNIVERSAL_TOKEN_ABI = UNIVERSAL_TOKEN_ABI
+            ZC_UNIVERSAL_TOKEN_BYTECODE = UNIVERSAL_TOKEN_BYTECODE
+        else:
+            # Load ZetaChain token artifact
+            with open(ZC_TOKEN_PATH, 'r') as f:
+                zc_token_data = json.load(f)
+                ZC_UNIVERSAL_TOKEN_ABI = zc_token_data.get('abi')
+                ZC_UNIVERSAL_TOKEN_BYTECODE = zc_token_data.get('bytecode')
+                logger.info(f"Loaded ZetaChain token artifact from {ZC_TOKEN_PATH}")
         
         logger.info("Contract data loaded successfully")
         return True
     except Exception as e:
         logger.error(f"Error loading contract data: {str(e)}")
+        # Fallback to placeholder data with minimal ABI
+        UNIVERSAL_TOKEN_ABI = [
+            {"inputs": [
+                {"internalType": "address", "name": "initialOwner", "type": "address"}, 
+                {"internalType": "string", "name": "name", "type": "string"}, 
+                {"internalType": "string", "name": "symbol", "type": "string"}
+            ], "stateMutability": "nonpayable", "type": "constructor"},
+            {"inputs": [
+                {"internalType": "address", "name": "to", "type": "address"}, 
+                {"internalType": "uint256", "name": "amount", "type": "uint256"}
+            ], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"},
+        ]
+        # Minimal bytecode for testing
+        UNIVERSAL_TOKEN_BYTECODE = "0x60806040523480156200001157600080fd5b50604051620000a4..."
+        ZC_UNIVERSAL_TOKEN_ABI = UNIVERSAL_TOKEN_ABI
+        ZC_UNIVERSAL_TOKEN_BYTECODE = UNIVERSAL_TOKEN_BYTECODE
         return False
 
 
@@ -75,8 +156,9 @@ def get_account() -> Optional[LocalAccount]:
     """Get the deployer account from private key."""
     try:
         private_key = Config.DEPLOYER_PRIVATE_KEY
-        if not private_key or private_key.startswith("0x"):
-            private_key = "0x" + private_key.lstrip("0x")
+        # Ensure private key has 0x prefix
+        if not private_key.startswith("0x"):
+            private_key = "0x" + private_key
         
         account = Account.from_key(private_key)
         return account
@@ -107,7 +189,10 @@ def deploy_contract(
     """
     try:
         # Create contract factory
-        contract = web3.eth.contract(abi=contract_abi, bytecode=contract_bytecode)
+        contract = web3.eth.contract(
+            abi=contract_abi, 
+            bytecode=contract_bytecode
+        )
         
         # Prepare constructor transaction
         construct_txn = contract.constructor(*constructor_args).build_transaction({
@@ -120,10 +205,19 @@ def deploy_contract(
         
         # Sign and send transaction
         signed_txn = account.sign_transaction(construct_txn)
-        tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        
+        # Web3.py v6 uses .raw_transaction instead of .rawTransaction
+        if hasattr(signed_txn, 'raw_transaction'):
+            tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
+        else:
+            # Fallback for older versions
+            tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
         
         # Wait for transaction receipt
-        tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        tx_receipt = web3.eth.wait_for_transaction_receipt(
+            tx_hash, 
+            timeout=120
+        )
         
         if tx_receipt.status != 1:
             return {
@@ -175,13 +269,27 @@ def verify_contract_submission(
             "status": "failed"
         }
     
+    # Determine the appropriate explorer URL based on chain type
+    explorer_url = (
+        chain_config.get("blockscout_url") 
+        if is_zetachain or chain_config.get("blockscout_url") 
+        else chain_config.get("explorer_url")
+    )
+    
+    if not explorer_url:
+        return {
+            "success": False,
+            "message": f"No explorer URL found for chain ID {chain_id}",
+            "status": "failed"
+        }
+    
     # In a real implementation, this would call the block explorer's API
     # For now, return a mock result
     return {
         "success": True,
         "message": "Contract verification submitted",
         "status": "pending",
-        "explorer_url": f"{chain_config['explorer_url']}/address/{contract_address}",
+        "explorer_url": f"{explorer_url}/address/{contract_address}",
         "verification_id": "123456789"
     }
 

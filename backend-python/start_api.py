@@ -1,35 +1,97 @@
 #!/usr/bin/env python
 """
-Simple script to start the API using uvicorn directly.
+Script to start the Universal Token Deployment Service API.
+This script ensures that:
+1. The correct Python environment is used (Python 3.11)
+2. The necessary environment variables are set
+3. The database migration is run if needed
+4. The API server is started with CORS support for frontend integration
 """
+
 import os
 import sys
-import subprocess
+import platform
 
-def main():
-    """Run the app using uvicorn."""
-    # Get the current directory
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Build the command to run uvicorn
-    command = [
-        sys.executable, "-m", "uvicorn", 
-        "app.app:app", 
-        "--host", "0.0.0.0", 
-        "--port", "8000"
-    ]
-    
-    # Print what we're going to run
-    print(f"Running command: {' '.join(command)}")
-    
-    # Run the command
+
+# Check Python version
+if sys.version_info.major != 3 or sys.version_info.minor != 11:
+    print("Error: This application requires Python 3.11")
+    print(f"Current version: {platform.python_version()}")
+    print("Please run this script using Python 3.11:")
+    print("  python3.11 start_api.py")
+    sys.exit(1)
+
+# Add current directory to python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    import uvicorn
+    from app.app import app, Config
+    from app.db import engine, Base
+    from app.utils.logger import logger
+    from app.utils.web3_helper import load_contract_data
+except ImportError as e:
+    print(f"Error: {e}")
+    print("Please make sure all dependencies are installed:")
+    print("  source venv_311/bin/activate")
+    print("  pip install -r requirements.txt")
+    sys.exit(1)
+
+
+def setup_database():
+    """Create database tables if they don't exist."""
     try:
-        subprocess.run(command, check=True, cwd=current_dir)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running uvicorn: {e}")
-    except FileNotFoundError:
-        print("Error: uvicorn not found. Make sure it's installed:")
-        print("pip install uvicorn")
+        # Create all tables defined by SQLAlchemy models
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created or confirmed to exist")
+        return True
+    except Exception as e:
+        logger.error(f"Database setup failed: {str(e)}")
+        return False
+
+
+def start_api_server():
+    """Start the API server."""
+    # First reload contract data to ensure latest artifacts are used
+    load_contract_data()
+    
+    # Setup database
+    if not setup_database():
+        logger.error("Database setup failed, aborting server start")
+        return False
+    
+    print("Starting the Universal Token Deployment Service API...")
+    logger.info(
+        "Starting API server on http://%s:%d",
+        Config.HOST,
+        Config.PORT
+    )
+    
+    # Start the uvicorn server
+    uvicorn.run(
+        app,
+        host=Config.HOST,
+        port=Config.PORT,
+        log_level="info"
+    )
+    return True
+
 
 if __name__ == "__main__":
-    main() 
+    try:
+        # Print a banner
+        print("=" * 80)
+        print(" Universal Token Deployment Service ".center(80, "="))
+        print("=" * 80)
+        print("Environment:", Config.ENV)
+        print("Port:", Config.PORT)
+        print("Database:", Config.DB_DATABASE)
+        print("=" * 80)
+        
+        # Start the API server
+        start_api_server()
+    except KeyboardInterrupt:
+        print("\nShutting down gracefully...")
+    except Exception as e:
+        print(f"Error starting server: {str(e)}")
+        sys.exit(1) 

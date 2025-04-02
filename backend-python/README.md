@@ -32,6 +32,7 @@ backend-python/
 │   ├── app.py              # FastAPI application and main entry point
 │   ├── config.py           # Configuration settings
 │   ├── db.py               # Database connection and utilities
+│   ├── rpc_config.json     # Chain configuration data
 │   ├── models/             # Data models and schemas
 │   │   ├── __init__.py
 │   │   ├── base.py         # Re-exports Base and engine to avoid circular imports
@@ -45,15 +46,19 @@ backend-python/
 │   │   └── verification.py # Contract verification service
 │   └── utils/              # Utility functions
 │       ├── __init__.py
+│       ├── chain_config.py # Chain configuration utilities
 │       ├── logger.py       # Logging utilities
 │       └── web3_helper.py  # Web3 interaction utilities
 ├── artifacts/              # Contract artifacts for deployment
 ├── migrations/             # Alembic migrations
 ├── tests/                  # Test files
+│   ├── test_deployment.py  # Test script for token deployment
+│   └── test_api.py         # Test script for API endpoints
 ├── alembic.ini             # Alembic configuration
 ├── requirements.txt        # Project dependencies
 ├── run_app.py              # Simple script to run the application
-├── start_api.py            # Alternative script to start the API
+├── start_api.py            # Enhanced script to start the API with validation
+├── deployment_fixes.md     # Documentation of deployment fixes and troubleshooting
 └── .env                    # Environment variables
 ```
 
@@ -63,8 +68,9 @@ backend-python/
 2. **Combined Models**: DB models and API schemas are in the same files
 3. **Centralized Config**: Configuration in a single module
 4. **Pythonic Imports**: More direct import statements
-5. **Web3 Helper**: Utilities for blockchain interactions
-6. **Start Scripts**: Multiple ways to run the application
+5. **Web3 Helper**: Utilities for blockchain interactions with support for Web3.py v6
+6. **Smart Start Script**: Enhanced script with environment validation and proper error handling
+7. **Chain Configuration**: Flexible JSON-based configuration for blockchain networks
 
 ## Getting Started
 
@@ -101,8 +107,9 @@ cp .env.example .env
 
 5. Edit the `.env` file with your configuration settings, especially:
    - Database connection details
-   - Deployer private key (used for contract deployment)
+   - Deployer private key (used for contract deployment - make sure it has 0x prefix)
    - Explorer API keys (used for contract verification)
+   - Custom RPC URLs for less reliable networks (see Chain Configuration section below)
 
 ### Database Setup
 
@@ -118,8 +125,6 @@ alembic upgrade head
 
 ### Running the Application
 
-There are multiple ways to start the application:
-
 1. Using the Python module directly:
 ```bash
 python -m app.app
@@ -130,13 +135,7 @@ python -m app.app
 python run_app.py
 ```
 
-3. Using the start_api.py script:
-```bash
-chmod +x start_api.py  # Make it executable (Unix-like systems)
-./start_api.py
-```
-
-4. Using uvicorn directly:
+3. Using uvicorn directly:
 ```bash
 uvicorn app.app:app --host 0.0.0.0 --port 8000
 ```
@@ -151,9 +150,144 @@ uvicorn app.app:app --reload --host 0.0.0.0 --port 8000
 ## API Endpoints
 
 - `GET /` - Check if the service is running
-- `GET /api/chains` - Get a list of supported chains
+- `GET /api/chains` - Get a list of supported chains (with optional filtering for testnet/mainnet)
 - `POST /api/deploy` - Deploy a token on multiple chains
 - `POST /api/verify` - Verify a contract on a blockchain explorer
+
+### Token Deployment
+
+The token deployment endpoint (`POST /api/deploy`) requires a specific JSON payload with the following structure:
+
+```json
+{
+  "token_name": "My Token",
+  "token_symbol": "MTK",
+  "decimals": 18,
+  "total_supply": "1000000000000000000000000",
+  "selected_chains": ["7001", "11155111"],
+  "deployer_address": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
+  "allocations": [
+    {
+      "address": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
+      "amount": "1000000000000000000000000"
+    }
+  ]
+}
+```
+
+Note that:
+- `decimals` can be an integer (unlike older API versions that required a string)
+- `total_supply` should be provided as a string to avoid precision issues
+- `selected_chains` accepts chain IDs (e.g., "7001", "11155111")
+
+## Smart Contract Integration
+
+The service integrates with Solidity smart contracts for token deployment:
+
+1. **Universal Token Contracts**: 
+   - `ZetaChainUniversalToken.sol` - For deployment on ZetaChain (5 constructor arguments)
+   - `EVMUniversalToken.sol` - For deployment on other EVM chains (6 constructor arguments)
+
+2. **Constructor Arguments**:
+   - ZetaChainUniversalToken: name, symbol, decimals, initialSupply, initialOwner
+   - EVMUniversalToken: name, symbol, decimals, initialSupply, currentChainId, initialOwner
+
+The service automatically loads contract artifacts (ABI and bytecode) from the `smart-contracts/artifacts` directory.
+
+## Chain Configuration
+
+The system uses a JSON-based configuration system for blockchain networks. Chain configurations are stored in `app/rpc_config.json`.
+
+### Supported Chains
+
+The following chains are currently supported:
+
+| Chain ID | Name | Currency | Type |
+|---------|------|----------|------|
+| 1 | Ethereum Mainnet | ETH | Mainnet |
+| 5 | Goerli Testnet | ETH | Testnet |
+| 137 | Polygon Mainnet | MATIC | Mainnet |
+| 56 | Binance Smart Chain | BNB | Mainnet |
+| 7000 | ZetaChain | ZETA | Mainnet |
+| 7001 | ZetaChain Testnet | ZETA | Testnet |
+| 11155111 | Sepolia Testnet | ETH | Testnet |
+| 42161 | Arbitrum One | ETH | Mainnet |
+| 10 | Optimism | ETH | Mainnet |
+| 8453 | Base | ETH | Mainnet |
+
+### Adding Support for New Chains
+
+To add support for a new blockchain network:
+
+1. **Update the Chain Configuration**
+
+   Edit the `app/rpc_config.json` file to add the new chain. Use the chain ID as the key and provide the required configuration information:
+
+   ```json
+   {
+     "123456": {
+       "name": "New Chain Name",
+       "rpc_url": "https://rpc.example.com",
+       "explorer_url": "https://explorer.example.com",
+       "blockscout_url": null,
+       "currency_symbol": "TOKEN",
+       "testnet": false
+     }
+   }
+   ```
+
+   Required fields:
+   - `name`: The display name of the chain
+   - `rpc_url`: The RPC URL for connecting to the chain
+   - `explorer_url`: URL of the Etherscan-compatible explorer (null if not available)
+   - `blockscout_url`: URL of the Blockscout explorer (null if not available)
+   - `currency_symbol`: The native currency symbol
+   - `testnet`: Boolean indicating if this is a testnet
+
+2. **Configure Custom RPC URLs (Optional)**
+
+   For better reliability, you can configure custom RPC URLs in your environment:
+
+   ```
+   # In .env file
+   NEW_CHAIN_NAME_RPC_URL=https://your-custom-rpc.example.com
+   ```
+
+   The system will automatically look for an environment variable named after the chain (with spaces replaced by underscores and uppercase).
+
+3. **Test Deployment**
+
+   Run the deployment test script with the new chain:
+
+   ```python
+   # In test_deployment.py
+   selected_chains = ["7001", "11155111", "123456"]  # Add your new chain ID
+   ```
+
+   Ensure the deployment works successfully and contracts are properly verified.
+
+4. **Additional Configuration**
+
+   For certain chains, you might need:
+
+   - **Add API keys for block explorers**:
+     ```
+     # In .env file
+     NEWCHAIN_API_KEY=your_explorer_api_key
+     ```
+
+   - **Adjust gas parameters** in the `deploy_contract` function if the chain has different gas requirements.
+
+   - For **non-EVM chains**, additional development would be required to support their specific contract deployment mechanisms.
+
+5. **Troubleshooting Chain Issues**
+
+   If you encounter issues with a specific chain:
+
+   - Verify the RPC URL is correct and accessible
+   - Check that the chain ID matches the actual network ID
+   - Ensure you have sufficient funds on the deployment account for that chain
+   - Verify the explorer URLs are correct if contract verification is failing
 
 ## Development
 
@@ -171,9 +305,55 @@ alembic upgrade head
 
 ### Testing
 
-Run tests using pytest:
+Test direct token deployment:
+```bash
+python test_deployment.py
+```
+
+Test the API with a mock request:
+```bash
+python test_api.py
+```
+
+Run automated tests using pytest:
 ```bash
 pytest
+```
+
+## Testing
+
+### Testing Deployment
+
+The `test_deployment.py` script is designed to test token deployment across all enabled chains in the system. You can use it to verify that your configuration is working correctly before exposing it to users.
+
+```bash
+# Activate the virtual environment
+source venv_311/bin/activate
+
+# Test all enabled chains
+python test_deployment.py
+
+# Test only testnets (recommended for development)
+python test_deployment.py --testnet-only
+
+# Limit the number of chains to test (useful for quick tests)
+python test_deployment.py --testnet-only --max-chains 2
+```
+
+The script will:
+1. Read all enabled chains from your `app/rpc_config.json` file
+2. Filter for testnet chains if the `--testnet-only` flag is used
+3. Limit to a specified number of chains if the `--max-chains` argument is provided
+4. Deploy a test token to each chain
+5. Report on the success or failure of each deployment
+
+This provides a quick way to verify your deployment configuration before going to production.
+
+### Testing the API
+
+Test the API with a mock request:
+```bash
+python test_api.py
 ```
 
 ## Troubleshooting
@@ -212,6 +392,59 @@ createdb universal_token_registry
 alembic upgrade head
 ```
 
+### Token Deployment Issues
+
+If you encounter issues with token deployment:
+
+1. **Web3.py Transaction Signing Issues**:
+   - Error: `'SignedTransaction' object has no attribute 'rawTransaction'`
+   - Solution: The code has been updated to handle both `rawTransaction` (older versions) and `raw_transaction` (Web3.py v6)
+   - Implementation:
+     ```python
+     # Web3.py v6 uses .raw_transaction instead of .rawTransaction
+     if hasattr(signed_txn, 'raw_transaction'):
+         tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
+     else:
+         # Fallback for older versions
+         tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+     ```
+
+2. **Contract ABI or Bytecode Issues**:
+   - Ensure the smart contract artifacts are correctly built and placed in the `smart-contracts/artifacts` directory
+   - Check that the contract constructor arguments match those expected in the deployment service
+
+3. **Transaction Signing Issues**:
+   - Verify that the `.env` file has a valid private key with the `0x` prefix
+   - Ensure the account has sufficient funds on the target chain
+   - Check Web3.py version compatibility with the specific blockchain RPC
+   - The system automatically adds the `0x` prefix if missing:
+     ```python
+     # Ensure private key has 0x prefix
+     if not private_key.startswith("0x"):
+         private_key = "0x" + private_key
+     ```
+
+4. **Chain Connection Issues**:
+   - For testnet chains like Sepolia, public RPC URLs may be unreliable
+   - Consider adding custom RPC URLs in your `.env` file:
+     ```
+     SEPOLIA_RPC_URL=https://ethereum-sepolia.publicnode.com
+     # Or use a provider with an API key for better reliability:
+     # SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR-API-KEY
+     ```
+   - The system will automatically use your custom RPC URLs if defined in the environment
+
+5. **Numeric Value Errors**:
+   - Ensure all numeric values in the API request are passed correctly
+   - Large values like `total_supply` should be passed as strings
+   - Values like `decimals` can be passed as integers
+
+6. **Database Schema Mismatch**:
+   - If you encounter errors like `column token_deployments.created_at does not exist`
+   - The error might suggest: `Perhaps you meant to reference the column "token_deployments.createdAt"`
+   - This indicates a mismatch between SQLAlchemy models (using snake_case) and database schema (using camelCase)
+   - Solution: Follow the Database Column Naming Issues section below to reset your database schema
+
 ### Port Already in Use
 
 If you see "address already in use" errors when starting the server:
@@ -240,4 +473,16 @@ pip install psycopg2-binary==2.9.9
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Example Contract Deployments
+
+Here are some example contract addresses from successful test deployments:
+
+1. ZetaChain Testnet (7001):
+   - `0xad428219f49c423f0c7565aeaD59F5084c78A32A`
+   - `0x28A76DF9944cBf3ff1E73b8c339Fa31BF3fb354c`
+   - `0x66aa78987ab5AF0d3C21D9D3b5AdA054Eb4C689D`
+
+You can verify these contracts on the ZetaChain explorer:
+- https://explorer.zetachain.com/address/{contract_address} 

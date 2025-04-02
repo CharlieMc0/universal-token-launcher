@@ -41,58 +41,6 @@ class Config:
     # Logging settings
     LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
     
-    # Chain configurations
-    CHAINS = {
-        "ethereum": {
-            "name": "Ethereum",
-            "chain_id": 1,
-            "testnet": False,
-            "rpc_url": os.getenv("ETHEREUM_RPC_URL", "https://eth.llamarpc.com"),
-            "explorer_url": "https://etherscan.io",
-            "api_key": ETHERSCAN_API_KEY,
-        },
-        "goerli": {
-            "name": "Goerli",
-            "chain_id": 5,
-            "testnet": True,
-            "rpc_url": os.getenv("GOERLI_RPC_URL", "https://rpc.ankr.com/eth_goerli"),
-            "explorer_url": "https://goerli.etherscan.io",
-            "api_key": ETHERSCAN_API_KEY,
-        },
-        "polygon": {
-            "name": "Polygon",
-            "chain_id": 137,
-            "testnet": False,
-            "rpc_url": os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com"),
-            "explorer_url": "https://polygonscan.com",
-            "api_key": POLYGONSCAN_API_KEY,
-        },
-        "bsc": {
-            "name": "Binance Smart Chain",
-            "chain_id": 56,
-            "testnet": False,
-            "rpc_url": os.getenv("BSC_RPC_URL", "https://bsc-dataseed.binance.org"),
-            "explorer_url": "https://bscscan.com",
-            "api_key": BSCSCAN_API_KEY,
-        },
-        "zeta": {
-            "name": "ZetaChain",
-            "chain_id": 7000,
-            "testnet": False,
-            "rpc_url": os.getenv("ZETA_RPC_URL", "https://zetachain-evm.blockpi.network/v1/rpc/public"),
-            "explorer_url": "https://explorer.zetachain.com",
-            "api_key": BLOCKSCOUT_API_KEY,
-        },
-        "zeta_testnet": {
-            "name": "ZetaChain Testnet",
-            "chain_id": 7001,
-            "testnet": True,
-            "rpc_url": os.getenv("ZETA_TESTNET_RPC_URL", "https://zetachain-athens-evm.blockpi.network/v1/rpc/public"),
-            "explorer_url": "https://explorer.athens.zetachain.com",
-            "api_key": BLOCKSCOUT_API_KEY,
-        }
-    }
-    
     @classmethod
     def get_config(cls) -> Dict[str, Any]:
         """Get configuration as dictionary."""
@@ -114,9 +62,5 @@ def get_config():
     return Config.get_config()
 
 
-# Convenience function to get chain config
-def get_chain_config(chain_id):
-    for chain in Config.CHAINS.values():
-        if chain["chain_id"] == chain_id:
-            return chain
-    return None 
+# Import chain_config here to avoid circular imports
+from app.utils.chain_config import get_chain_config 
