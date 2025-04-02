@@ -2,14 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getTokenDetails, initiateTokenTransfer } from '../services/apiService';
 import { formatTokenBalance, getChainName } from '../utils/tokenUtils';
-import { estimateCrossChainGas } from '../utils/contracts';
+import { 
+  estimateCrossChainGas, 
+  CHAIN_IDS 
+} from '../utils/contracts';
+import { 
+  isTokenOwner, 
+  mintTokens, 
+  executeTokenTransfer,
+  executeCrossChainTransfer 
+} from '../utils/contractInteractions';
 import { ethers } from 'ethers';
+import './Transfer/TransferPage.css';
 
 /**
  * Transfer Page Component
  * 
  * Handles cross-chain token transfers for Universal Tokens.
  * Allows selecting source and destination chains, specifying amount and recipient.
+ * For token owners, also provides minting functionality.
  */
 const TransferPage = ({ walletAddress }) => {
   const { tokenId } = useParams();
@@ -27,7 +38,23 @@ const TransferPage = ({ walletAddress }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [txHash, setTxHash] = useState(null);
   
-  // Fetch token details
+  // Transfer type state (cross-chain, regular, mint)
+  const [transferType, setTransferType] = useState('cross-chain');
+  
+  // Mint specific state
+  const [mintAmount, setMintAmount] = useState('');
+  const [mintRecipient, setMintRecipient] = useState('');
+  const [isDeployer, setIsDeployer] = useState(false);
+  const [isMinting, setIsMinting] = useState(false);
+  const [mintTxHash, setMintTxHash] = useState(null);
+  
+  // Regular transfer state
+  const [regularRecipient, setRegularRecipient] = useState('');
+  const [regularAmount, setRegularAmount] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [transferTxHash, setTransferTxHash] = useState(null);
+  
+  // Fetch token details and check if user is deployer
   useEffect(() => {
     const fetchToken = async () => {
       if (!tokenId) return;
@@ -53,6 +80,21 @@ const TransferPage = ({ walletAddress }) => {
           if (sortedChains.length > 1) {
             setDestChain(sortedChains[1]);
           }
+          
+          // Check if the user is the deployer for any of the chains
+          if (sortedChains.length > 0 && walletAddress) {
+            const chainToCheck = sortedChains[0];
+            const isOwner = await isTokenOwner({
+              chainId: chainToCheck.chainId,
+              tokenAddress: chainToCheck.contractAddress
+            });
+            setIsDeployer(isOwner);
+            
+            // Default the mint recipient to the wallet address
+            if (isOwner) {
+              setMintRecipient(walletAddress);
+            }
+          }
         }
       } catch (err) {
         console.error('Error fetching token:', err);
@@ -63,7 +105,7 @@ const TransferPage = ({ walletAddress }) => {
     };
     
     fetchToken();
-  }, [tokenId]);
+  }, [tokenId, walletAddress]);
   
   // Update gas estimate when source or destination chain changes
   useEffect(() => {
@@ -112,8 +154,112 @@ const TransferPage = ({ walletAddress }) => {
     }
   };
   
-  // Handle transfer submission
-  const handleSubmit = async (e) => {
+  // Handle mint recipient input
+  const handleMintRecipientChange = (e) => {
+    setMintRecipient(e.target.value);
+  };
+  
+  // Handle mint amount input
+  const handleMintAmountChange = (e) => {
+    setMintAmount(e.target.value);
+  };
+  
+  // Handle regular transfer recipient input
+  const handleRegularRecipientChange = (e) => {
+    setRegularRecipient(e.target.value);
+  };
+  
+  // Handle regular transfer amount input
+  const handleRegularAmountChange = (e) => {
+    setRegularAmount(e.target.value);
+  };
+  
+  // Handle regular transfer max amount button
+  const handleRegularMaxAmount = () => {
+    if (sourceChain && sourceChain.balance) {
+      setRegularAmount(formatTokenBalance(sourceChain.balance, token.decimals));
+    }
+  };
+  
+  // Handle transfer type selection
+  const handleTransferTypeChange = (e) => {
+    setTransferType(e.target.value);
+  };
+  
+  // Handle mint submission
+  const handleMintSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!walletAddress || !sourceChain || !mintRecipient || !mintAmount) {
+      setError('Please fill in all required fields for minting');
+      return;
+    }
+    
+    try {
+      setIsMinting(true);
+      setError(null);
+      
+      // Convert amount to wei format
+      const mintAmountWei = ethers.parseUnits(mintAmount, token.decimals).toString();
+      
+      // Execute mint transaction
+      const result = await mintTokens({
+        chainId: sourceChain.chainId,
+        tokenAddress: sourceChain.contractAddress,
+        recipientAddress: mintRecipient,
+        amount: mintAmountWei
+      });
+      
+      setMintTxHash(result.transactionHash);
+      
+      // Reset form after successful mint
+      setMintAmount('');
+    } catch (err) {
+      console.error('Error minting tokens:', err);
+      setError(`Failed to mint tokens: ${err.message}`);
+    } finally {
+      setIsMinting(false);
+    }
+  };
+  
+  // Handle regular transfer submission
+  const handleRegularTransferSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!walletAddress || !sourceChain || !regularRecipient || !regularAmount) {
+      setError('Please fill in all required fields for transfer');
+      return;
+    }
+    
+    try {
+      setIsTransferring(true);
+      setError(null);
+      
+      // Convert amount to wei format
+      const transferAmountWei = ethers.parseUnits(regularAmount, token.decimals).toString();
+      
+      // Execute transfer transaction
+      const result = await executeTokenTransfer({
+        chainId: sourceChain.chainId,
+        tokenAddress: sourceChain.contractAddress,
+        recipientAddress: regularRecipient,
+        amount: transferAmountWei
+      });
+      
+      setTransferTxHash(result.transactionHash);
+      
+      // Reset form after successful transfer
+      setRegularAmount('');
+    } catch (err) {
+      console.error('Error transferring tokens:', err);
+      setError(`Failed to transfer tokens: ${err.message}`);
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+  
+  // Handle cross-chain transfer submission
+  const handleCrossChainSubmit = async (e) => {
     e.preventDefault();
     
     if (!walletAddress || !sourceChain || !destChain || !amount || !recipient) {
@@ -124,21 +270,19 @@ const TransferPage = ({ walletAddress }) => {
     try {
       setIsSubmitting(true);
       
-      // Prepare transfer data
-      const transferData = {
-        tokenId: token.id,
-        sourceChainId: sourceChain.chainId,
-        destChainId: destChain.chainId,
-        amount,
-        recipient,
-        sender: walletAddress
-      };
+      // Convert amount to wei format
+      const transferAmountWei = ethers.parseUnits(amount, token.decimals).toString();
       
-      // Initiate transfer
-      const result = await initiateTokenTransfer(transferData);
-      setTxHash(result.txHash);
+      // Execute cross-chain transfer transaction
+      const result = await executeCrossChainTransfer({
+        sourceChain: sourceChain.chainId,
+        destinationChain: destChain.chainId,
+        tokenAddress: sourceChain.contractAddress,
+        recipientAddress: recipient,
+        amount: transferAmountWei
+      });
       
-      // Success! Show confirmation
+      setTxHash(result.transactionHash);
     } catch (err) {
       console.error('Error initiating transfer:', err);
       setError(`Failed to initiate transfer: ${err.message}`);
@@ -170,20 +314,91 @@ const TransferPage = ({ walletAddress }) => {
     );
   }
   
-  // Success state after transfer
+  // Success state after cross-chain transfer
   if (txHash) {
     return (
       <div className="transfer-success">
-        <h2>Transfer Initiated!</h2>
+        <h2>Cross-Chain Transfer Initiated!</h2>
         <p>Your cross-chain transfer has been initiated successfully.</p>
         <div className="tx-details">
           <p>Transaction Hash: <a href={`https://explorer.zetachain.com/tx/${txHash}`} target="_blank" rel="noopener noreferrer">{txHash.slice(0, 10)}...{txHash.slice(-8)}</a></p>
-          <p>From: {sourceChain.chainName}</p>
-          <p>To: {destChain.chainName}</p>
+          <p>From: {sourceChain.name}</p>
+          <p>To: {destChain.name}</p>
           <p>Amount: {amount} {token.symbol}</p>
           <p>Recipient: {recipient}</p>
         </div>
-        <button onClick={() => navigate('/tokens')}>
+        <button onClick={() => {
+          setTxHash(null);
+          // Reload token data to get updated balances
+          window.location.reload();
+        }}>
+          New Transfer
+        </button>
+        <button onClick={() => navigate('/tokens')} className="secondary-button">
+          Back to Tokens
+        </button>
+      </div>
+    );
+  }
+  
+  // Success state after regular transfer
+  if (transferTxHash) {
+    return (
+      <div className="transfer-success">
+        <h2>Transfer Successful!</h2>
+        <p>Your token transfer has been completed successfully.</p>
+        <div className="tx-details">
+          <p>Transaction Hash: <a 
+            href={sourceChain.explorerUrl ? `${sourceChain.explorerUrl}/tx/${transferTxHash}` : '#'} 
+            target="_blank" 
+            rel="noopener noreferrer"
+          >
+            {transferTxHash.slice(0, 10)}...{transferTxHash.slice(-8)}
+          </a></p>
+          <p>Chain: {sourceChain.name}</p>
+          <p>Amount: {regularAmount} {token.symbol}</p>
+          <p>Recipient: {regularRecipient}</p>
+        </div>
+        <button onClick={() => {
+          setTransferTxHash(null);
+          // Reload token data to get updated balances
+          window.location.reload();
+        }}>
+          New Transfer
+        </button>
+        <button onClick={() => navigate('/tokens')} className="secondary-button">
+          Back to Tokens
+        </button>
+      </div>
+    );
+  }
+  
+  // Success state after minting
+  if (mintTxHash) {
+    return (
+      <div className="transfer-success">
+        <h2>Tokens Minted Successfully!</h2>
+        <p>Your token minting transaction has been completed.</p>
+        <div className="tx-details">
+          <p>Transaction Hash: <a 
+            href={sourceChain.explorerUrl ? `${sourceChain.explorerUrl}/tx/${mintTxHash}` : '#'} 
+            target="_blank" 
+            rel="noopener noreferrer"
+          >
+            {mintTxHash.slice(0, 10)}...{mintTxHash.slice(-8)}
+          </a></p>
+          <p>Chain: {sourceChain.name}</p>
+          <p>Amount: {mintAmount} {token.symbol}</p>
+          <p>Recipient: {mintRecipient}</p>
+        </div>
+        <button onClick={() => {
+          setMintTxHash(null);
+          // Reload token data to get updated balances
+          window.location.reload();
+        }}>
+          Mint More Tokens
+        </button>
+        <button onClick={() => navigate('/tokens')} className="secondary-button">
           Back to Tokens
         </button>
       </div>
@@ -197,117 +412,315 @@ const TransferPage = ({ walletAddress }) => {
       
       {error && <div className="error-message">{error}</div>}
       
-      <form onSubmit={handleSubmit} className="transfer-form">
-        {/* Source Chain */}
-        <div className="form-group">
-          <label htmlFor="sourceChain">From Chain:</label>
-          <select 
-            id="sourceChain" 
-            value={sourceChain?.chainId || ''}
-            onChange={handleSourceChainChange}
-            required
-          >
-            <option value="">Select source chain</option>
-            {token?.chainInfo
-              .filter(chain => chain.balance && chain.balance !== '0')
-              .map(chain => (
-                <option key={chain.chainId} value={chain.chainId}>
-                  {chain.name} ({formatTokenBalance(chain.balance, token.decimals)} {token.symbol})
-                </option>
-              ))
-            }
-          </select>
+      {/* Transfer Type Selection */}
+      <div className="transfer-type-selection">
+        <div className="transfer-type-header">
+          <h3>Select Transfer Type</h3>
         </div>
-        
-        {/* Destination Chain */}
-        <div className="form-group">
-          <label htmlFor="destChain">To Chain:</label>
-          <select 
-            id="destChain" 
-            value={destChain?.chainId || ''}
-            onChange={handleDestChainChange}
-            required
-          >
-            <option value="">Select destination chain</option>
-            {token?.chainInfo
-              .filter(chain => !sourceChain || chain.chainId !== sourceChain.chainId)
-              .map(chain => (
-                <option key={chain.chainId} value={chain.chainId}>
-                  {chain.name}
-                </option>
-              ))
-            }
-          </select>
-        </div>
-        
-        {/* Amount */}
-        <div className="form-group">
-          <label htmlFor="amount">Amount:</label>
-          <div className="amount-input-container">
-            <input 
-              id="amount" 
-              type="text" 
-              value={amount}
-              onChange={handleAmountChange}
-              placeholder="0.0"
-              required
+        <div className="transfer-type-options">
+          <label className={`transfer-type-option ${transferType === 'regular' ? 'selected' : ''}`}>
+            <input
+              type="radio"
+              name="transferType"
+              value="regular"
+              checked={transferType === 'regular'}
+              onChange={handleTransferTypeChange}
             />
-            <button 
-              type="button" 
-              className="max-button"
-              onClick={handleMaxAmount}
-            >
-              MAX
-            </button>
-          </div>
-          {sourceChain && (
-            <div className="balance-display">
-              Balance: {formatTokenBalance(sourceChain.balance, token?.decimals)} {token?.symbol}
-            </div>
+            <span className="transfer-type-label">Regular Transfer</span>
+            <span className="transfer-type-description">Send tokens to another address on the same chain</span>
+          </label>
+          
+          <label className={`transfer-type-option ${transferType === 'cross-chain' ? 'selected' : ''}`}>
+            <input
+              type="radio"
+              name="transferType"
+              value="cross-chain"
+              checked={transferType === 'cross-chain'}
+              onChange={handleTransferTypeChange}
+            />
+            <span className="transfer-type-label">Cross-Chain Transfer</span>
+            <span className="transfer-type-description">Send tokens to another chain</span>
+          </label>
+          
+          {isDeployer && (
+            <label className={`transfer-type-option ${transferType === 'mint' ? 'selected' : ''}`}>
+              <input
+                type="radio"
+                name="transferType"
+                value="mint"
+                checked={transferType === 'mint'}
+                onChange={handleTransferTypeChange}
+              />
+              <span className="transfer-type-label">Mint Tokens</span>
+              <span className="transfer-type-description">Create new tokens (deployer only)</span>
+            </label>
           )}
         </div>
-        
-        {/* Recipient */}
-        <div className="form-group">
-          <label htmlFor="recipient">Recipient Address:</label>
-          <input 
-            id="recipient" 
-            type="text" 
-            value={recipient}
-            onChange={handleRecipientChange}
-            placeholder="0x..."
-            required
-          />
-          <div className="recipient-help">
-            <small>Address to receive tokens on the destination chain</small>
+      </div>
+      
+      {/* Regular Transfer Form */}
+      {transferType === 'regular' && (
+        <form onSubmit={handleRegularTransferSubmit} className="transfer-form">
+          <h3>Regular Transfer</h3>
+          
+          {/* Source Chain */}
+          <div className="form-group">
+            <label htmlFor="regularSourceChain">Chain:</label>
+            <select 
+              id="regularSourceChain" 
+              value={sourceChain?.chainId || ''}
+              onChange={handleSourceChainChange}
+              required
+            >
+              <option value="">Select chain</option>
+              {token?.chainInfo
+                .filter(chain => chain.balance && ethers.toBigInt(chain.balance) > 0)
+                .map(chain => (
+                  <option key={chain.chainId} value={chain.chainId}>
+                    {chain.name} ({formatTokenBalance(chain.balance, token.decimals)} {token.symbol})
+                  </option>
+                ))
+              }
+            </select>
           </div>
-        </div>
-        
-        {/* Gas Estimate */}
-        {gasEstimate && (
-          <div className="gas-estimate">
-            <p>Estimated Gas: ~{gasEstimate}</p>
+          
+          {/* Recipient */}
+          <div className="form-group">
+            <label htmlFor="regularRecipient">Recipient Address:</label>
+            <input 
+              id="regularRecipient" 
+              type="text" 
+              value={regularRecipient}
+              onChange={handleRegularRecipientChange}
+              placeholder="0x..."
+              required
+            />
           </div>
-        )}
-        
-        {/* Submit Button */}
-        <div className="form-actions">
+          
+          {/* Amount */}
+          <div className="form-group">
+            <label htmlFor="regularAmount">Amount:</label>
+            <div className="amount-input-container">
+              <input 
+                id="regularAmount" 
+                type="text" 
+                value={regularAmount}
+                onChange={handleRegularAmountChange}
+                placeholder="0.0"
+                required
+              />
+              <button 
+                type="button" 
+                className="max-button"
+                onClick={handleRegularMaxAmount}
+              >
+                MAX
+              </button>
+            </div>
+            <div className="amount-detail">
+              {sourceChain && (
+                <span>Balance: {formatTokenBalance(sourceChain.balance, token.decimals)} {token.symbol}</span>
+              )}
+            </div>
+          </div>
+          
+          {/* Submit Button */}
           <button 
-            type="button" 
-            className="cancel-button"
-            onClick={() => navigate('/tokens')}
+            type="submit" 
+            className="submit-button"
+            disabled={isTransferring || !sourceChain || !regularRecipient || !regularAmount}
           >
-            Cancel
+            {isTransferring ? 'Transferring...' : 'Transfer Tokens'}
           </button>
+        </form>
+      )}
+      
+      {/* Cross-Chain Transfer Form */}
+      {transferType === 'cross-chain' && (
+        <form onSubmit={handleCrossChainSubmit} className="transfer-form">
+          <h3>Cross-Chain Transfer</h3>
+          
+          {/* Source Chain */}
+          <div className="form-group">
+            <label htmlFor="sourceChain">From Chain:</label>
+            <select 
+              id="sourceChain" 
+              value={sourceChain?.chainId || ''}
+              onChange={handleSourceChainChange}
+              required
+            >
+              <option value="">Select source chain</option>
+              {token?.chainInfo
+                .filter(chain => chain.balance && ethers.toBigInt(chain.balance) > 0)
+                .map(chain => (
+                  <option key={chain.chainId} value={chain.chainId}>
+                    {chain.name} ({formatTokenBalance(chain.balance, token.decimals)} {token.symbol})
+                  </option>
+                ))
+              }
+            </select>
+          </div>
+          
+          {/* Destination Chain */}
+          <div className="form-group">
+            <label htmlFor="destChain">To Chain:</label>
+            <select 
+              id="destChain" 
+              value={destChain?.chainId || ''}
+              onChange={handleDestChainChange}
+              required
+            >
+              <option value="">Select destination chain</option>
+              {token?.chainInfo
+                .filter(chain => !sourceChain || chain.chainId !== sourceChain.chainId)
+                .map(chain => (
+                  <option key={chain.chainId} value={chain.chainId}>
+                    {chain.name}
+                  </option>
+                ))
+              }
+            </select>
+          </div>
+          
+          {/* Amount */}
+          <div className="form-group">
+            <label htmlFor="amount">Amount:</label>
+            <div className="amount-input-container">
+              <input 
+                id="amount" 
+                type="text" 
+                value={amount}
+                onChange={handleAmountChange}
+                placeholder="0.0"
+                required
+              />
+              <button 
+                type="button" 
+                className="max-button"
+                onClick={handleMaxAmount}
+              >
+                MAX
+              </button>
+            </div>
+            <div className="amount-detail">
+              {sourceChain && (
+                <span>Balance: {formatTokenBalance(sourceChain.balance, token.decimals)} {token.symbol}</span>
+              )}
+            </div>
+          </div>
+          
+          {/* Recipient */}
+          <div className="form-group">
+            <label htmlFor="recipient">Recipient Address:</label>
+            <input 
+              id="recipient" 
+              type="text" 
+              value={recipient}
+              onChange={handleRecipientChange}
+              placeholder="0x..."
+              required
+            />
+          </div>
+          
+          {/* Gas Estimate */}
+          {gasEstimate && sourceChain && destChain && (
+            <div className="gas-estimate">
+              <p>Estimated Gas: {gasEstimate} gas units</p>
+            </div>
+          )}
+          
+          {/* Submit Button */}
           <button 
             type="submit" 
             className="submit-button"
             disabled={isSubmitting || !sourceChain || !destChain || !amount || !recipient}
           >
-            {isSubmitting ? 'Initiating Transfer...' : 'Transfer'}
+            {isSubmitting ? 'Processing...' : 'Transfer Tokens'}
+          </button>
+        </form>
+      )}
+      
+      {/* Mint Form (Only for token deployers) */}
+      {transferType === 'mint' && isDeployer && (
+        <form onSubmit={handleMintSubmit} className="transfer-form">
+          <h3>Mint New Tokens</h3>
+          <div className="deployer-notice">
+            <p>As the token deployer, you can mint new tokens to any address.</p>
+          </div>
+          
+          {/* Chain */}
+          <div className="form-group">
+            <label htmlFor="mintChain">Chain:</label>
+            <select 
+              id="mintChain" 
+              value={sourceChain?.chainId || ''}
+              onChange={handleSourceChainChange}
+              required
+            >
+              <option value="">Select chain</option>
+              {token?.chainInfo.map(chain => (
+                <option key={chain.chainId} value={chain.chainId}>
+                  {chain.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Recipient */}
+          <div className="form-group">
+            <label htmlFor="mintRecipient">Recipient Address:</label>
+            <input 
+              id="mintRecipient" 
+              type="text" 
+              value={mintRecipient}
+              onChange={handleMintRecipientChange}
+              placeholder="0x..."
+              required
+            />
+          </div>
+          
+          {/* Amount */}
+          <div className="form-group">
+            <label htmlFor="mintAmount">Amount to Mint:</label>
+            <input 
+              id="mintAmount" 
+              type="text" 
+              value={mintAmount}
+              onChange={handleMintAmountChange}
+              placeholder="0.0"
+              required
+            />
+            <div className="amount-detail">
+              <span>Token Decimals: {token.decimals}</span>
+            </div>
+          </div>
+          
+          {/* Submit Button */}
+          <button 
+            type="submit" 
+            className="submit-button"
+            disabled={isMinting || !sourceChain || !mintRecipient || !mintAmount}
+          >
+            {isMinting ? 'Minting...' : 'Mint Tokens'}
+          </button>
+        </form>
+      )}
+      
+      {/* Display message if not a deployer but mint was selected */}
+      {transferType === 'mint' && !isDeployer && (
+        <div className="not-deployer-message">
+          <p>Only the token deployer can mint new tokens. Please select a different transfer type.</p>
+          <button onClick={() => setTransferType('regular')} className="secondary-button">
+            Regular Transfer
           </button>
         </div>
-      </form>
+      )}
+      
+      <div className="back-button-container">
+        <button onClick={() => navigate('/tokens')} className="back-button">
+          Back to Tokens
+        </button>
+      </div>
     </div>
   );
 };

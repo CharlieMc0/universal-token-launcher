@@ -4,10 +4,11 @@ import { useAccount, useChainId } from 'wagmi';
 import FormInput from '../../../components/FormInput';
 import TokenTile, { chainLogos, chainNames } from '../../../components/TokenTile';
 import apiService from '../../../services/apiService';
-import { executeCrossChainTransfer } from '../../../utils/contractInteractions';
+import { executeCrossChainTransfer, mintTokens, isTokenOwner } from '../../../utils/contractInteractions';
 import { switchToZetaChain } from '../../../utils/networkSwitchingUtility';
 import { CHAIN_IDS } from '../../../utils/contracts';
 import { formatTokenBalance } from '../../../utils/tokenUtils';
+import { ethers } from 'ethers';
 
 const PageContainer = styled.div`
   max-width: ${props => props.embedded ? '100%' : '800px'};
@@ -255,115 +256,171 @@ const SortControls = styled.div`
 `;
 
 const SortSelect = styled.select`
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 6px;
   border: 1px solid var(--border-color);
-  padding: 8px;
-  border-radius: 4px;
+  background-color: var(--bg-subtle);
+  color: var(--text-primary);
   font-size: 14px;
+  cursor: pointer;
+  
+  &:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+  }
 `;
 
 // Add these new styled components for the floating transfer box
 const FloatingTransferBox = styled.div`
-  position: fixed;
-  top: 100px;
-  right: 24px;
-  width: 320px;
+  position: relative;
   background-color: var(--card-bg);
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 20px;
-  z-index: 100;
-  max-height: calc(100vh - 150px);
-  overflow-y: auto;
-  border: 2px solid var(--accent-primary);
-  
-  @media (max-width: 1200px) {
-    position: static;
-    width: 100%;
-    margin-top: 24px;
-    max-height: none;
-  }
+  padding: 24px;
+  margin-bottom: 32px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
 `;
 
 const CloseButton = styled.button`
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   background: transparent;
   border: none;
+  font-size: 24px;
   color: var(--text-secondary);
-  font-size: 18px;
   cursor: pointer;
-  line-height: 1;
   
   &:hover {
-    color: var(--accent-primary);
+    color: var(--text-primary);
   }
 `;
 
 const TransferBoxTitle = styled.h3`
-  font-size: 18px;
-  margin: 0 0 16px 0;
+  font-size: 1.25rem;
+  margin-top: 0;
+  margin-bottom: 20px;
   color: var(--text-primary);
-  padding-right: 20px;
 `;
 
 const TokenSelectionDisplay = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 12px;
+  background-color: var(--bg-subtle);
   padding: 12px;
   border-radius: 8px;
-  background-color: rgba(0, 0, 0, 0.05);
+  margin-bottom: 16px;
+`;
+
+const ChainLogo = styled.img`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: white;
 `;
 
 const ChainSelectionHeader = styled.div`
-  margin: 20px 0 12px 0;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 500;
+  margin-top: 16px;
+  margin-bottom: 12px;
   color: var(--text-primary);
 `;
 
 const DestinationChainGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
 `;
 
 const DestinationChainTile = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px;
+  padding: 12px;
   border-radius: 8px;
-  border: 2px solid ${props => props.selected ? 'var(--accent-primary)' : 'var(--border-color)'};
-  background-color: ${props => props.selected ? 'var(--accent-primary-transparent)' : 'transparent'};
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  background-color: ${props => props.selected ? 'rgba(0, 232, 181, 0.1)' : 'var(--bg-subtle)'};
+  border: 1px solid ${props => props.selected ? 'var(--accent-primary)' : 'var(--border-color)'};
   opacity: ${props => props.disabled ? 0.5 : 1};
   transition: all 0.2s ease;
   
   &:hover:not(:disabled) {
-    border-color: var(--accent-primary);
+    border-color: ${props => props.selected ? 'var(--accent-primary)' : 'var(--text-secondary)'};
   }
 `;
 
-const ChainLogo = styled.img`
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  margin-bottom: 4px;
+const ChainName = styled.div`
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-top: 8px;
+  text-align: center;
+  color: var(--text-primary);
 `;
 
-const ChainName = styled.div`
-  font-size: 12px;
-  text-align: center;
+const StatusMessage = styled.div`
+  margin: 16px 0;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  
+  ${props => props.type === 'error' && `
+    background-color: rgba(255, 0, 0, 0.1);
+    border: 1px solid #ff0000;
+    color: #d32f2f;
+  `}
+  
+  ${props => props.type === 'success' && `
+    background-color: rgba(0, 255, 0, 0.1);
+    border: 1px solid #00c853;
+    color: #00c853;
+  `}
+  
+  ${props => props.type === 'info' && `
+    background-color: rgba(3, 169, 244, 0.1);
+    border: 1px solid #03a9f4;
+    color: #0288d1;
+  `}
+`;
+
+// Add new styled components for mint functionality
+const TabContainer = styled.div`
+  display: flex;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+`;
+
+const Tab = styled.button`
+  background: ${props => props.active ? 'var(--card-bg)' : 'transparent'};
+  border: none;
+  border-bottom: 2px solid ${props => props.active ? 'var(--accent-primary)' : 'transparent'};
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: ${props => props.active ? '600' : '500'};
+  color: ${props => props.active ? 'var(--text-primary)' : 'var(--text-secondary)'};
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    color: var(--text-primary);
+  }
+`;
+
+const MintButton = styled(TransferButton)`
+  background-color: #8a2be2;
+  
+  &:hover {
+    background-color: #7722cc;
+  }
 `;
 
 const TransferTokens = ({ embedded = false }) => {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  
+  console.log('TransferTokens component loaded! Version: 2.0');
   
   const [userTokens, setUserTokens] = useState([]);
   const [totalTokenCount, setTotalTokenCount] = useState(0);
@@ -395,6 +452,17 @@ const TransferTokens = ({ embedded = false }) => {
 
   // New state for controlling the floating transfer box
   const [showTransferBox, setShowTransferBox] = useState(false);
+
+  // Add state for mint functionality
+  const [activeTab, setActiveTab] = useState('transfer');
+  const [minting, setMinting] = useState(false);
+  const [mintResult, setMintResult] = useState(null);
+  const [mintStatus, setMintStatus] = useState("");
+  const [isDeployer, setIsDeployer] = useState(false);
+  const [mintFormData, setMintFormData] = useState({
+    mintAmount: '',
+    mintRecipient: ''
+  });
 
   // Handle network switch
   const handleSwitchToZetaChain = async () => {
@@ -431,6 +499,15 @@ const TransferTokens = ({ embedded = false }) => {
   };
 
   const handleTokenSelect = (tokenId, chainId) => {
+    console.log('Token selected:', tokenId, 'on chain:', chainId);
+    
+    // Find the token data
+    const selectedToken = userTokens.find(token => token.id === tokenId);
+    if (!selectedToken) {
+      console.error('Selected token not found in user tokens');
+      return;
+    }
+    
     setFormData({
       ...formData,
       tokenId,
@@ -454,22 +531,34 @@ const TransferTokens = ({ embedded = false }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
+    
+    if (!selectedToken) {
+      setError("Please select a token first");
+      return;
+    }
+    
+    if (!formData.sourceChain) {
+      setError("Please select a source chain");
+      return;
+    }
+    
+    if (!formData.destinationChain) {
+      setError("Please select a destination chain");
+      return;
+    }
+    
+    if (formData.sourceChain === formData.destinationChain) {
+      setError("Source and destination chains must be different");
+      return;
+    }
     
     try {
+      setError(null);
       setTransferring(true);
-      setProcessingStatus("Initiating transfer...");
-      setTransferResult(null);
-      
-      // Get the selected token
-      const selectedToken = userTokens.find(token => token.id === formData.tokenId);
-      if (!selectedToken) {
-        throw new Error("Selected token not found");
-      }
       
       // Get contract address for the source chain
       const tokenContract = selectedToken.chainInfo.find(
-        chain => chain.chain_id === formData.sourceChain
+        chain => chain.chain_id === formData.sourceChain || chain.chainId === formData.sourceChain
       );
       
       if (!tokenContract || !tokenContract.contract_address) {
@@ -478,30 +567,104 @@ const TransferTokens = ({ embedded = false }) => {
       
       setProcessingStatus("Connecting to wallet...");
       
+      // Make sure transfer amount is a valid number
+      if (isNaN(parseFloat(formData.transferAmount)) || parseFloat(formData.transferAmount) <= 0) {
+        throw new Error("Please enter a valid amount greater than 0");
+      }
+      
+      // Format the amount using the token's decimals
+      const decimals = selectedToken.decimals || 18;
+      console.log("Using token decimals:", decimals);
+      console.log("Input amount:", formData.transferAmount);
+      
+      // Try/catch just for the parseUnits to provide better error messages
+      let formattedAmount;
+      try {
+        formattedAmount = ethers.parseUnits(formData.transferAmount, decimals).toString();
+        console.log('Parsed transfer amount successfully:', formattedAmount);
+      } catch (parseError) {
+        console.error('Error parsing amount:', parseError);
+        throw new Error(`Invalid amount format: ${parseError.message}`);
+      }
+      
+      // Ensure we have valid chain IDs as strings
+      const sourceChainId = String(formData.sourceChain);
+      const destinationChainId = String(formData.destinationChain);
+      
+      // Get the contract address, ensuring we clean it for proper format
+      const contractAddress = tokenContract.contract_address;
+      
+      // Make sure the recipient address is properly formatted
+      const recipient = formData.recipientAddress && formData.recipientAddress.trim() 
+        ? formData.recipientAddress.trim()
+        : address;
+        
+      if (!ethers.isAddress(recipient)) {
+        throw new Error("Invalid recipient address format");
+      }
+      
+      console.log('Preparing transfer with params:', {
+        sourceChainId,
+        destinationChainId,
+        contractAddress,
+        recipient,
+        amount: formattedAmount
+      });
+      
+      // Set detailed status updates for user
+      setProcessingStatus("Preparing transaction on ZetaChain. Please approve the transaction in your wallet when prompted.");
+      
       // Use direct contract interaction instead of API
-      const result = await executeCrossChainTransfer({
-        sourceChain: formData.sourceChain,
-        destinationChain: formData.destinationChain,
-        tokenAddress: tokenContract.contract_address,
-        recipientAddress: formData.recipientAddress || address,
-        amount: formData.transferAmount
-      });
-      
-      console.log('Transfer result:', result);
-      setTransferResult(result);
-      
-      // Reset form but keep token and source chain selected
-      setFormData({
-        ...formData,
-        transferAmount: '',
-        recipientAddress: ''
-      });
+      try {
+        const result = await executeCrossChainTransfer({
+          sourceChain: sourceChainId,
+          destinationChain: destinationChainId,
+          tokenAddress: contractAddress,
+          recipientAddress: recipient,
+          amount: formattedAmount
+        });
+        
+        console.log('Transfer result:', result);
+        setTransferResult(result);
+        setProcessingStatus("Transfer completed successfully!");
+        
+        // Reset form but keep token and source chain selected
+        setFormData({
+          ...formData,
+          transferAmount: '',
+          recipientAddress: ''
+        });
+      } catch (transferError) {
+        console.error('Contract interaction error:', transferError);
+        
+        // Specific error handling for various contract errors
+        if (transferError.message.includes('insufficient funds for gas')) {
+          setError("You don't have enough ZETA to pay for gas. Please add more ZETA to your wallet.");
+        } else if (transferError.message.includes('Insufficient token balance')) {
+          setError("You don't have enough tokens. Please check your balance and try again with a smaller amount.");
+        } else if (transferError.message.includes('user rejected transaction')) {
+          setError("Transaction was rejected in your wallet.");
+        } else if (transferError.message.includes('cannot transfer to same chain') || 
+                   transferError.message.includes('Cannot transfer to the same chain')) {
+          setError("Source and destination chains must be different. Please select a different destination chain.");
+        } else if (transferError.message.includes('No connected contract') || 
+                   transferError.message.includes('support cross-chain transfers')) {
+          setError(`This token doesn't support transfers to chain ${formData.destinationChain}. Please select a different destination.`);
+        } else if (transferError.message.includes('execution reverted')) {
+          setError("Transaction reverted on the blockchain. This might be due to contract restrictions or configuration issues.");
+        } else {
+          // General error handling
+          setError(transferError.message);
+        }
+        
+        setProcessingStatus("");
+      }
     } catch (error) {
       console.error('Transfer failed:', error);
       setError(error.message);
+      setProcessingStatus("");
     } finally {
       setTransferring(false);
-      setProcessingStatus("");
     }
   };
 
@@ -673,6 +836,175 @@ const TransferTokens = ({ embedded = false }) => {
     });
   };
 
+  // Check if user is the token deployer when token is selected
+  useEffect(() => {
+    const checkIsDeployer = async () => {
+      if (!selectedToken || !formData.sourceChain) return;
+      
+      try {
+        const tokenContract = selectedToken.chainInfo.find(
+          chain => chain.chain_id === formData.sourceChain || chain.chainId === formData.sourceChain
+        );
+        
+        if (!tokenContract || !tokenContract.contract_address) return;
+        
+        // Check if current user is deployer from token data
+        const isCreator = selectedToken.deployer_address && 
+                          selectedToken.deployer_address.toLowerCase() === address?.toLowerCase();
+                          
+        if (isCreator) {
+          setIsDeployer(true);
+          return;
+        }
+        
+        // If not obviously the creator, check on-chain
+        const ownerResult = await isTokenOwner({
+          chainId: formData.sourceChain,
+          tokenAddress: tokenContract.contract_address
+        });
+        
+        setIsDeployer(ownerResult);
+      } catch (error) {
+        console.error('Error checking token deployer status:', error);
+        setIsDeployer(false);
+      }
+    };
+    
+    checkIsDeployer();
+  }, [selectedToken, formData.sourceChain, address]);
+  
+  // Handler for mint form changes
+  const handleMintChange = (e) => {
+    setMintFormData({
+      ...mintFormData,
+      [e.target.name]: e.target.value
+    });
+  };
+  
+  // Handle mint tab selection
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+  };
+  
+  // Handler for mint submission
+  const handleMintSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!selectedToken) {
+      setError("Please select a token first");
+      return;
+    }
+    
+    if (!formData.sourceChain) {
+      setError("Please select a source chain");
+      return;
+    }
+    
+    try {
+      setError(null);
+      setMinting(true);
+      setMintStatus("Preparing to mint tokens...");
+      
+      // Get contract address for the source chain
+      const tokenContract = selectedToken.chainInfo.find(
+        chain => chain.chain_id === formData.sourceChain || chain.chainId === formData.sourceChain
+      );
+      
+      if (!tokenContract || !tokenContract.contract_address) {
+        throw new Error(`Contract address not found for chain ID ${formData.sourceChain}`);
+      }
+      
+      // Make sure mint amount is a valid number
+      if (isNaN(parseFloat(mintFormData.mintAmount)) || parseFloat(mintFormData.mintAmount) <= 0) {
+        throw new Error("Please enter a valid amount greater than 0");
+      }
+      
+      // Format the amount using the token's decimals
+      const decimals = selectedToken.decimals || 18;
+      console.log("Using token decimals for mint:", decimals);
+      console.log("Input mint amount:", mintFormData.mintAmount);
+      
+      // Try/catch just for the parseUnits to provide better error messages
+      let formattedAmount;
+      try {
+        formattedAmount = ethers.parseUnits(mintFormData.mintAmount, decimals).toString();
+        console.log('Parsed mint amount successfully:', formattedAmount);
+      } catch (parseError) {
+        console.error('Error parsing amount:', parseError);
+        throw new Error(`Invalid amount format: ${parseError.message}`);
+      }
+      
+      // Get the chain ID as a string
+      const chainIdStr = String(formData.sourceChain);
+      
+      // Get the contract address
+      const contractAddress = tokenContract.contract_address;
+      
+      // Make sure the recipient address is properly formatted
+      const recipient = mintFormData.mintRecipient && mintFormData.mintRecipient.trim() 
+        ? mintFormData.mintRecipient.trim()
+        : address;
+        
+      if (!ethers.isAddress(recipient)) {
+        throw new Error("Invalid recipient address format");
+      }
+      
+      console.log('Preparing mint with params:', {
+        chainId: chainIdStr,
+        tokenAddress: contractAddress,
+        recipientAddress: recipient,
+        amount: formattedAmount
+      });
+      
+      // Set detailed status updates for user
+      setMintStatus("Preparing mint transaction. Please approve the transaction in your wallet when prompted.");
+      
+      // Use direct contract interaction for minting
+      try {
+        const result = await mintTokens({
+          chainId: chainIdStr,
+          tokenAddress: contractAddress,
+          recipientAddress: recipient,
+          amount: formattedAmount
+        });
+        
+        console.log('Mint result:', result);
+        setMintResult(result);
+        setMintStatus("Tokens minted successfully!");
+        
+        // Reset form
+        setMintFormData({
+          mintAmount: '',
+          mintRecipient: ''
+        });
+      } catch (mintError) {
+        console.error('Contract interaction error during mint:', mintError);
+        
+        // Specific error handling for various contract errors
+        if (mintError.message.includes('insufficient funds for gas')) {
+          setError("You don't have enough ZETA to pay for gas. Please add more ZETA to your wallet.");
+        } else if (mintError.message.includes('Only the token owner')) {
+          setError("Only the token owner can mint new tokens. You don't have permission.");
+        } else if (mintError.message.includes('user rejected transaction')) {
+          setError("Transaction was rejected in your wallet.");
+        } else if (mintError.message.includes('execution reverted')) {
+          setError("Transaction reverted on the blockchain. This might be due to contract restrictions or configuration issues.");
+        } else {
+          // General error handling
+          setError(mintError.message);
+        }
+        
+        setMintStatus("");
+      }
+    } catch (error) {
+      console.error('Mint failed:', error);
+      setError(error.message);
+      setMintStatus("");
+    } finally {
+      setMinting(false);
+    }
+  };
+
   return (
     <PageContainer embedded={embedded.toString()}>
       <PageTitle embedded={embedded.toString()}>Transfer Your Universal Tokens</PageTitle>
@@ -783,7 +1115,23 @@ const TransferTokens = ({ embedded = false }) => {
             {showTransferBox && formData.tokenId && selectedToken && (
               <FloatingTransferBox>
                 <CloseButton onClick={handleCloseTransferBox}>×</CloseButton>
-                <TransferBoxTitle>Transfer {selectedToken.name}</TransferBoxTitle>
+                <TransferBoxTitle>
+                  {isDeployer ? 'Transfer or Mint ' : 'Transfer '} 
+                  {selectedToken.name}
+                </TransferBoxTitle>
+                
+                {/* Network Status */}
+                {isConnected && !isZetaChainNetwork && (
+                  <StatusMessage type="error">
+                    ZetaChain network is required for cross-chain operations
+                    <NetworkButton 
+                      onClick={handleSwitchToZetaChain}
+                      disabled={switchingNetwork}
+                    >
+                      {switchingNetwork ? 'Switching...' : 'Switch to ZetaChain'}
+                    </NetworkButton>
+                  </StatusMessage>
+                )}
                 
                 {/* Source Chain Display */}
                 <TokenSelectionDisplay>
@@ -802,77 +1150,171 @@ const TransferTokens = ({ embedded = false }) => {
                   </div>
                 </TokenSelectionDisplay>
                 
-                {/* Destination Chain Selection */}
-                <ChainSelectionHeader>Select destination:</ChainSelectionHeader>
-                <DestinationChainGrid>
-                  {getAvailableDestinationChains().map(chain => (
-                    <DestinationChainTile
-                      key={chain.id}
-                      selected={formData.destinationChain === chain.id}
-                      disabled={chain.disabled}
-                      onClick={() => !chain.disabled && handleDestinationSelect(chain.id)}
+                {/* Show tabs if user is deployer or has balance > 0 */}
+                {(isDeployer || 
+                  Number(selectedToken.chainInfo.find(c => 
+                    c.chain_id === formData.sourceChain)?.balance || '0') > 0) && (
+                  <TabContainer>
+                    <Tab 
+                      active={activeTab === 'transfer'} 
+                      onClick={() => handleTabChange('transfer')}
                     >
-                      <ChainLogo 
-                        src={chain.logo} 
-                        alt={`${chain.name} logo`}
-                      />
-                      <ChainName>{chain.name}</ChainName>
-                    </DestinationChainTile>
-                  ))}
-                </DestinationChainGrid>
+                      Transfer
+                    </Tab>
+                    <Tab 
+                      active={activeTab === 'mint'} 
+                      onClick={() => handleTabChange('mint')}
+                    >
+                      Mint
+                    </Tab>
+                  </TabContainer>
+                )}
                 
-                {/* Transfer Amount & Recipient */}
-                {formData.destinationChain && (
+                {/* Transfer UI */}
+                {activeTab === 'transfer' && (
                   <>
-                    <FormInput
-                      id="transferAmount"
-                      label={`Amount to Transfer (${selectedToken.symbol})`}
-                      name="transferAmount"
-                      type="number"
-                      value={formData.transferAmount}
-                      onChange={handleChange}
-                      helperText={`Available: ${formatTokenBalance(
-                        selectedToken.chainInfo.find(c => c.chain_id === formData.sourceChain)?.balance || '0', 
-                        selectedToken.decimals
-                      )} ${selectedToken.symbol}`}
-                    />
+                    {/* Destination Chain Selection */}
+                    <ChainSelectionHeader>Select destination:</ChainSelectionHeader>
+                    <DestinationChainGrid>
+                      {getAvailableDestinationChains().map(chain => (
+                        <DestinationChainTile
+                          key={chain.id}
+                          selected={formData.destinationChain === chain.id}
+                          disabled={chain.disabled}
+                          onClick={() => !chain.disabled && handleDestinationSelect(chain.id)}
+                        >
+                          <ChainLogo 
+                            src={chain.logo} 
+                            alt={`${chain.name} logo`}
+                          />
+                          <ChainName>{chain.name}</ChainName>
+                        </DestinationChainTile>
+                      ))}
+                    </DestinationChainGrid>
                     
-                    <FormInput
-                      id="recipientAddress"
-                      label="Recipient Address (Optional)"
-                      name="recipientAddress"
-                      value={formData.recipientAddress}
-                      onChange={handleChange}
-                      helperText="Leave empty to send to your own address"
-                    />
+                    {/* Transfer Amount & Recipient */}
+                    {formData.destinationChain && (
+                      <>
+                        <FormInput
+                          id="transferAmount"
+                          label={`Amount to Transfer (${selectedToken.symbol})`}
+                          name="transferAmount"
+                          type="number"
+                          value={formData.transferAmount}
+                          onChange={handleChange}
+                          helperText={`Available: ${formatTokenBalance(
+                            selectedToken.chainInfo.find(c => c.chain_id === formData.sourceChain)?.balance || '0', 
+                            selectedToken.decimals
+                          )} ${selectedToken.symbol}`}
+                        />
+                        
+                        <FormInput
+                          id="recipientAddress"
+                          label="Recipient Address (Optional)"
+                          name="recipientAddress"
+                          value={formData.recipientAddress}
+                          onChange={handleChange}
+                          helperText="Leave empty to send to your own address"
+                        />
+                        
+                        {/* Processing Status and Error Display */}
+                        {transferring && (
+                          <StatusMessage type="info">
+                            {processingStatus || 'Processing transfer...'}
+                          </StatusMessage>
+                        )}
+                        
+                        {error && (
+                          <StatusMessage type="error">
+                            {error}
+                          </StatusMessage>
+                        )}
+                        
+                        {transferResult && (
+                          <StatusMessage type="success">
+                            Transfer successful! Transaction hash: {transferResult.transactionHash.slice(0, 10)}...
+                          </StatusMessage>
+                        )}
+                        
+                        <ButtonContainer>
+                          <TransferButton 
+                            type="button" 
+                            disabled={!formData.transferAmount || transferring}
+                            onClick={handleSubmit}
+                          >
+                            {transferring ? 'Processing...' : 'Transfer Token'}
+                          </TransferButton>
+                        </ButtonContainer>
+                      </>
+                    )}
+                  </>
+                )}
+                
+                {/* Mint UI */}
+                {activeTab === 'mint' && (
+                  <>
+                    <ChainSelectionHeader>Mint new tokens:</ChainSelectionHeader>
                     
-                    {/* Error message */}
-                    {error && (
-                      <div style={{ color: 'red', margin: '16px 0', fontSize: '14px' }}>
-                        Error: {error}
-                      </div>
+                    {!isDeployer && Number(selectedToken.chainInfo.find(c => 
+                      c.chain_id === formData.sourceChain)?.balance || '0') === 0 && (
+                      <StatusMessage type="error">
+                        You must be the token deployer or have a positive balance to mint tokens.
+                      </StatusMessage>
                     )}
                     
-                    {/* Processing status */}
-                    {transferring && processingStatus && (
-                      <div style={{ margin: '16px 0', fontSize: '14px' }}>
-                        <p>{processingStatus}</p>
-                      </div>
+                    {(isDeployer || Number(selectedToken.chainInfo.find(c => 
+                      c.chain_id === formData.sourceChain)?.balance || '0') > 0) && (
+                      <>
+                        <FormInput
+                          id="mintAmount"
+                          label={`Amount to Mint (${selectedToken.symbol})`}
+                          name="mintAmount"
+                          type="number"
+                          value={mintFormData.mintAmount}
+                          onChange={handleMintChange}
+                        />
+                        
+                        <FormInput
+                          id="mintRecipient"
+                          label="Recipient Address (Optional)"
+                          name="mintRecipient"
+                          value={mintFormData.mintRecipient}
+                          onChange={handleMintChange}
+                          helperText="Leave empty to mint to your own address"
+                        />
+                        
+                        {/* Processing Status and Error Display */}
+                        {minting && (
+                          <StatusMessage type="info">
+                            {mintStatus || 'Processing mint...'}
+                          </StatusMessage>
+                        )}
+                        
+                        {error && (
+                          <StatusMessage type="error">
+                            {error}
+                          </StatusMessage>
+                        )}
+                        
+                        {mintResult && (
+                          <StatusMessage type="success">
+                            Mint successful! Transaction hash: {mintResult.transactionHash.slice(0, 10)}...
+                          </StatusMessage>
+                        )}
+                        
+                        <ButtonContainer>
+                          <MintButton 
+                            type="button" 
+                            disabled={!mintFormData.mintAmount || minting || (!isDeployer && 
+                              Number(selectedToken.chainInfo.find(c => 
+                                c.chain_id === formData.sourceChain)?.balance || '0') === 0)}
+                            onClick={handleMintSubmit}
+                          >
+                            {minting ? 'Processing...' : 'Mint Token'}
+                          </MintButton>
+                        </ButtonContainer>
+                      </>
                     )}
-                    
-                    <ButtonContainer>
-                      <TransferButton 
-                        type="submit" 
-                        disabled={
-                          transferring || 
-                          !formData.tokenId || 
-                          !formData.destinationChain || 
-                          !formData.transferAmount
-                        }
-                      >
-                        {transferring ? 'Processing...' : 'Transfer Tokens'}
-                      </TransferButton>
-                    </ButtonContainer>
                   </>
                 )}
               </FloatingTransferBox>

@@ -370,6 +370,108 @@ The token API endpoint returns data structured like this:
 }
 ```
 
+## Cross-Chain Transfers and Contract Interactions
+
+The application includes robust cross-chain token transfer functionality through direct contract interactions with Universal Tokens.
+
+### Cross-Chain Transfer Features
+
+- **Network Verification**: Ensures the user is on the correct blockchain network (ZetaChain) before initiating transfers
+- **Auto Network Switching**: Automatically prompts to switch networks when needed and verifies the switch was successful
+- **Balance Verification**: Checks token balance before attempting transfers to prevent failed transactions
+- **Fallback ABI Mechanism**: Uses fallback ABI if standard one fails, improving compatibility with different contract versions
+- **Dynamic Gas Estimation**: Estimates gas directly from the contract with a 30% buffer for safety
+- **Transaction Retries**: Automatically retries failed transactions with increased gas (50% more) when appropriate
+- **Detailed Error Messages**: Provides user-friendly error messages for common issues like insufficient funds or balance
+- **Signer Validation**: Verifies wallet connection and signer availability at multiple checkpoints
+- **Better Decimals Handling**: Properly handles token decimals for amount formatting to prevent precision errors
+
+### Contract Interaction Improvements
+
+- **Provider Chain Verification**: Uses `provider.getNetwork().chainId` with proper type conversion for Ethers.js v6 compatibility
+- **BigInt Safety**: Uses `ethers.toBigInt()` instead of global `BigInt` for better compatibility across browsers
+- **Enhanced Error Diagnostics**: Includes comprehensive error details for easier debugging of transaction failures
+- **Function Availability Checks**: Verifies contract methods exist before attempting to call them
+- **Wait Time Optimization**: Uses appropriate wait periods between network switching and transactions
+- **Safe Contract Method Access**: Checks interface and method availability with proper null/undefined handling
+- **Contract Verification**: Validates contracts by testing basic methods before attempting complex operations
+
+### Error Handling and Recovery
+
+- **Network Mismatch Handling**: Detects and resolves network mismatches between wallet and required chain
+- **Revert Reason Extraction**: Attempts to extract and display meaningful error messages from transaction reverts
+- **Transaction Status Checking**: Verifies transaction success and handles on-chain failed transactions
+- **Modular Error Management**: Separates error handling logic for cleaner code and better user feedback
+- **Wallet Connection Issues**: Checks for wallet availability and connectivity before transactions
+- **Parameters Validation**: Validates and properly formats all transaction parameters before sending
+- **Console Diagnostics**: Provides detailed logging for troubleshooting in the browser console
+
+### Common Cross-Chain Transfer Issues
+
+1. **"Cannot convert undefined or null to object"**
+   - Check that the contract ABI is properly defined and accessible
+   - Verify the contract address is correct and accessible on the current network
+   - Enable console logging to see where the null object is occurring
+
+2. **Transaction Revert Errors**
+   - Look for specific revert messages in the error details
+   - Check token balance to ensure sufficient tokens for the transfer
+   - Verify that the recipient address is correctly formatted
+   - Ensure the destination chain ID is supported by the contract
+
+3. **Network Switching Issues**
+   - Make sure the wallet (MetaMask) has ZetaChain configured
+   - Check for wallet permission issues when switching networks
+   - Allow sufficient time for network switching to complete before proceeding
+
+4. **Gas Estimation Failures**
+   - If gas estimation fails, the application will use a fallback estimate
+   - Consider manually increasing gas in MetaMask if transactions consistently fail
+   - Check wallet balance for sufficient ZETA to cover gas costs
+
+### API Response Structure
+
+The token API endpoint returns data structured like this:
+
+```json
+{
+  "success": true,
+  "token": {
+    "id": 1,
+    "token_name": "Test Token",
+    "token_symbol": "TST",
+    "decimals": 18,
+    "total_supply": "1000000000000000000000000",
+    "deployment_status": "completed",
+    "error_message": null,
+    "deployer_address": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
+    "zc_contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
+    "connected_chains_json": {
+      "11155111": {
+        "status": "completed",
+        "contract_address": "0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB",
+        "transaction_hash": "0x...",
+        "verification_status": "pending",
+        "chain_id": "11155111",
+        "chain_name": "Sepolia Testnet",
+        "explorer_url": "https://sepolia.etherscan.io",
+        "blockscout_url": null,
+        "contract_url": "https://sepolia.etherscan.io/address/0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB"
+      }
+    },
+    "zeta_chain_info": {
+      "chain_id": "7001",
+      "contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
+      "status": "completed",
+      "explorer_url": "https://explorer.athens.zetachain.com",
+      "blockscout_url": "https://zetachain-testnet.blockscout.com/",
+      "verification_status": "unknown",
+      "contract_url": "https://zetachain-testnet.blockscout.com//address/0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b"
+    }
+  }
+}
+```
+
 ## Available Scripts
 
 In the project directory, you can run:

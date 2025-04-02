@@ -1,0 +1,315 @@
+/* TransferPage.css */
+
+.transfer-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+  background-color: #f8f9fa;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.transfer-page h1 {
+  color: #333;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.error-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 0.75rem;
+  border-radius: 5px;
+  margin-bottom: 1rem;
+}
+
+/* Transfer Type Selection */
+.transfer-type-selection {
+  margin-bottom: 2rem;
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+}
+
+.transfer-type-header h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.transfer-type-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.transfer-type-option {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  border: 1px solid #dee2e6;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.transfer-type-option.selected {
+  border-color: #007bff;
+  background-color: #e7f1ff;
+}
+
+.transfer-type-option:hover {
+  border-color: #adb5bd;
+  background-color: #f1f3f5;
+}
+
+.transfer-type-option.selected:hover {
+  border-color: #007bff;
+  background-color: #d0e4fe;
+}
+
+.transfer-type-option input[type="radio"] {
+  margin-right: 0.5rem;
+}
+
+.transfer-type-label {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.transfer-type-description {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+/* Form Styles */
+.transfer-form {
+  background-color: #fff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+}
+
+.transfer-form h3 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #495057;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 5px;
+  font-size: 1rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: #007bff;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+.amount-input-container {
+  display: flex;
+  align-items: center;
+}
+
+.amount-input-container input {
+  flex: 1;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.max-button {
+  padding: 0.75rem 1rem;
+  background-color: #f1f3f5;
+  border: 1px solid #ced4da;
+  border-left: none;
+  border-radius: 0 5px 5px 0;
+  font-weight: 600;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.max-button:hover {
+  background-color: #e2e6ea;
+}
+
+.amount-detail {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.gas-estimate {
+  margin-top: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  color: #6c757d;
+  padding: 0.5rem;
+  background-color: #f8f9fa;
+  border-radius: 5px;
+}
+
+.submit-button {
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.submit-button:hover {
+  background-color: #0069d9;
+}
+
+.submit-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.secondary-button {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 5px;
+  margin-right: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.secondary-button:hover {
+  background-color: #5a6268;
+}
+
+.back-button-container {
+  text-align: center;
+  margin-top: 1.5rem;
+}
+
+.back-button {
+  padding: 0.75rem 1.5rem;
+  background-color: transparent;
+  border: 1px solid #6c757d;
+  color: #6c757d;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-button:hover {
+  background-color: #f1f3f5;
+}
+
+/* Success States */
+.transfer-success {
+  text-align: center;
+  background-color: #d4edda;
+  padding: 2rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+}
+
+.transfer-success h2 {
+  color: #155724;
+  margin-bottom: 1rem;
+}
+
+.transfer-success p {
+  color: #155724;
+  margin-bottom: 1.5rem;
+}
+
+.tx-details {
+  background-color: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.tx-details p {
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.tx-details a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.tx-details a:hover {
+  text-decoration: underline;
+}
+
+/* Loading State */
+.transfer-loading {
+  text-align: center;
+  padding: 2rem;
+}
+
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top: 4px solid #007bff;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Deployer Specific */
+.deployer-notice {
+  background-color: #cce5ff;
+  border-radius: 5px;
+  padding: 0.75rem;
+  margin-bottom: 1.5rem;
+  color: #004085;
+}
+
+.not-deployer-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.not-deployer-message p {
+  margin-bottom: 1rem;
+} 

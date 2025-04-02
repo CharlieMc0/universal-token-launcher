@@ -11,6 +11,7 @@ Universal Token Launcher is a web application that allows users to deploy Univer
 - **ZetaChain Integration**: Leverage ZetaChain's interoperability for seamless cross-chain operations
 - **Pagination and Sorting**: Browse through tokens with pagination and multiple sorting options
 - **Detailed Token Information**: View token balances across different chains with proper formatting
+- **Floating Transfer Interface**: Contextual transfer panel that appears when selecting a token
 
 ## Documentation
 
@@ -22,6 +23,7 @@ For detailed documentation, please refer to:
 - [Tech Stack Details](./documentation/tech-stack.md): Information about the technologies used
 - [Application Flow](./documentation/app-flow.md): Step-by-step walkthrough of user journeys
 - [Backend README](./backend/README.md): Backend-specific documentation and setup instructions
+- [Design Language](./documentation/design.md): Design system and UI components guide
 
 ## Repository Structure
 
@@ -98,8 +100,19 @@ The Token Transfer page allows users to easily transfer their tokens between dif
 - **Token Count**: Clearly see the total number of tokens you own
 - **Sorting Options**: Sort tokens by balance (high/low), name (A-Z/Z-A), or symbol (A-Z/Z-A)
 - **Detailed Chain Information**: View token balances across different chains with proper formatting
-- **Interactive Transfer Interface**: Select source chain, destination chain, and amount to transfer
+- **Floating Transfer Interface**: A contextual panel appears when selecting a token, making transfers more immediate
+- **Compact Chain Selection**: Grid-based destination chain selection for intuitive experience
 - **API Integration**: Proper integration with the `/api/users/{address}` endpoint for fetching user tokens
+
+#### User Experience Improvements
+
+The Token Transfer page implements several UX improvements aligned with our design system:
+
+- **Contextual Interface**: The transfer interface appears right after token selection without requiring scrolling
+- **Responsive Design**: The floating panel adapts to screen size, becoming full-width on mobile
+- **Visual Hierarchy**: Clear distinction between source chain, destination options, and transfer details
+- **Progressive Disclosure**: Only showing relevant options as the user progresses through the transfer flow
+- **Error Handling**: Properly formatted error and status messages within the transfer interface
 
 ### API Integration
 
@@ -234,56 +247,16 @@ npm run connect-tokens -- --zeta-address 0x1234... --add-chain 11155111:0xabcd..
 
 This project uses TypeScript, Sequelize, and Express. Ensure all new code follows the existing patterns and includes proper error handling.
 
-## Project Structure
+## Component Library
 
-- `frontend/` - React frontend application
-- `backend/` - Node.js/Express backend server
-- `documentation/` - Project design docs and specifications
-- `smart-contracts/` - Smart contract code for token deployment
+The frontend implements a consistent design system with these components:
 
-## Setup Instructions
+- **TokenTile**: Displays token information for a specific chain
+- **FloatingTransferBox**: Contextual panel for transfer operations
+- **FormInput**: Standardized input fields with labels and help text
+- **PaginationControls**: Navigation for paged content
 
-### Environment Configuration
-
-1. Copy `.env.example` to `.env` and update the values:
-```bash
-cp .env.example .env
-```
-
-2. Configure the database settings and RPC URLs in the `.env` file
-
-### Backend Setup
-
-```bash
-cd backend
-npm install
-npm run dev
-```
-
-### Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm start
-```
-
-## Development Notes
-
-### API Service FormData Handling
-
-When uploading files with FormData (like token icons), do not manually set the Content-Type header. Let the browser set it automatically with the correct boundary value:
-
-```javascript
-// Correct way to send FormData:
-fetch('/api/upload', {
-  method: 'POST',
-  body: formData,
-  // Do NOT set Content-Type header for FormData
-})
-```
-
-### User Token API Response
+## User Token API Response
 
 The `/api/users/{address}` endpoint returns token information in this format:
 

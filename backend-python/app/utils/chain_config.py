@@ -94,5 +94,26 @@ def get_supported_chains(testnet_only=False, mainnet_only=False) -> Dict[str, Di
     return _chain_configs
 
 
+def get_enabled_chains(testnet_only=False, mainnet_only=False) -> Dict[str, Dict[str, Any]]:
+    """
+    Get all enabled chains, with optional filtering.
+    
+    Args:
+        testnet_only: If True, return only enabled testnet chains
+        mainnet_only: If True, return only enabled mainnet chains
+        
+    Returns:
+        Dictionary of enabled chains with chain IDs as keys
+    """
+    # Get all supported chains with filtering
+    chains = get_supported_chains(testnet_only, mainnet_only)
+    
+    # Filter to only include enabled chains
+    enabled_chains = {k: v for k, v in chains.items() if v.get('enabled', True)}
+    
+    logger.info(f"Found {len(enabled_chains)} enabled chains")
+    return enabled_chains
+
+
 # Load configurations when module is imported
 load_chain_configs() 

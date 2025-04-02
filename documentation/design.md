@@ -204,6 +204,78 @@ const ToggleButton = styled.button`
 
 ---
 
+### Floating Transfer Box
+
+Used for contextual transfer operations that appear when a token is selected:
+
+```jsx
+const FloatingTransferBox = styled.div`
+  position: fixed;
+  top: 100px;
+  right: 24px;
+  width: 320px;
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 20px;
+  z-index: 100;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  border: 2px solid var(--accent-primary);
+  
+  @media (max-width: 1200px) {
+    position: static;
+    width: 100%;
+    margin-top: 24px;
+    max-height: none;
+  }
+`;
+
+const CloseButton = styled.button`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+  
+  &:hover {
+    color: var(--accent-primary);
+  }
+`;
+
+const TransferBoxTitle = styled.h3`
+  font-size: 18px;
+  margin: 0 0 16px 0;
+  color: var(--text-primary);
+  padding-right: 20px;
+`;
+```
+
+Usage:
+```jsx
+{showTransferBox && (
+  <FloatingTransferBox>
+    <CloseButton onClick={handleCloseTransferBox}>×</CloseButton>
+    <TransferBoxTitle>Transfer {token.name}</TransferBoxTitle>
+    
+    {/* Transfer content */}
+  </FloatingTransferBox>
+)}
+```
+
+Features:
+- Fixed position on desktop, inline on mobile
+- Close button for dismissing the panel
+- Scrollable content for longer forms
+- Visual distinction with border and shadow
+- Contextual appearance based on user interaction
+
+---
+
 ### Tooltips / Modals / Toasts
 
 - Modals: Centered, overlay, max width 480px
@@ -258,6 +330,89 @@ Layout:
 - Clear visual hierarchy
 - Consistent spacing (24px between sections)
 
+### Destination Chain Selection
+
+Compact grid for selecting destination chains in the transfer interface:
+
+```jsx
+const DestinationChainGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+`;
+
+const DestinationChainTile = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  border-radius: 8px;
+  border: 2px solid ${props => props.selected ? 'var(--accent-primary)' : 'var(--border-color)'};
+  background-color: ${props => props.selected ? 'var(--accent-primary-transparent)' : 'transparent'};
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.5 : 1};
+  transition: all 0.2s ease;
+`;
+```
+
+Used within the floating transfer box to provide a compact selection interface.
+
+### Pagination Controls
+
+Used for navigating through multi-page content:
+
+```jsx
+const PaginationContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+  margin-bottom: 16px;
+  gap: 16px;
+`;
+
+const PaginationButton = styled.button`
+  background-color: ${props => props.active ? 'var(--accent-primary)' : 'transparent'};
+  color: ${props => props.active ? 'white' : 'var(--text-primary)'};
+  border: 1px solid ${props => props.active ? 'var(--accent-primary)' : 'var(--border-color)'};
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.5 : 1};
+`;
+
+const PageInfo = styled.span`
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text-secondary);
+`;
+```
+
+Usage:
+```jsx
+<PaginationContainer>
+  <PaginationButton 
+    onClick={() => handlePageChange(currentPage - 1)}
+    disabled={currentPage === 1}
+  >
+    Previous
+  </PaginationButton>
+  
+  <PageInfo>
+    Page {currentPage} of {totalPages}
+  </PageInfo>
+  
+  <PaginationButton 
+    onClick={() => handlePageChange(currentPage + 1)}
+    disabled={currentPage === totalPages}
+  >
+    Next
+  </PaginationButton>
+</PaginationContainer>
+```
+
 ---
 
 ## 🔁 Interaction Patterns
@@ -268,16 +423,18 @@ Layout:
 | Valid CSV Upload       | Badge: "97 entries valid. 3 errors."       |
 | Fee Paid               | Transition to deployment progress panel    |
 | Bridge in progress     | Live status: "Burning… Minting… ✅ Done"   |
+| Token Selected         | Show floating transfer box                 |
+| Destination Selected   | Reveal transfer amount and recipient fields |
 
 ---
 
 ## 📱 Responsive Breakpoints
 
-| Breakpoint | Width Range     | Behavior                        |
-|------------|------------------|----------------------------------|
-| Desktop    | >1024px          | Full layout, sidebar visible    |
-| Tablet     | 768px–1024px     | Stacked form inputs             |
-| Mobile     | <768px           | Collapsed menus, single column  |
+| Breakpoint | Width Range     | Behavior                               |
+|------------|------------------|----------------------------------------|
+| Desktop    | >1200px          | Full layout, floating panels visible   |
+| Tablet     | 768px–1200px     | Stacked form inputs, inline panels     |
+| Mobile     | <768px           | Collapsed menus, single column layout  |
 
 ---
 
@@ -287,6 +444,8 @@ Layout:
 - All inputs and buttons must have aria-labels
 - Enable full keyboard navigation for tab/enter
 - Focus ring visible when tabbing through elements
+- Ensure floating elements are properly dismissible
+- Provide alternative interaction patterns for touch devices
 
 ---
 
@@ -318,6 +477,11 @@ Layout:
    - When adding new components or modifying existing ones, verify the styling against other similar components
    - If one component (e.g., Create Token) is modified, make the same changes to related components (e.g., Create NFT)
 
+6. **Contextual UI Elements**
+   - Floating elements like the transfer box should follow consistent positioning and styling
+   - Ensure responsive behavior is consistent across all contextual elements
+   - Use the same interaction patterns for showing/hiding contextual elements
+
 ---
 
 ## 🔮 Future Design Tokens (Optional)
@@ -325,5 +489,6 @@ Layout:
 - Light Mode Theme
 - Chain Accent Overlays (e.g., ETH = #627EEA)
 - Component Animations (e.g., pulse bridge progress)
+- Drag and drop interactions for token transfers
 
 ---

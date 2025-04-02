@@ -9,15 +9,48 @@ import { CHAIN_IDS } from './contracts';
  */
 export async function switchToZetaChain() {
   try {
+    console.log('Starting ZetaChain network switch...');
+    
+    // Check current network first
+    if (window.ethereum) {
+      const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+      const currentChainId = parseInt(chainIdHex, 16);
+      console.log('Current chain ID before switch:', currentChainId);
+      
+      if (currentChainId === CHAIN_IDS.ZETACHAIN) {
+        console.log('Already on ZetaChain network, no switch needed');
+        return true;
+      }
+    }
+    
     // First try to just switch to the network
+    console.log('Attempting to switch to ZetaChain with chainId:', CHAIN_IDS.ZETACHAIN);
     await switchNetwork({ chainId: CHAIN_IDS.ZETACHAIN });
-    return true;
+    
+    // Add a delay to allow the switch to complete
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Verify the switch was successful
+    if (window.ethereum) {
+      const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+      const newChainId = parseInt(chainIdHex, 16);
+      console.log('Chain ID after switchNetwork:', newChainId);
+      
+      if (newChainId === CHAIN_IDS.ZETACHAIN) {
+        console.log('Successfully switched to ZetaChain network');
+        return true;
+      }
+    }
+    
+    // If we reach here, the switch wasn't successful, try adding the network
+    throw new Error('Switch network failed, trying to add network');
   } catch (switchError) {
     console.error('Error switching to ZetaChain:', switchError);
     
     // If the network is not added, try to add it
     if (window.ethereum) {
       try {
+        console.log('Attempting to add ZetaChain network...');
         await window.ethereum.request({
           method: 'wallet_addEthereumChain',
           params: [{
@@ -32,7 +65,33 @@ export async function switchToZetaChain() {
             blockExplorerUrls: ['https://explorer.zetachain.com']
           }]
         });
-        return true;
+        
+        // Add a delay to allow the wallet to process adding the network
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Verify the network was added and switched to
+        const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+        const newChainId = parseInt(chainIdHex, 16);
+        console.log('Chain ID after adding network:', newChainId);
+        
+        if (newChainId === CHAIN_IDS.ZETACHAIN) {
+          console.log('Successfully added and switched to ZetaChain network');
+          return true;
+        } else {
+          console.log('Added ZetaChain network but not switched to it. Attempting manual switch...');
+          // Try one more explicit switch
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: `0x${CHAIN_IDS.ZETACHAIN.toString(16)}` }],
+          });
+          
+          // Final check
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          const finalChainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+          const finalChainId = parseInt(finalChainIdHex, 16);
+          
+          return finalChainId === CHAIN_IDS.ZETACHAIN;
+        }
       } catch (addError) {
         console.error('Error adding ZetaChain network:', addError);
         return false;

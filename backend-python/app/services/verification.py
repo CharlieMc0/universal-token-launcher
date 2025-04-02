@@ -45,8 +45,14 @@ class VerificationService:
                 "status": "failed"
             }
         
-        # Check if explorer API key is available
-        if not chain_config.get("api_key"):
+        # Determine if this is a ZetaChain contract
+        is_zetachain = (
+            contract_type.lower() == "zetachain" 
+            or numeric_chain_id in [7000, 7001]
+        )
+        
+        # Check if explorer API key is available (skip for ZetaChain/Blockscout)
+        if not is_zetachain and not chain_config.get("api_key"):
             return {
                 "success": False,
                 "message": f"No API key available for chain {chain_id}",
@@ -54,7 +60,6 @@ class VerificationService:
             }
         
         # Determine contract name based on type
-        is_zetachain = contract_type.lower() == "zetachain"
         contract_name = "ZetaChainUniversalToken" if is_zetachain else "EVMUniversalToken"
         
         # Submit verification request to block explorer

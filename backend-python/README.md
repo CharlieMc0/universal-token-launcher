@@ -75,6 +75,58 @@ backend-python/
 6. **Smart Start Script**: Enhanced script with environment validation and proper error handling
 7. **Chain Configuration**: Flexible JSON-based configuration for blockchain networks
 
+## Recent Fixes (April 2025)
+
+The following fixes were implemented to address startup issues and module import errors:
+
+1. **Model Import Fixes**: Updated `app/models/__init__.py` to properly export all model classes:
+   - Added missing exports for `TokenSchema`, `TokenVerifySchema`, and `TokenResponse`
+   - Added missing exports for `UserTokenResponse`, `UserTokenInfo`, and `TokenBalanceInfo`
+   - Fixed import formatting to comply with PEP8 line length requirements
+
+2. **Configuration Name Fix**: Fixed incorrect attribute name reference in `start_api.py`:
+   - Changed reference from non-existent `Config.ENV` to `Config.ENVIRONMENT` 
+   - This resolves the error: `type object 'Config' has no attribute 'ENV'`
+
+3. **Python Version Enforcement**: Strengthened checks for Python 3.11:
+   - Added more visible warnings about Python 3.11 requirement throughout the code
+   - Enhanced virtual environment activation instructions in documentation
+
+4. **BlockScout Verification Enhancement**: Improved contract verification for ZetaChain:
+   - Implemented direct contract verification using BlockScout's API endpoints
+   - Added automatic compiler version detection from contract source code
+   - Created fallback mechanisms to handle different BlockScout API versions and endpoints
+   - Added detailed logging and diagnostic capabilities via `test_blockscout_api_verification.py`
+   - Fixed verification payload formatting for BlockScout's specific requirements
+
+5. **BlockScout API Verification Fixes (April 2025)**:
+   - Removed dependency on Forge/Foundry for contract verification
+   - Implemented direct API calls to BlockScout's verification endpoints
+   - Added support for both legacy and newer BlockScout API versions
+   - Enhanced error handling and logging for verification requests
+   - Created diagnostic utility `test_blockscout_api_verification.py` for troubleshooting verification issues
+
+## For Future Developers
+
+If you're working on this codebase, please note these important points:
+
+1. **Strict Python Version Requirement**: This project **only** works with Python 3.11, not 3.13 or any other version. Always use the virtual environment.
+
+2. **Model Export Pattern**: When adding new model classes, make sure to export them in `app/models/__init__.py`. The codebase follows a pattern of defining models in module files and re-exporting them through `__init__.py`.
+
+3. **Configuration Access**: The application uses a centralized `Config` class in `app/config.py`. Access configuration values through this class rather than creating new environment variable lookups.
+
+4. **Virtual Environment**: Always use the dedicated virtual environment to ensure proper dependency versions:
+   ```bash
+   source venv_311/bin/activate
+   ```
+
+5. **Testing Changes**: After making modifications, run the test scripts to ensure everything still works:
+   ```bash
+   python test_rpc_config.py
+   python test_deployment.py --testnet-only --max-chains 1
+   ```
+
 ## Getting Started
 
 ### Prerequisites
@@ -128,36 +180,58 @@ alembic upgrade head
 
 ### Running the Application
 
-1. Using the Python module directly:
-```bash
-python -m app.app
-```
+> **IMPORTANT**: This application **requires Python 3.11** and will not work with any other version, including Python 3.13.
 
-2. Using the run_app.py script:
-```bash
-python run_app.py
-```
+Follow these steps to start the application correctly:
 
-3. Using uvicorn directly:
-```bash
-uvicorn app.app:app --host 0.0.0.0 --port 8000
-```
+1. **Activate the virtual environment**:
+   ```bash
+   cd backend-python
+   source venv_311/bin/activate
+   
+   # Your prompt should now show (venv_311) indicating the environment is active
+   ```
 
-The API will be available at http://localhost:8000
+2. **Start the API server**:
+   ```bash
+   # Using the enhanced start script (recommended):
+   python start_api.py
+   
+   # The server will be available at http://localhost:8000
+   ```
 
-For development with auto-reload:
-```bash
-uvicorn app.app:app --reload --host 0.0.0.0 --port 8000
-```
+3. **Access the API documentation**:
+   - Navigate to http://localhost:8000/docs in your browser
+   - This will show the Swagger UI with all available endpoints
 
-## API Endpoints
+4. **Testing the API**:
+   ```bash
+   # Simple connectivity test
+   curl http://localhost:8000/
+   
+   # Get supported chains
+   curl http://localhost:8000/api/chains
+   ```
 
+5. **Stopping the server**:
+   - Press `Ctrl+C` in the terminal where the server is running
+   - This will gracefully shut down the server
+
+### API Endpoints
+
+The API provides several endpoints for managing token deployments:
+
+#### Token-related Endpoints
 - `GET /` - Check if the service is running
 - `GET /api/chains` - Get a list of supported chains (with optional filtering for testnet/mainnet)
 - `POST /api/deploy` - Deploy a token on multiple chains
 - `POST /api/verify` - Verify a contract on a blockchain explorer
 - `GET /api/token/{identifier}` - Get detailed token information by ID or contract address
 - `GET /api/users/{address}` - Get tokens owned by a specific wallet address
+
+#### NFT-related Endpoints (New)
+- `POST /api/nft/deploy` - Deploy an NFT collection on multiple chains
+- `GET /api/nft/collection/{identifier}` - Get NFT collection information by ID or contract address
 
 ### Token Deployment
 
@@ -184,6 +258,110 @@ Note that:
 - `decimals` can be an integer (unlike older API versions that required a string)
 - `total_supply` should be provided as a string to avoid precision issues
 - `selected_chains` accepts chain IDs (e.g., "7001", "11155111")
+
+### Contract Verification
+
+After deployment, contracts can be verified on block explorers to make their source code publicly accessible. The service supports verification on both Etherscan-compatible explorers and BlockScout (used by ZetaChain).
+
+#### BlockScout Verification for ZetaChain
+
+The service implements robust verification for contracts deployed on ZetaChain using BlockScout's API:
+
+1. **Direct API Method:** Uses BlockScout's verification API endpoints
+   - Automatically extracts compiler version from contract source
+   - Properly formats verification requests with required fields:
+     - `codeformat: "solidity-single-file"`
+     - `optimizationUsed: "1"`
+     - Extracted compiler version
+
+2. **Simplified Verification Process:** The verification process has been streamlined to use the flattened source code approach:
+   - Uses the documented BlockScout API endpoint `/api` with the `solidity-single-file` format
+   - Follows the exact format recommended in the BlockScout documentation
+   - Eliminates complex fallback mechanisms for better reliability
+
+3. **Verification Payload Format:** The service formats the BlockScout verification request with the following fields:
+   ```json
+   {
+     "module": "contract",
+     "action": "verifysourcecode",
+     "contractaddress": "0x123...",
+     "contractname": "ZetaChainUniversalToken",
+     "compilerversion": "v0.8.19+commit.7dd6d404",
+     "optimizationUsed": "1",
+     "runs": "200",
+     "sourceCode": "// SPDX-License-Identifier: MIT\npragma solidity 0.8.26;...",
+     "evmversion": "paris",
+     "constructorArguments": "",
+     "codeformat": "solidity-single-file"
+   }
+   ```
+
+4. **Verification Debugging:** Enhanced debugging capabilities
+   - Saves complete verification data to JSON files for inspection
+   - Logs the full source code length for verification
+   - Preserves API responses for troubleshooting
+
+5. **Verification Testing:** A test utility helps diagnose verification issues:
+   - `test_blockscout_api_verification.py` - Tests the overall verification process
+     - Tests both ZetaChain testnet and mainnet
+     - Validates contract source file presence
+     - Checks RPC and BlockScout URL configurations
+     - Shows detailed output from API requests
+
+To verify a contract:
+
+```json
+POST /api/verify
+{
+  "contract_address": "0x1234567890123456789012345678901234567890",
+  "chain_id": "7001",
+  "contract_type": "zetachain"
+}
+```
+
+#### Troubleshooting BlockScout API Verification
+
+If you encounter issues with BlockScout verification, you can use the testing utility to diagnose the problem:
+
+1. **Run the verification test script**:
+   ```bash
+   cd backend-python
+   source venv_311/bin/activate
+   python test_blockscout_api_verification.py
+   ```
+   This will show detailed information about:
+   - Contract path resolution
+   - Compiler version detection
+   - API request formatting
+   - API response details
+   - Error messages from the BlockScout API
+
+2. **Common issues and solutions**:
+   - **File not found errors**: Check that the contract source exists in the expected location
+   - **Compiler version issues**: Verify the compiler version is being correctly extracted
+   - **API endpoint availability**: Check that the BlockScout URL is accessible
+   - **Response format issues**: Check that the verification payload format matches the API requirements
+   - **Verify content of saved JSON files**: Check the automatically saved verification JSON files:
+     - `ZetaChainUniversalToken_verification_data.json`: Contains the request payload with full source code
+     - `ZetaChainUniversalToken_verification_response.json`: Contains the API response
+
+3. **Manual verification**:
+   If automatic verification continues to fail, you can verify manually using the BlockScout UI:
+   - Navigate to the contract address in BlockScout
+   - Click "Code" tab
+   - Click "Verify & Publish" button
+   - Select "flattened source code" option
+   - Paste the contract source code
+   - Set the compiler version and optimization options
+
+#### Contract Verification Status
+
+The verification status is tracked in the database and displayed in token information endpoints. Possible statuses include:
+
+- `pending`: Verification has been submitted but not yet confirmed
+- `success`: Contract has been successfully verified
+- `failed`: Verification failed (with error message)
+- `unknown`: Verification status couldn't be determined
 
 ### Token Information Lookup
 
@@ -441,209 +619,3 @@ Apply the migration:
 ```bash
 alembic upgrade head
 ```
-
-### Testing
-
-Test direct token deployment:
-```bash
-python test_deployment.py
-```
-
-Test the API with a mock request:
-```bash
-python test_api.py
-```
-
-Run automated tests using pytest:
-```bash
-pytest
-```
-
-## Testing
-
-### Testing RPC Configuration
-
-Before attempting to deploy tokens, you can verify that your RPC configuration is properly loaded and that all enabled chains have valid RPC URLs:
-
-```bash
-# Activate the virtual environment
-source venv_311/bin/activate
-
-# Verify RPC configuration
-python test_rpc_config.py
-```
-
-This will display:
-- A summary of all configured chains
-- Lists of enabled mainnet and testnet chains
-- Validation of RPC URLs for all enabled chains
-
-This helps quickly identify any configuration issues before attempting deployments.
-
-### Testing Deployment
-
-The `test_deployment.py` script is designed to test token deployment across all enabled chains in the system. You can use it to verify that your configuration is working correctly before exposing it to users.
-
-```bash
-# Activate the virtual environment
-source venv_311/bin/activate
-
-# Test all enabled chains
-python test_deployment.py
-
-# Test only testnets (recommended for development)
-python test_deployment.py --testnet-only
-
-# Limit the number of chains to test (useful for quick tests)
-python test_deployment.py --testnet-only --max-chains 2
-```
-
-The script will:
-1. Read all enabled chains from your `app/rpc_config.json` file
-2. Filter for testnet chains if the `--testnet-only` flag is used
-3. Limit to a specified number of chains if the `--max-chains` argument is provided
-4. Deploy a test token to each chain
-5. Report on the success or failure of each deployment with a summary
-
-This provides a quick way to verify your deployment configuration before going to production.
-
-### Testing the API
-
-Test the API with a mock request:
-```bash
-python test_api.py
-```
-
-## Troubleshooting
-
-### Python Version Issues
-
-This project requires Python 3.11 specifically:
-
-1. Make sure you're using Python 3.11:
-```bash
-python --version  # Should report 3.11.x
-```
-
-2. If using the wrong Python version, create a new virtual environment with 3.11:
-```bash
-python3.11 -m venv venv_311
-source venv_311/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### Database Column Naming Issues
-
-If you encounter errors related to column names (like `createdAt` vs `created_at`), this is likely due to a mismatch between your database schema and the SQLAlchemy models:
-
-1. Reset the migration history and recreate the tables:
-```bash
-alembic revision --autogenerate -m "recreate_tables"
-alembic upgrade head
-```
-
-2. If you need to drop and recreate the entire database:
-```bash
-dropdb universal_token_registry
-createdb universal_token_registry
-alembic upgrade head
-```
-
-### Token Deployment Issues
-
-If you encounter issues with token deployment:
-
-1. **Web3.py Transaction Signing Issues**:
-   - Error: `'SignedTransaction' object has no attribute 'rawTransaction'`
-   - Solution: The code has been updated to handle both `rawTransaction` (older versions) and `raw_transaction` (Web3.py v6)
-   - Implementation:
-     ```python
-     # Web3.py v6 uses .raw_transaction instead of .rawTransaction
-     if hasattr(signed_txn, 'raw_transaction'):
-         tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
-     else:
-         # Fallback for older versions
-         tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
-     ```
-
-2. **Contract ABI or Bytecode Issues**:
-   - Ensure the smart contract artifacts are correctly built and placed in the `smart-contracts/artifacts` directory
-   - Check that the contract constructor arguments match those expected in the deployment service
-
-3. **Transaction Signing Issues**:
-   - Verify that the `.env` file has a valid private key with the `0x` prefix
-   - Ensure the account has sufficient funds on the target chain
-   - Check Web3.py version compatibility with the specific blockchain RPC
-   - The system automatically adds the `0x` prefix if missing:
-     ```python
-     # Ensure private key has 0x prefix
-     if not private_key.startswith("0x"):
-         private_key = "0x" + private_key
-     ```
-
-4. **Chain Connection Issues**:
-   - For testnet chains like Sepolia, public RPC URLs may be unreliable
-   - Consider adding custom RPC URLs in your `.env` file:
-     ```
-     SEPOLIA_RPC_URL=https://ethereum-sepolia.publicnode.com
-     # Or use a provider with an API key for better reliability:
-     # SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR-API-KEY
-     ```
-   - The system will automatically use your custom RPC URLs if defined in the environment
-   - Run `test_rpc_config.py` to verify which chains have valid RPC URLs
-   - If testing all enabled chains fails, try limiting to just 1-2 chains with `--max-chains` to identify problematic ones
-   - Public RPC endpoints often have rate limits or connectivity issues; consider using dedicated providers for production environments
-
-5. **Numeric Value Errors**:
-   - Ensure all numeric values in the API request are passed correctly
-   - Large values like `total_supply` should be passed as strings
-   - Values like `decimals` can be passed as integers
-
-6. **Database Schema Mismatch**:
-   - If you encounter errors like `column token_deployments.created_at does not exist`
-   - The error might suggest: `Perhaps you meant to reference the column "token_deployments.createdAt"`
-   - This indicates a mismatch between SQLAlchemy models (using snake_case) and database schema (using camelCase)
-   - Solution: Follow the Database Column Naming Issues section below to reset your database schema
-
-### Port Already in Use
-
-If you see "address already in use" errors when starting the server:
-
-1. Find and stop the process using the port:
-```bash
-lsof -i :8000  # Find process ID
-kill <PID>     # Replace <PID> with the process ID
-```
-
-2. Or use a different port:
-```bash
-uvicorn app.app:app --host 0.0.0.0 --port 8001
-```
-
-### Package Installation Issues
-
-If you encounter issues with packages like `psycopg2-binary`:
-
-1. Make sure you're using Python 3.11 specifically
-2. Install required system dependencies for PostgreSQL
-3. Try installing the package separately:
-```bash
-pip install psycopg2-binary==2.9.9
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Example Contract Deployments
-
-Here are some example contract addresses from successful test deployments:
-
-1. ZetaChain Testnet (7001):
-   - `0xad428219f49c423f0c7565aeaD59F5084c78A32A`
-   - `0x28A76DF9944cBf3ff1E73b8c339Fa31BF3fb354c`
-   - `0x66aa78987ab5AF0d3C21D9D3b5AdA054Eb4C689D`
-
-You can verify these contracts on the ZetaChain explorer:
-- https://explorer.zetachain.com/address/{contract_address} 

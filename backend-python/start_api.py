@@ -81,9 +81,10 @@ if __name__ == "__main__":
     try:
         # Print a banner
         print("=" * 80)
+        print("=" * 80)
         print(" Universal Token Deployment Service ".center(80, "="))
         print("=" * 80)
-        print("Environment:", Config.ENV)
+        print("Environment:", Config.ENVIRONMENT)
         print("Port:", Config.PORT)
         print("Database:", Config.DB_DATABASE)
         print("=" * 80)
