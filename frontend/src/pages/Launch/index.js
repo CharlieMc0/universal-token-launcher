@@ -190,6 +190,80 @@ const LaunchPage = ({ embedded = false }) => {
   const [transactionHash, setTransactionHash] = useState(null);
   const [deploymentStatus, setDeploymentStatus] = useState(DEPLOYMENT_STATUS.IDLE); // Add deployment status state
   const [deploymentLogs, setDeploymentLogs] = useState([]); // Add deployment logs state
+  const [walletReady, setWalletReady] = useState(false);
+  const [chainOptions, setChainOptions] = useState([
+    { value: '7001', label: 'ZetaChain Athens', isZetaChain: true },
+    { value: '84532', label: 'Base Sepolia', disabled: true, comingSoon: true },
+    { value: '97', label: 'BSC Testnet', disabled: true, comingSoon: true },
+    { value: '11155111', label: 'Ethereum Sepolia', disabled: true, comingSoon: true }
+  ]);
+  const [pollingCount, setPollingCount] = useState(0);
+  
+  // Add effect to fetch supported chains from API
+  useEffect(() => {
+    const fetchSupportedChains = async () => {
+      try {
+        const chains = await apiService.getSupportedChains();
+        // Transform API response to match the component's expected format
+        if (chains && chains.length > 0) {
+          const formattedChains = chains
+            .filter(chain => chain.testnet === true) // Only include testnet chains
+            .map(chain => ({
+              value: chain.id,
+              label: chain.name,
+              disabled: !chain.enabled, // Disabled if not enabled
+              comingSoon: !chain.enabled, // Show "Coming Soon" badge for disabled chains
+              isZetaChain: chain.isZetaChain || false
+            }));
+            
+          // Sort the chains to put ZetaChain first
+          const sortedChains = formattedChains.sort((a, b) => {
+            // Always put ZetaChain at the top (will be first in the grid, upper left)
+            if (a.value === '7001' || a.isZetaChain) return -1;
+            if (b.value === '7001' || b.isZetaChain) return 1;
+            
+            // Then sort enabled chains before disabled chains
+            if (a.disabled && !b.disabled) return 1;
+            if (!a.disabled && b.disabled) return -1;
+            
+            // Then sort alphabetically by name
+            return a.label.localeCompare(b.label);
+          });
+                    
+          setChainOptions(sortedChains);
+        } else {
+          throw new Error('No chains returned from API');
+        }
+      } catch (error) {
+        console.error('Error fetching supported chains:', error);
+        
+        // Show error message in the UI
+        setErrors(prev => ({
+          ...prev,
+          chainOptions: 'Temporarily unavailable, please check back soon'
+        }));
+        
+        // Fallback to default testnet chains if API fails
+        setChainOptions([
+          { value: '7001', label: 'ZetaChain Athens', isZetaChain: true },
+          { value: '84532', label: 'Base Sepolia', disabled: true, comingSoon: true },
+          { value: '97', label: 'BSC Testnet', disabled: true, comingSoon: true },
+          { value: '11155111', label: 'Ethereum Sepolia', disabled: true, comingSoon: true }
+        ]);
+      }
+    };
+
+    fetchSupportedChains();
+  }, []);
+
+  // Check if wallet client is ready
+  useEffect(() => {
+    if (isConnected && isZetaChainNetwork && walletClient) {
+      setWalletReady(true);
+    } else {
+      setWalletReady(false);
+    }
+  }, [isConnected, isZetaChainNetwork, walletClient]);
   
   const resetForm = () => {
     setFormData({
@@ -211,34 +285,14 @@ const LaunchPage = ({ embedded = false }) => {
     setProcessingStep('');
     setTransactionRetries(0);
     setShowRetryButton(false);
+    setPollingCount(0);
   };
-  
-  // Verify wallet is ready
-  const [walletReady, setWalletReady] = useState(false);
-  
-  useEffect(() => {
-    if (isConnected && isZetaChainNetwork && walletClient) {
-      setWalletReady(true);
-    } else {
-      setWalletReady(false);
-    }
-  }, [isConnected, isZetaChainNetwork, walletClient]);
-  
-  const chainOptions = [
-    { value: '7001', label: 'ZetaChain Athens' },
-    { value: '11155111', label: 'Ethereum Sepolia' },
-    { value: '97', label: 'BSC Testnet' },
-    { value: '84532', label: 'Base Sepolia' },
-    { value: 'solana', label: 'Solana', disabled: true, comingSoon: true },
-    { value: 'sui', label: 'SUI', disabled: true, comingSoon: true },
-    { value: 'ton', label: 'TON', disabled: true, comingSoon: true }
-  ];
   
   const handleChange = (e) => {
     const { name, value } = e.target;
     
     // Handle chain selection
-    if (name === 'chains') {
+    if (name === 'selectedChains') {
       setFormData(prev => ({ ...prev, selectedChains: value }));
       return;
     }
@@ -287,41 +341,62 @@ const LaunchPage = ({ embedded = false }) => {
   const validateForm = () => {
     const newErrors = {};
     
-    // Network validation
-    if (!isZetaChainNetwork) {
-      newErrors.network = 'Please switch to ZetaChain network';
-    }
-    
-    // Balance validation
-    if (balanceData && parseFloat(balanceData.formatted) < ZETA_FEE) {
-      newErrors.balance = `Insufficient ZETA balance. You need at least ${ZETA_FEE} ZETA. Current balance: ${parseFloat(balanceData.formatted).toFixed(2)} ZETA`;
-    }
-    
-    // Field validation
+    // Basic form validation
     if (!formData.name.trim()) {
       newErrors.name = 'Token name is required';
     }
     
     if (!formData.symbol.trim()) {
       newErrors.symbol = 'Token symbol is required';
-    } else if (formData.symbol.length > 10) {
-      newErrors.symbol = 'Symbol should be 10 characters or less';
+    } else if (formData.symbol.length > 6) {
+      newErrors.symbol = 'Token symbol should be 6 characters or less';
+    }
+    
+    if (!formData.decimals) {
+      newErrors.decimals = 'Decimals are required';
+    } else if (isNaN(parseInt(formData.decimals, 10)) || parseInt(formData.decimals, 10) < 0 || parseInt(formData.decimals, 10) > 18) {
+      newErrors.decimals = 'Decimals must be a number between 0 and 18';
     }
     
     if (!formData.totalSupply) {
       newErrors.totalSupply = 'Total supply is required';
-    } else if (isNaN(formData.totalSupply) || parseFloat(formData.totalSupply) <= 0) {
-      newErrors.totalSupply = 'Total supply must be a positive number';
+    } else {
+      // Ensure totalSupply is a valid number string
+      try {
+        if (isNaN(formData.totalSupply) || formData.totalSupply.trim() === '') {
+          newErrors.totalSupply = 'Total supply must be a valid number';
+        }
+      } catch (error) {
+        newErrors.totalSupply = 'Total supply must be a valid number';
+      }
     }
     
-    if (!formData.decimals) {
-      newErrors.decimals = 'Decimals is required';
-    } else if (isNaN(formData.decimals) || parseInt(formData.decimals) < 0 || parseInt(formData.decimals) > 18) {
-      newErrors.decimals = 'Decimals must be between 0 and 18';
-    }
-
     if (!formData.selectedChains || formData.selectedChains.length === 0) {
-      newErrors.chains = 'At least one chain must be selected';
+      newErrors.selectedChains = 'At least one chain must be selected';
+    }
+    
+    // Validate wallet address format
+    if (!address) {
+      newErrors.address = 'Wallet must be connected';
+    } else if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
+      newErrors.address = 'Invalid wallet address format';
+    }
+    
+    // Validate each distribution if any
+    if (distributions.length > 0) {
+      const distributionErrors = [];
+      distributions.forEach((dist, index) => {
+        if (!dist.address || !dist.address.match(/^0x[a-fA-F0-9]{40}$/)) {
+          distributionErrors.push(`Distribution #${index + 1} has an invalid address format`);
+        }
+        if (!dist.amount || isNaN(dist.amount) || parseFloat(dist.amount) <= 0) {
+          distributionErrors.push(`Distribution #${index + 1} has an invalid amount`);
+        }
+      });
+      
+      if (distributionErrors.length > 0) {
+        newErrors.distributions = distributionErrors;
+      }
     }
     
     setErrors(newErrors);
@@ -340,17 +415,29 @@ const LaunchPage = ({ embedded = false }) => {
     setErrors({});
     setTransactionRetries(0);
     setShowRetryButton(false);
+    setPollingCount(0);
     setDeploymentStatus(DEPLOYMENT_STATUS.CREATING);
     
     try {
+      // Format the deployment data according to backend requirements
       const deploymentData = {
-        tokenName: formData.name,
-        tokenSymbol: formData.symbol,
+        tokenName: formData.name.trim(),
+        tokenSymbol: formData.symbol.trim(),
         decimals: parseInt(formData.decimals, 10),
-        totalSupply: formData.totalSupply,
-        selectedChains: formData.selectedChains,
+        totalSupply: formData.totalSupply.toString(), // Ensure string format
+        selectedChains: formData.selectedChains.map(id => id.toString()), // Ensure string format
         deployerAddress: address // current wallet address
       };
+      
+      // Add distributions if present, ensuring proper format
+      if (distributions.length > 0) {
+        deploymentData.allocations = distributions.map(dist => ({
+          address: dist.address,
+          amount: dist.amount.toString() // Ensure string format
+        }));
+      }
+      
+      console.log("Preparing to submit deployment data:", JSON.stringify(deploymentData, null, 2));
       
       // Start fee payment process
       setDeploymentStatus(DEPLOYMENT_STATUS.PAYING);
@@ -442,7 +529,7 @@ const LaunchPage = ({ embedded = false }) => {
       console.log('Deployment initiated:', deploymentResult);
       
       // Set token ID from response
-      setCreatedTokenId(deploymentResult.tokenId || deploymentResult.id);
+      setCreatedTokenId(deploymentResult.deployment_id || deploymentResult.tokenId || deploymentResult.id);
       
       // Start polling for deployment status
       setDeploymentStatus(DEPLOYMENT_STATUS.POLLING);
@@ -470,15 +557,63 @@ const LaunchPage = ({ embedded = false }) => {
     await switchToZetaChain();
   };
   
-  // Polling logic for deployment status
+  const pollStatus = async (deploymentId) => {
+    try {
+      setPollingCount(prev => prev + 1);
+      console.log(`[Polling Effect] Poll count: ${pollingCount + 1}`);
+      
+      // For demo purposes, make a real API call and handle errors properly
+      try {
+        const tokenData = await apiService.getToken(deploymentId);
+        console.log('[Polling Effect] Token data from initial poll:', tokenData);
+        
+        if (tokenData && tokenData.deploymentStatus) {
+          if (tokenData.deploymentStatus === 'completed') {
+            setDeploymentStatus(DEPLOYMENT_STATUS.COMPLETED);
+          } else if (tokenData.deploymentStatus === 'failed') {
+            setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
+            setErrors({ submission: tokenData.deploymentError || 'Deployment failed' });
+          }
+        }
+      } catch (error) {
+        console.error('[Polling Effect] Error in initial poll:', error);
+        // Don't set failure yet, let the polling effect handle it
+      }
+      
+      // Add a small delay to avoid hammering the API
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+    } catch (error) {
+      console.log('[Polling Effect] Error during pollStatus API call:', error);
+      
+      // Let the polling effect handle the error
+      console.log('[Polling Effect] Error logged, polling effect will handle retries.');
+    }
+  };
+  
+  // Use effect for polling when in polling status
   useEffect(() => {
+    // Only poll when in polling status
+    if (deploymentStatus !== DEPLOYMENT_STATUS.POLLING) {
+      console.log(`[Polling Effect] Status is ${deploymentStatus}. Not starting or stopping poll interval.`);
+      return;
+    }
+
     let intervalId;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 20; // Increase maximum attempts - deployment might take time
 
     const pollStatus = async () => {
+      attempts++;
       try {
-        console.log(`[Polling Effect] Checking token status for ID: ${createdTokenId}`);
+        console.log(`[Polling Effect] Checking token status for ID: ${createdTokenId} (Attempt: ${attempts}/${MAX_ATTEMPTS})`);
         const tokenData = await apiService.getToken(createdTokenId);
         console.log('[Polling Effect] Token data:', tokenData);
+
+        // Reset error state if we successfully get data
+        if (errors.submission) {
+          setErrors(prev => ({...prev, submission: null}));
+        }
 
         // Check deploymentStatus field from API response (camelCase)
         if (tokenData.deploymentStatus === 'completed') {
@@ -507,24 +642,56 @@ const LaunchPage = ({ embedded = false }) => {
         } else {
           // Still pending or processing on backend
           console.log(`[Polling Effect] Status is ${tokenData.deploymentStatus}. Continuing poll. Setting step message.`);
-          // Only set status to POLLING if it wasn't already, though this shouldn't harm
-          // setDeploymentStatus(DEPLOYMENT_STATUS.POLLING);
           setProcessingStep('Backend is deploying contracts... Please wait.');
         }
       } catch (error) {
         console.error('[Polling Effect] Error during pollStatus API call:', error);
-        // Keep polling unless it's a fatal error (e.g., 404 Not Found)
-        if (error.response && error.response.status === 404) {
-            console.error('[Polling Effect] Token ID not found during poll. Stopping.');
-            setErrors({ submission: `Error polling status: Token ID ${createdTokenId} not found.` });
-            setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT); // Treat as failure if token vanishes
+        
+        // Handle API errors properly, but don't immediately fail
+        if (error.response) {
+          // The request was made and the server responded with an error status
+          if (error.response.status === 404) {
+            console.error(`[Polling Effect] Token ID not found (404). Attempt ${attempts}/${MAX_ATTEMPTS}`);
+            
+            // Only fail after reaching max attempts
+            if (attempts >= MAX_ATTEMPTS) {
+              setErrors({ submission: `Unable to find token deployment after ${MAX_ATTEMPTS} attempts. The token may still be processing.` });
+              setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
+              clearInterval(intervalId);
+              intervalId = null;
+            } else {
+              // Continue polling, the backend might just need more time to register the token
+              setProcessingStep(`Waiting for token to appear on server... (Attempt ${attempts}/${MAX_ATTEMPTS})`);
+            }
+          } else if (error.response.status >= 500) {
+            // Server error, might be temporary
+            console.warn('[Polling Effect] Server error during poll. Will retry.');
+            setProcessingStep('Server error during polling. Retrying...');
+          } else {
+            // Other API error
+            console.error('[Polling Effect] API error during poll:', error.response.data);
+            // Continue polling even on other errors - only fail if max attempts reached
+            if (attempts >= MAX_ATTEMPTS) {
+              setErrors({ submission: `Deployment error: ${error.response.data?.message || 'Unknown API error'}` });
+              setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
+              clearInterval(intervalId);
+              intervalId = null;
+            }
+          }
+        } else if (error.request) {
+          // The request was made but no response was received (network error)
+          console.warn('[Polling Effect] Network error during poll. Will retry.');
+          setProcessingStep('Network error during polling. Retrying...');
+        } else {
+          // Something else happened while setting up the request
+          console.error('[Polling Effect] Unexpected error during poll:', error.message);
+          if (attempts >= MAX_ATTEMPTS) {
+            setErrors({ submission: `Unexpected error: ${error.message}` });
+            setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
             clearInterval(intervalId);
             intervalId = null;
-        } else {
-             console.warn('[Polling Effect] Non-fatal polling error. Will retry.');
-             setProcessingStep('Polling deployment status... Encountered temporary network error. Retrying...');
+          }
         }
-        // Optionally add a max retry count for polling
       }
     };
 
@@ -542,15 +709,14 @@ const LaunchPage = ({ embedded = false }) => {
        console.log(`[Polling Effect] Status is ${deploymentStatus}. Not starting or stopping poll interval.`);
     }
 
-    // Cleanup function to clear interval when component unmounts or status changes *away* from polling states
+    // Cleanup function to clear interval when component unmounts or status changes
     return () => {
       if (intervalId) {
         clearInterval(intervalId);
         console.log(`[Polling Effect Cleanup] Cleared interval ID: ${intervalId}`);
       }
     };
-  // Removed 'errors' from dependency array. Polling errors are handled internally.
-  }, [deploymentStatus, createdTokenId]);
+  }, [deploymentStatus, createdTokenId, errors.submission]);
   
   // Render loading state if wallet not connected
   if (!isConnected) {
@@ -750,13 +916,26 @@ const LaunchPage = ({ embedded = false }) => {
               
               <FormRow>
                 <FormGroup>
+                  {errors.chainOptions ? (
+                    <div style={{
+                      padding: '16px',
+                      backgroundColor: 'rgba(255, 180, 0, 0.1)',
+                      border: '1px solid #ffb400',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                      marginBottom: '16px'
+                    }}>
+                      <p style={{margin: 0, fontWeight: '500'}}>{errors.chainOptions}</p>
+                    </div>
+                  ) : null}
                   <ChainSelector
                     label="Target Chains"
                     options={chainOptions}
                     value={formData.selectedChains}
                     onChange={handleChange}
                     helperText="Select chains for deployment. ZetaChain is required."
-                    error={errors.chains}
+                    error={errors.selectedChains}
+                    name="selectedChains"
                   />
                 </FormGroup>
               </FormRow>

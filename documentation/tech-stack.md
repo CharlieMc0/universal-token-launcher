@@ -49,6 +49,10 @@ This document outlines the recommended technologies for building the Universal T
   - **Development mode with wildcard origin option**
     *Rationale:* Proper CORS configuration is critical for frontend-backend communication.
 
+- **HTTP Client:**
+  - **httpx for Python API clients**
+    *Rationale:* Modern, async-compatible HTTP client for Python with better timeout handling and error management. Used for external API integrations.
+
 ---
 
 ## 3. Database Layer
@@ -173,6 +177,14 @@ This document outlines the recommended technologies for building the Universal T
     - Use structured comments for better maintainability
     - Ensure the bytecode string is properly formatted as valid JavaScript
     - Always properly close multiline comment blocks with appropriate syntax
+
+- **Blockchain Explorer Integration:**
+  - **Blockscout API Integration:**
+    *Rationale:* Retrieving on-chain data directly allows real-time token information.
+    - Integration with Blockscout API for user token balances
+    - Token information retrieval from ZetaChain through Blockscout
+    - Cross-referencing on-chain data with application database
+    - Support for token holder queries and balance lookups
 
 ---
 
@@ -439,7 +451,7 @@ The application experienced critical errors related to the syntax in the `byteco
 
 ## 15. Backend Implementation Details
 
-### 15.1 Primary Dependencies
+### 15.1 Primary Dependencies (Node.js Version)
 
 1. **Express.js (v4.18.x)** 
    - **Status**: Implemented
@@ -870,3 +882,136 @@ We have made significant progress in testing the backend components:
    - Complete API endpoint integration tests
    - Improve ContractService test reliability
    - Ensure cross-chain functionality is properly tested
+
+## 16. Python Backend Implementation
+
+### 16.1 Primary Dependencies
+
+1. **FastAPI (v0.104.x)**
+   - **Status**: Implemented
+   - **Purpose**: Modern Python web framework
+   - **Details**:
+     - Async request handling
+     - Automatic API documentation
+     - Type-based request validation
+
+2. **SQLAlchemy (v2.0.x)**
+   - **Status**: Implemented
+   - **Purpose**: SQL toolkit and ORM
+   - **Details**:
+     - Data models for token deployments
+     - Database connection management
+     - Query building and execution
+
+3. **Pydantic (v2.4.x)**
+   - **Status**: Implemented
+   - **Purpose**: Data validation and settings
+   - **Details**:
+     - Request and response models
+     - Configuration management
+     - Type validation and conversion
+
+4. **Web3.py (v6.11.x)**
+   - **Status**: Implemented
+   - **Purpose**: Ethereum interaction library
+   - **Details**:
+     - Contract deployment and interaction
+     - Transaction management
+     - Provider connections
+
+5. **Httpx (v0.25.x)**
+   - **Status**: Implemented
+   - **Purpose**: Modern async HTTP client
+   - **Details**:
+     - Blockscout API integration
+     - Token and holder data retrieval
+     - Async request handling
+
+### 16.2 API Endpoints
+
+1. **Token Deployment**
+   - **Status**: Implemented
+   - **Endpoint**: `POST /api/deploy`
+   - **Details**:
+     - Accepts token configuration data
+     - Creates database records
+     - Handles deployment across chains
+
+2. **Token Information**
+   - **Status**: Implemented
+   - **Endpoint**: `GET /api/token/{identifier}`
+   - **Details**:
+     - Retrieves token details by ID or contract address
+     - Returns comprehensive deployment information
+     - Includes explorer URLs and verification status
+
+3. **Contract Verification**
+   - **Status**: Implemented
+   - **Endpoint**: `POST /api/verify`
+   - **Details**:
+     - Verifies deployed contracts on block explorers
+     - Tracks verification status
+     - Returns explorer URLs for verified contracts
+
+4. **User Token Information**
+   - **Status**: Implemented
+   - **Endpoint**: `GET /api/users/{address}`
+   - **Details**:
+     - Retrieves tokens owned by a wallet address
+     - Combines on-chain data with application database
+     - Returns token balances across all chains
+     - Indicates deployer status for each token
+
+5. **Chain Information**
+   - **Status**: Implemented
+   - **Endpoint**: `GET /api/chains`
+   - **Details**:
+     - Lists supported blockchain networks
+     - Provides RPC URLs and explorer links
+     - Offers filtering by testnet/mainnet
+
+### 16.3 Key Components
+
+1. **BlockscoutService**
+   - **Status**: Implemented
+   - **Purpose**: Interact with Blockscout API
+   - **Key Features**:
+     - Retrieves user token balances from ZetaChain
+     - Gets token information and holder data
+     - Handles API response parsing and error management
+
+2. **TokenService**
+   - **Status**: Implemented
+   - **Purpose**: Token management and lookup
+   - **Key Features**:
+     - Token lookup by ID or contract address
+     - Enhanced token data with explorer URLs
+     - Chain information integration
+
+3. **DeploymentService**
+   - **Status**: Implemented
+   - **Purpose**: Smart contract deployment
+   - **Key Features**:
+     - Multi-chain contract deployment
+     - Status tracking and error handling
+     - Token connection across chains
+
+4. **VerificationService**
+   - **Status**: Implemented
+   - **Purpose**: Contract verification
+   - **Key Features**:
+     - Explorer API integration
+     - Verification status tracking
+     - Explorer URL generation
+
+### 16.4 Database Models
+
+1. **TokenModel**
+   - **Status**: Implemented
+   - **Purpose**: Store token deployment information
+   - **Key Fields**:
+     - Token name, symbol, decimals, total supply
+     - ZetaChain contract address
+     - Deployer address
+     - Connected chains (JSON)
+     - Deployment status and error messages

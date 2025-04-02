@@ -157,4 +157,33 @@ class TokenResponse(BaseModel):
     detail: Optional[str] = None
     errors: Optional[List[str]] = None
     deployment: Optional[Dict[str, Any]] = None
-    verification_status: Optional[str] = None 
+    verification_status: Optional[str] = None
+
+# Schema for user token data
+class TokenBalanceInfo(BaseModel):
+    """Schema for token balance information."""
+    
+    chain_id: str
+    chain_name: str
+    balance: str
+    contract_address: str
+    explorer_url: Optional[str] = None
+    blockscout_url: Optional[str] = None
+
+class UserTokenInfo(BaseModel):
+    """Schema for token information in user response."""
+    
+    token_name: str
+    token_symbol: str
+    decimals: int
+    is_deployer: bool
+    zc_contract_address: Optional[str] = None
+    balances: List[TokenBalanceInfo]
+
+class UserTokenResponse(BaseModel):
+    """Schema for user tokens response."""
+    
+    success: bool
+    message: str
+    wallet_address: str
+    tokens: List[UserTokenInfo] = [] 

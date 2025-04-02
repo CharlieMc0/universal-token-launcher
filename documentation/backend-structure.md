@@ -104,50 +104,61 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
 ### 4.2. Main Endpoints
 
 #### 4.2.1. Token Configuration & Deployment
-- **POST /api/tokens**
-  - **Description:** Create a new token configuration.
-  - **Request Body:** Multipart form data containing:
+- **POST /api/deploy**
+  - **Description:** Deploy token contracts across multiple chains.
+  - **Request Body:** JSON payload containing:
     - `token_name` (string, required)
     - `token_symbol` (string, required)
     - `decimals` (integer, default 18)
-    - `total_supply` (numeric, required)
-    - `icon` (file, required) - Token icon image
-    - `selected_chains` (JSON string, required) - Array of chain IDs
-  - **Response:** Token configuration ID and initial status.
+    - `total_supply` (string, required) - Total supply in wei
+    - `selected_chains` (array of strings, required) - Chain IDs
+    - `deployer_address` (string, required) - Address to receive ownership
+    - `allocations` (array, optional) - Initial token distributions
+  - **Response:** Token deployment ID and initial status.
   
-- **GET /api/tokens/{id}**
-  - **Description:** Retrieve status and details for a token configuration.
-  - **Response:** Token details including name, symbol, supply, deployment status, and per-chain information:
-    - Chain information (name, ID, RPC URL, explorer URL)
-    - Contract addresses on each chain
-    - Contract verification status (verified, pending, failed)
-    - Contract verification error (if applicable)
-    - Links to verified contract source code
-    - Contract deployment status (pending, deploying, success, failed)
-    - Explorer URLs for direct contract viewing
-    - Blockscout URLs for networks using Blockscout
+- **GET /api/token/{identifier}**
+  - **Description:** Retrieve detailed token information by ID or contract address.
+  - **Path Parameters:**
+    - `identifier` - Either a numeric ID or an Ethereum contract address
+  - **Response:** Comprehensive token details including:
+    - Basic token information (name, symbol, decimals, total supply)
+    - ZetaChain contract information with explorer URLs
+    - Connected chains with contract addresses, deployment status, and explorer links
+    - Verification status for each deployed contract
+    - Links to block explorers for each contract
 
-- **POST /api/tokens/{id}/deploy**
-  - **Description:** Trigger the deployment process after fee payment.
+- **POST /api/verify**
+  - **Description:** Verify a deployed contract on a block explorer.
   - **Request Body:** JSON payload with:
-    - `fee_paid_tx` (string, required) - Transaction hash of the ZETA fee payment
-  - **Response:** Initial deployment status and details.
+    - `contract_address` (string, required) - Address of the deployed contract
+    - `chain_id` (string, required) - Chain ID where contract is deployed
+    - `contract_type` (string, required) - Type of contract ('zetachain' or 'evm')
+  - **Response:** Verification status and details.
 
-- **GET /api/tokens/{id}/deployments**
-  - **Description:** Get deployment logs for a specific token.
-  - **Response:** Array of deployment logs with chain-specific status, contract addresses, verification details, and explorer URLs.
+- **GET /api/users/{address}**
+  - **Description:** Retrieve tokens owned by a specific wallet address.
+  - **Path Parameters:**
+    - `address` - Wallet address to query
+  - **Response:** List of tokens owned by the user with:
+    - Token details (name, symbol, decimals)
+    - Deployer status (whether the user is the token deployer)
+    - Balance information for each chain where the token is deployed
+    - Explorer URLs for each token contract
 
-#### 4.2.2. Status & Notifications
-- **GET /api/status**
-  - **Description:** Poll or subscribe for real-time status updates (deployment progress).
-  - **Response:** JSON with current statuses (may integrate WebSocket endpoints for real-time updates).
+#### 4.2.2. Chain Information
+- **GET /api/chains**
+  - **Description:** Get a list of supported blockchain networks.
+  - **Query Parameters:** 
+    - `testnet_only` (boolean, optional) - Filter for testnet chains only
+    - `mainnet_only` (boolean, optional) - Filter for mainnet chains only
+  - **Response:** Array of chain information with IDs, names, and availability status.
 
 ### 4.3. Error & Validation Handling
 - **Standardized Error Format:**  
   - Return HTTP status codes with JSON payloads containing an error code and message.
 - **Validation:**  
-  - Use Express validator or similar middleware for input validation.
-  - Return 400 Bad Request for invalid inputs, 401 Unauthorized for missing/invalid JWTs, and 500 for unexpected errors.
+  - Use Pydantic models for input validation.
+  - Return 400 Bad Request for invalid inputs, 404 Not Found for missing resources, and 500 for unexpected errors.
 
 ### 4.4. Enhanced Response Format for Tokens
 
@@ -155,30 +166,40 @@ The token API endpoints return enhanced information for each supported chain:
 
 ```json
 {
-  "id": 1,
-  "tokenName": "My Token",
-  "tokenSymbol": "MTK",
-  "decimals": 18,
-  "totalSupply": "1000000",
-  "chainInfo": [
-    {
-      "name": "ZetaChain Testnet",
-      "chainId": "7001",
-      "rpcUrl": "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
-      "explorerUrl": "https://athens.explorer.zetachain.com",
-      "isZetaChain": true,
-      "color": "#00B386",
-      "shortName": "ZetaChain",
-      "isTestnet": true,
-      "blockscoutUrl": "https://athens.explorer.zetachain.com",
-      "contractAddress": "0x1234567890abcdef1234567890abcdef12345678",
-      "verificationStatus": "verified",
-      "verificationError": null,
-      "verifiedUrl": "https://athens.explorer.zetachain.com/address/0x1234...5678/contracts#address-tabs",
-      "deploymentStatus": "success",
-      "explorerUrl": "https://athens.explorer.zetachain.com/address/0x1234...5678"
+  "success": true,
+  "token": {
+    "id": 1,
+    "token_name": "My Token",
+    "token_symbol": "MTK",
+    "decimals": 18,
+    "total_supply": "1000000000000000000000000",
+    "zc_contract_address": "0x1234...",
+    "deployer_address": "0x4f1684...",
+    "deployment_status": "completed",
+    "error_message": null,
+    "connected_chains_json": {
+      "11155111": {
+        "status": "completed",
+        "contract_address": "0x5678...",
+        "transaction_hash": "0xabcd...",
+        "verification_status": "verified",
+        "chain_id": "11155111",
+        "chain_name": "Sepolia Testnet",
+        "explorer_url": "https://sepolia.etherscan.io",
+        "blockscout_url": null,
+        "contract_url": "https://sepolia.etherscan.io/address/0x5678..."
+      }
+    },
+    "zeta_chain_info": {
+      "chain_id": "7001",
+      "contract_address": "0x1234...",
+      "status": "completed",
+      "explorer_url": "https://explorer.athens.zetachain.com",
+      "blockscout_url": "https://zetachain-testnet.blockscout.com/",
+      "verification_status": "verified",
+      "contract_url": "https://zetachain-testnet.blockscout.com/address/0x1234..."
     }
-  ]
+  }
 }
 ```
 

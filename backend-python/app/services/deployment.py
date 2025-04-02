@@ -151,8 +151,19 @@ class DeploymentService:
                 deployment_result["evmChains"][chain_id] = {
                     "success": False,
                     "error": True,
-                    "message": f"Failed to connect to chain {chain_id}"
+                    "message": f"Failed to connect to chain {chain_id}",
+                    "status": "failed"
                 }
+                
+                # Update connected_chains_json with status
+                if not deployment.connected_chains_json:
+                    deployment.connected_chains_json = {}
+                
+                deployment.connected_chains_json[chain_id] = {
+                    "status": "failed",
+                    "error_message": f"Failed to connect to chain {chain_id}"
+                }
+                
                 continue
             
             # Prepare constructor arguments with proper type conversion
@@ -179,6 +190,8 @@ class DeploymentService:
                     constructor_args=constructor_args
                 )
                 
+                # Add status to the result
+                evm_result["status"] = "completed" if evm_result["success"] else "failed"
                 deployment_result["evmChains"][chain_id] = evm_result
                 
                 if evm_result["success"]:
@@ -188,14 +201,32 @@ class DeploymentService:
                     
                     deployment.connected_chains_json[chain_id] = {
                         "contract_address": evm_result["contract_address"],
-                        "transaction_hash": evm_result["transaction_hash"]
+                        "transaction_hash": evm_result["transaction_hash"],
+                        "status": "completed",
+                        "verification_status": "pending"
+                    }
+                else:
+                    # Store failure information
+                    deployment.connected_chains_json[chain_id] = {
+                        "status": "failed",
+                        "error_message": evm_result.get("message", "Unknown error")
                     }
             except Exception as e:
                 logger.error(f"Chain {chain_id} deployment failed: {str(e)}")
                 deployment_result["evmChains"][chain_id] = {
                     "success": False,
                     "error": True,
-                    "message": str(e)
+                    "message": str(e),
+                    "status": "failed"
+                }
+                
+                # Store exception in connected chains
+                if not deployment.connected_chains_json:
+                    deployment.connected_chains_json = {}
+                
+                deployment.connected_chains_json[chain_id] = {
+                    "status": "failed",
+                    "error_message": str(e)
                 }
         
         # Update deployment status

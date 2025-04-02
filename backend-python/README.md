@@ -58,6 +58,9 @@ backend-python/
 ├── requirements.txt        # Project dependencies
 ├── run_app.py              # Simple script to run the application
 ├── start_api.py            # Enhanced script to start the API with validation
+├── test_deployment.py      # Script to test token deployment across chains
+├── test_rpc_config.py      # Script to verify RPC configuration
+├── test_linter.py          # Script to verify code style
 ├── deployment_fixes.md     # Documentation of deployment fixes and troubleshooting
 └── .env                    # Environment variables
 ```
@@ -153,6 +156,8 @@ uvicorn app.app:app --reload --host 0.0.0.0 --port 8000
 - `GET /api/chains` - Get a list of supported chains (with optional filtering for testnet/mainnet)
 - `POST /api/deploy` - Deploy a token on multiple chains
 - `POST /api/verify` - Verify a contract on a blockchain explorer
+- `GET /api/token/{identifier}` - Get detailed token information by ID or contract address
+- `GET /api/users/{address}` - Get tokens owned by a specific wallet address
 
 ### Token Deployment
 
@@ -179,6 +184,110 @@ Note that:
 - `decimals` can be an integer (unlike older API versions that required a string)
 - `total_supply` should be provided as a string to avoid precision issues
 - `selected_chains` accepts chain IDs (e.g., "7001", "11155111")
+
+### Token Information Lookup
+
+The token information endpoint (`GET /api/token/{identifier}`) allows retrieving token details by either:
+- Numeric ID: `/api/token/1`
+- Contract address: `/api/token/0x1234...`
+
+The response includes:
+- Basic token information (name, symbol, decimals, total supply)
+- Deployment status across all chains
+- ZetaChain contract information with explorer URLs
+- Connected chains with contract addresses, explorer links, and verification status
+
+Example response structure:
+```json
+{
+  "success": true,
+  "token": {
+    "id": 1,
+    "token_name": "Test Token",
+    "token_symbol": "TST",
+    "decimals": 18,
+    "total_supply": "1000000000000000000000000",
+    "zc_contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
+    "deployer_address": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
+    "connected_chains_json": {
+      "11155111": {
+        "status": "completed",
+        "contract_address": "0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB",
+        "transaction_hash": "0x...",
+        "verification_status": "pending",
+        "chain_id": "11155111",
+        "chain_name": "Sepolia Testnet",
+        "explorer_url": "https://sepolia.etherscan.io",
+        "blockscout_url": null,
+        "contract_url": "https://sepolia.etherscan.io/address/0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB"
+      }
+    },
+    "deployment_status": "completed",
+    "error_message": null,
+    "created_at": "2025-04-02T12:05:30.664247-07:00",
+    "updated_at": "2025-04-02T12:05:30.667077-07:00",
+    "zeta_chain_info": {
+      "chain_id": "7001",
+      "contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
+      "status": "completed",
+      "explorer_url": "https://explorer.athens.zetachain.com",
+      "blockscout_url": "https://zetachain-testnet.blockscout.com/",
+      "verification_status": "unknown",
+      "contract_url": "https://zetachain-testnet.blockscout.com//address/0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b"
+    }
+  }
+}
+```
+
+### User Token Information
+
+The user tokens endpoint (`GET /api/users/{address}`) allows retrieving all tokens owned by a specific wallet address:
+
+- **Path Parameter**: `address` - The wallet address to lookup
+- **Response**: Includes tokens deployed through this application that the user holds
+- **Example**: `/api/users/0x4f1684a28e33f42cdf50ab96e29a709e17249e63`
+
+Example response structure:
+```json
+{
+  "success": true,
+  "message": "User tokens retrieved successfully",
+  "wallet_address": "0x4f1684a28e33f42cdf50ab96e29a709e17249e63",
+  "tokens": [
+    {
+      "token_name": "Test Token",
+      "token_symbol": "TST",
+      "decimals": 18,
+      "is_deployer": true,
+      "zc_contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
+      "balances": [
+        {
+          "chain_id": "7001",
+          "chain_name": "ZetaChain Testnet",
+          "balance": "1000000000000000000000000",
+          "contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
+          "explorer_url": "https://explorer.athens.zetachain.com",
+          "blockscout_url": "https://zetachain-testnet.blockscout.com/"
+        },
+        {
+          "chain_id": "11155111",
+          "chain_name": "Sepolia Testnet",
+          "balance": "0",
+          "contract_address": "0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB",
+          "explorer_url": "https://sepolia.etherscan.io",
+          "blockscout_url": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+The response includes:
+- Basic token information (name, symbol, decimals)
+- Whether the user is the deployer of the token
+- ZetaChain contract address
+- Token balances across all chains where the token is deployed
 
 ## Smart Contract Integration
 
@@ -214,6 +323,36 @@ The following chains are currently supported:
 | 42161 | Arbitrum One | ETH | Mainnet |
 | 10 | Optimism | ETH | Mainnet |
 | 8453 | Base | ETH | Mainnet |
+| 421614 | Arbitrum Sepolia | ETH | Testnet |
+| 11155420 | Optimism Sepolia | ETH | Testnet |
+| 84532 | Base Sepolia | ETH | Testnet |
+| 43114 | Avalanche C-Chain | AVAX | Mainnet |
+| 43113 | Avalanche Fuji Testnet | AVAX | Testnet |
+
+### Enabling and Disabling Chains
+
+Each chain in the configuration includes an `enabled` flag that determines whether it should be included in deployment options:
+
+```json
+{
+  "11155111": {
+    "name": "Sepolia Testnet",
+    "rpc_url": "https://ethereum-sepolia.publicnode.com",
+    "explorer_url": "https://sepolia.etherscan.io",
+    "blockscout_url": null,
+    "currency_symbol": "ETH",
+    "testnet": true,
+    "enabled": true
+  }
+}
+```
+
+- To enable a chain, set `"enabled": true`
+- To disable a chain, set `"enabled": false`
+
+Disabled chains won't appear in the API responses and won't be included when running the test deployment script with all enabled chains.
+
+You can use the `test_rpc_config.py` script to verify which chains are currently enabled.
 
 ### Adding Support for New Chains
 
@@ -322,6 +461,25 @@ pytest
 
 ## Testing
 
+### Testing RPC Configuration
+
+Before attempting to deploy tokens, you can verify that your RPC configuration is properly loaded and that all enabled chains have valid RPC URLs:
+
+```bash
+# Activate the virtual environment
+source venv_311/bin/activate
+
+# Verify RPC configuration
+python test_rpc_config.py
+```
+
+This will display:
+- A summary of all configured chains
+- Lists of enabled mainnet and testnet chains
+- Validation of RPC URLs for all enabled chains
+
+This helps quickly identify any configuration issues before attempting deployments.
+
 ### Testing Deployment
 
 The `test_deployment.py` script is designed to test token deployment across all enabled chains in the system. You can use it to verify that your configuration is working correctly before exposing it to users.
@@ -345,7 +503,7 @@ The script will:
 2. Filter for testnet chains if the `--testnet-only` flag is used
 3. Limit to a specified number of chains if the `--max-chains` argument is provided
 4. Deploy a test token to each chain
-5. Report on the success or failure of each deployment
+5. Report on the success or failure of each deployment with a summary
 
 This provides a quick way to verify your deployment configuration before going to production.
 
@@ -433,6 +591,9 @@ If you encounter issues with token deployment:
      # SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR-API-KEY
      ```
    - The system will automatically use your custom RPC URLs if defined in the environment
+   - Run `test_rpc_config.py` to verify which chains have valid RPC URLs
+   - If testing all enabled chains fails, try limiting to just 1-2 chains with `--max-chains` to identify problematic ones
+   - Public RPC endpoints often have rate limits or connectivity issues; consider using dedicated providers for production environments
 
 5. **Numeric Value Errors**:
    - Ensure all numeric values in the API request are passed correctly

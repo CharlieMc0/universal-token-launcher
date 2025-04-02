@@ -1,7 +1,7 @@
 ---
 description: 
-globs: 
-alwaysApply: true
+globs: documentation/**
+alwaysApply: false
 ---
 # Documentation Directory
 documentation/** @guide "This directory contains crucial design documentation including PRD, implementation plans, tech stack, app flow, and design elements. When making application changes, ensure they align with these documents and update the relevant design doc to reflect any modifications. Key documents include:

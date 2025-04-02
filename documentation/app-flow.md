@@ -836,12 +836,15 @@ The Universal Token Launcher now provides automatic contract verification for de
    - Process runs in background during token deployment
 
 2. **Verification Status:**
-   - Users can view verification status in the deployment logs
+   - Verification status is stored directly in the token's `connected_chains_json` attribute
+   - Each chain entry contains its own `verification_status` field
    - Possible statuses: pending, processing, verified, failed, skipped
-   - Clear error messages if verification fails
+   - Error messages stored alongside status if verification fails
 
 3. **Explorer Integration:**
    - Direct links to verified contracts on block explorers
+   - Explorer URLs stored in `explorer_url` and `blockscout_url` fields
+   - Formatted `contract_url` provides ready-to-use links for frontend
    - Different explorer support based on chain:
      - Blockscout for ZetaChain (Athens)
      - Etherscan for Ethereum networks (Sepolia)
@@ -872,34 +875,55 @@ The Universal Token Launcher now provides automatic contract verification for de
    - Progress indicators during verification
    - Success or failure notification
 
-2. **UI Elements:**
+2. **Verification Status Storage:**
+   - Status integrated directly into the token database model
+   - Stored in `connected_chains_json` for each deployed chain
+   - ZetaChain-specific verification information in `zeta_chain_info`
+   - Example JSON structure:
+     ```json
+     {
+       "11155111": {
+         "status": "completed",
+         "contract_address": "0x5678...",
+         "transaction_hash": "0xabcd...",
+         "verification_status": "verified",
+         "explorer_url": "https://sepolia.etherscan.io",
+         "contract_url": "https://sepolia.etherscan.io/address/0x5678..."
+       }
+     }
+     ```
+
+3. **UI Elements:**
    ```jsx
    // Example verification status display in token details
-   <VerificationStatus status={deployment.verificationStatus}>
-     {deployment.verificationStatus === 'verified' ? (
+   <VerificationStatus status={chain.verification_status}>
+     {chain.verification_status === 'verified' ? (
        <VerificationLink 
-         href={deployment.verifiedUrl} 
+         href={chain.contract_url} 
          target="_blank" 
          rel="noopener noreferrer"
        >
          ✓ Verified - View on Explorer
        </VerificationLink>
-     ) : deployment.verificationStatus === 'failed' ? (
+     ) : chain.verification_status === 'failed' ? (
        <VerificationError>
-         ✗ Verification Failed: {deployment.verificationError}
+         ✗ Verification Failed: {chain.verification_message || 'Unknown error'}
        </VerificationError>
      ) : (
-       <span>{capitalizeFirstLetter(deployment.verificationStatus)}...</span>
+       <span>{capitalizeFirstLetter(chain.verification_status)}...</span>
      )}
    </VerificationStatus>
    ```
 
-3. **Technical Requirements:**
+4. **Technical Implementation:**
+   - Verification service updates database directly after verification attempts
+   - Takes database session as parameter for database operations
+   - Status updates happen in real-time during verification process
    - Explorer API keys configured on backend
    - Proper compiler settings
    - Accurate source code management
 
-This automatic verification feature significantly improves the user experience by providing verified, transparent contracts without requiring any additional steps from users.
+This enhanced verification feature significantly improves the user experience by providing verified, transparent contracts without requiring any additional steps from users, while maintaining a comprehensive record of verification statuses for each deployed contract.
 
 ---
 

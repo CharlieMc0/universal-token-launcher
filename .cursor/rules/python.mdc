@@ -1,7 +1,7 @@
 ---
 description: 
-globs: 
-alwaysApply: true
+globs: backend-python/**
+alwaysApply: false
 ---
 # Python Guidelines and Rules for Backend
 
@@ -132,9 +132,6 @@ These guidelines establish coding standards and best practices for Python code u
 
 ## 11. Additional Best Practices
 
-- **Immutability:**  
-  - Favor immutable data structures when possible.
-  
 - **Modularity:**  
   - Design functions to perform a single task. If a function grows too long (preferably more than 50 lines), refactor it into smaller helper functions.
   

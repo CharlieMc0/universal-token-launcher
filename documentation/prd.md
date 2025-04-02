@@ -91,6 +91,10 @@ The Universal Launcher is a web application that allows non-developer users (fam
 ### 6.2 Backend
 
 - **Language:** Node.js with Express framework for API development
+- **API Endpoints:**
+  - `/api/deploy` - Primary endpoint for token deployment
+  - `/api/verify` - Contract verification endpoint
+  - `/api/chains` - Endpoint for retrieving supported chains
 - **Functionality:**
   - **Deployer Service:** Monitors for fee payment, verifies the token creator's wallet, and initiates deployment on selected chains.
   - **Contract Deployment:** Automatically deploys Universal Token contracts across chosen EVM chains using ZetaChain Standard Contracts.
@@ -132,7 +136,10 @@ The Universal Launcher is a web application that allows non-developer users (fam
 
 - **Frontend:** Provides interfaces for token configuration, fee payment, and token transfers.
 - **Backend Services:**
-  - **API Layer:** Express.js RESTful endpoints for token configuration and deployment management.
+  - **API Layer:** Express.js RESTful endpoints for token deployment and management:
+    - `/api/deploy` - Unified endpoint for token deployment across chains
+    - `/api/verify` - Contract verification on block explorers
+    - `/api/chains` - Supported chains information
   - **Contract Service:** Manages bytecode loading, contract deployment, and transaction monitoring.
   - **Database Layer:** PostgreSQL with Sequelize ORM for storing token configurations, deployment logs, and transfer records.
 - **Blockchain Interaction:** Leverages ethers.js to interact with ZetaChain and connected chains.
@@ -282,15 +289,20 @@ The Universal NFT feature extends the Universal Token Launcher to support the cr
   - ✅ TokenService for token configuration and deployment management
   - ✅ Basic wallet-based authentication middleware
   - ✅ File upload handling for token icons and CSV files
-  - ✅ Token creation and deployment endpoints
+  - ✅ API endpoint implementation (/api/deploy, /api/verify, /api/chains)
   - ✅ Fee verification for token deployment
   - ✅ Deployment status tracking and error handling
   - ✅ Testing utilities for contract deployment and token services
 
 - **Frontend:**
-  - React application with wagmi integration
-  - Wallet connection functionality
-  - Basic navigation and layout components
+  - ✅ React application with wagmi integration
+  - ✅ Wallet connection functionality
+  - ✅ Basic navigation and layout components
+  - ✅ Token launch form with data validation
+  - ✅ Chain selection dynamically loaded from backend API
+  - ✅ Fee payment transaction workflow
+  - ✅ Token deployment workflow with status tracking
+  - ✅ API integration with proper data format conversion (camelCase to snake_case)
 
 ### 13.2 Fixed Issues
 

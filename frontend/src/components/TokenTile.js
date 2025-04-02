@@ -79,11 +79,19 @@ const TokenTile = ({
   disabled,
   onClick
 }) => {
+  // Safely handle click event
+  const handleClick = (e) => {
+    e.stopPropagation(); // Prevent event bubbling
+    if (!disabled && typeof onClick === 'function') {
+      onClick(token.id, chainId);
+    }
+  };
+
   return (
     <Tile
       $selected={selected}
       $disabled={disabled}
-      onClick={() => !disabled && onClick(token.id, chainId)}
+      onClick={handleClick}
     >
       <ChainInfo>
         <ChainLogo 

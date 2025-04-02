@@ -1,12 +1,14 @@
 """Deployment routes for token deployment and verification."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Path
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
+import re
 
 from app.models import TokenSchema, TokenVerifySchema, TokenResponse
 from app.services.deployment import deployment_service
 from app.services.verification import verification_service
+from app.services.token import token_service
 from app.db import get_db
 from app.utils.logger import logger
 from app.config import Config
@@ -125,7 +127,7 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
     status_code=status.HTTP_200_OK,
     description="Verify a deployed contract"
 )
-async def verify_contract(verify_data: TokenVerifySchema):
+async def verify_contract(verify_data: TokenVerifySchema, db: Session = Depends(get_db)):
     """Verify a deployed contract on the specified chain."""
     try:
         logger.info(
@@ -140,7 +142,8 @@ async def verify_contract(verify_data: TokenVerifySchema):
         verification_result = await verification_service.verify_contract(
             verify_data.contract_address,
             verify_data.chain_id,
-            contract_type
+            contract_type,
+            db
         )
         
         return TokenResponse(
@@ -155,6 +158,69 @@ async def verify_contract(verify_data: TokenVerifySchema):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Verification failed: {str(e)}"
+        )
+
+
+@router.get(
+    "/token/{identifier}",
+    response_model=Dict[str, Any],
+    status_code=status.HTTP_200_OK,
+    description="Get token details by ID or ZetaChain contract address"
+)
+async def get_token(
+    identifier: str = Path(..., description="Token ID or contract address"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get token details by ID or ZetaChain contract address.
+    
+    Args:
+        identifier: Either a numeric ID or a contract address with 0x prefix
+        db: Database session
+        
+    Returns:
+        Token details including deployment status and contract addresses
+    """
+    try:
+        logger.info(f"Retrieving token with identifier: {identifier}")
+        
+        # Check if the identifier is a numeric ID
+        if identifier.isdigit():
+            token_id = int(identifier)
+            token_data = await token_service.get_token_by_id(token_id, db)
+            if not token_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Token with ID {token_id} not found"
+                )
+        # Check if the identifier is an Ethereum address
+        elif re.match(r"^0x[a-fA-F0-9]{40}$", identifier):
+            token_data = await token_service.get_token_by_contract_address(identifier, db)
+            if not token_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Token with contract address {identifier} not found"
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid identifier. Must be a numeric ID or a valid contract address"
+            )
+        
+        # Return token data
+        return {
+            "success": True,
+            "token": token_data
+        }
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving token: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving token: {str(e)}"
         )
 
 

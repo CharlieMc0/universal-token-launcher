@@ -23,8 +23,18 @@ const TileGrid = styled.div`
 
 const ChainTile = styled.div`
   position: relative;
-  background: ${props => props.$selected ? 'var(--accent-primary-transparent)' : 'var(--bg-primary)'};
-  border: 2px solid ${props => props.$selected ? 'var(--accent-primary)' : 'var(--border)'};
+  background: ${props => {
+    if (props.$value === '7001' || props.$isZetaChain) {
+      return props.$selected ? 'var(--accent-primary-transparent)' : 'rgba(60, 157, 242, 0.05)';
+    }
+    return props.$selected ? 'var(--accent-primary-transparent)' : 'var(--bg-primary)';
+  }};
+  border: 2px solid ${props => {
+    if (props.$value === '7001' || props.$isZetaChain) {
+      return props.$selected ? 'var(--accent-primary)' : 'rgba(60, 157, 242, 0.3)';
+    }
+    return props.$selected ? 'var(--accent-primary)' : 'var(--border)';
+  }};
   border-radius: 12px;
   padding: 16px;
   cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
@@ -87,9 +97,14 @@ const ChainSelector = ({
   value = [],
   onChange,
   helperText,
-  error
+  error,
+  name = 'selectedChains'
 }) => {
-  const handleTileClick = (chainValue, disabled) => {
+  // Create a separate handler for each chain tile
+  const createTileClickHandler = (chainValue, disabled) => (e) => {
+    e.preventDefault(); // Prevent any default actions
+    e.stopPropagation(); // Prevent bubbling
+    
     if (disabled) return;
     
     // ZetaChain is required and cannot be deselected
@@ -105,36 +120,60 @@ const ChainSelector = ({
       newValue = [...value, chainValue];
     }
 
-    onChange({
-      target: {
-        name: 'chains',
-        value: newValue
-      }
-    });
+    // Call onChange with the new selected chains
+    if (typeof onChange === 'function') {
+      onChange({
+        target: {
+          name: name,
+          value: newValue
+        }
+      });
+    } else {
+      console.error('onChange is not a function', onChange);
+    }
   };
 
   return (
     <Container>
       {label && <Label>{label}</Label>}
-      <TileGrid>
-        {options.map((chain) => (
-          <ChainTile
-            key={chain.value}
-            $selected={value.includes(chain.value)}
-            $disabled={chain.disabled}
-            onClick={() => handleTileClick(chain.value, chain.disabled)}
-          >
-            <ChainLogo 
-              src={chainLogos[chain.value]} 
-              alt={`${chain.label} logo`}
-            />
-            <ChainName>{chain.label}</ChainName>
-            {chain.comingSoon && (
-              <ComingSoonBadge>Coming Soon</ComingSoonBadge>
-            )}
-          </ChainTile>
-        ))}
-      </TileGrid>
+      
+      {options.length === 0 ? (
+        <div style={{ 
+          padding: '16px', 
+          textAlign: 'center', 
+          border: '2px dashed var(--border)',
+          borderRadius: '8px',
+          color: 'var(--text-secondary)'
+        }}>
+          No supported chains available
+        </div>
+      ) : (
+        <TileGrid>
+          {options.map((chain) => (
+            <ChainTile
+              key={chain.value}
+              $selected={value.includes(chain.value)}
+              $disabled={chain.disabled}
+              $value={chain.value}
+              $isZetaChain={chain.isZetaChain || chain.value === '7001'}
+              onClick={createTileClickHandler(chain.value, chain.disabled)}
+            >
+              <ChainLogo 
+                src={chainLogos[chain.value] || '/chain-logos/placeholder.svg'} 
+                alt={`${chain.label} logo`}
+                onError={(e) => {
+                  e.target.src = '/chain-logos/placeholder.svg';
+                }}
+              />
+              <ChainName>{chain.label}</ChainName>
+              {chain.comingSoon && (
+                <ComingSoonBadge>Coming Soon</ComingSoonBadge>
+              )}
+            </ChainTile>
+          ))}
+        </TileGrid>
+      )}
+      
       {(helperText || error) && (
         <HelperText $error={error}>
           {error || helperText}

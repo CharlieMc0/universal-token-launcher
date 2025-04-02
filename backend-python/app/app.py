@@ -7,6 +7,7 @@ import time
 from app.config import Config
 from app.utils.logger import logger
 from app.routes.deployment import router as deployment_router
+from app.routes.users import router as users_router
 from app.models.base import engine, Base
 
 # Initialize FastAPI app
@@ -61,6 +62,7 @@ async def root():
 
 # Include routers
 app.include_router(deployment_router)
+app.include_router(users_router)
 
 # Startup event
 @app.on_event("startup")

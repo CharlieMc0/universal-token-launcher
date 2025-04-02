@@ -45,9 +45,25 @@ const handleApiError = (error) => {
  */
 export const deployUniversalToken = async (tokenData) => {
   try {
-    const response = await api.post('/deploy', tokenData);
+    // Convert camelCase to snake_case for API compatibility
+    const apiData = {
+      token_name: tokenData.tokenName,
+      token_symbol: tokenData.tokenSymbol,
+      decimals: tokenData.decimals,
+      total_supply: tokenData.totalSupply,
+      selected_chains: tokenData.selectedChains,
+      deployer_address: tokenData.deployerAddress,
+      allocations: tokenData.allocations
+    };
+    
+    // Log the data being sent to help debug validation issues
+    console.log('Sending data to /deploy endpoint:');
+    console.log(JSON.stringify(apiData, null, 2));
+    
+    const response = await api.post('/deploy', apiData);
     return response.data;
   } catch (error) {
+    console.error('Error details:', error.response?.data || error.message);
     return handleApiError(error);
   }
 };
@@ -130,12 +146,31 @@ export const createToken = async (formData) => {
  * @returns {Promise<Object>} - Token details
  */
 export const getToken = async (tokenId) => {
-  try {
-    const response = await api.get(`/tokens/${tokenId}`);
-    return response.data;
-  } catch (error) {
-    return handleApiError(error);
+  // Try multiple possible API endpoints in sequence
+  const possibleEndpoints = [
+    `/tokens/${tokenId}`,       // Standard endpoint
+    `/deploy/${tokenId}`,       // Alternate endpoint
+    `/deploy?id=${tokenId}`     // Query parameter style
+  ];
+  
+  let lastError = null;
+  
+  for (const endpoint of possibleEndpoints) {
+    try {
+      console.log(`Trying to fetch token from endpoint: ${endpoint}`);
+      const response = await api.get(endpoint);
+      console.log(`Success with endpoint: ${endpoint}`);
+      return response.data;
+    } catch (error) {
+      console.log(`Error with endpoint ${endpoint}:`, error.message);
+      lastError = error;
+      // Continue to the next endpoint if this one failed
+    }
   }
+  
+  // If we've tried all endpoints and none worked, throw the last error
+  console.error('Error fetching token from all possible endpoints:', lastError);
+  throw lastError;
 };
 
 /**
@@ -192,9 +227,17 @@ export const getDeploymentLogs = async (tokenId) => {
 export const getSupportedChains = async () => {
   try {
     const response = await api.get('/chains');
-    return response.data.chains;
+    
+    // Make sure we have valid chain data
+    if (response.data && response.data.chains && Array.isArray(response.data.chains)) {
+      return response.data.chains;
+    } else {
+      throw new Error('Invalid chain data format received from API');
+    }
   } catch (error) {
-    return handleApiError(error);
+    console.error('Error fetching supported chains:', error);
+    // Rethrow to allow the UI to handle the error
+    throw new Error(`Failed to load supported chains: ${error.message || 'Unknown error'}`);
   }
 };
 
@@ -206,7 +249,14 @@ export const getSupportedChains = async () => {
  */
 export const verifyContract = async (verificationData) => {
   try {
-    const response = await api.post('/verify', verificationData);
+    // Convert to snake_case for API
+    const apiData = {
+      contract_address: verificationData.contractAddress,
+      chain_id: verificationData.chainId,
+      contract_type: verificationData.contractType
+    };
+    
+    const response = await api.post('/verify', apiData);
     return response.data;
   } catch (error) {
     return handleApiError(error);

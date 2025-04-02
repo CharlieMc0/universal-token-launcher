@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { CheckCircleIcon, ClockIcon, XCircleIcon, LinkIcon } from '@heroicons/react/24/solid'; // Assuming you have heroicons
+import { CheckCircleIcon, ClockIcon, XCircleIcon, LinkIcon, ExclamationCircleIcon } from '@heroicons/react/24/solid'; // Assuming you have heroicons
 
 // --- Updated Data Structure ---
 // Example chainInfo structure based on backend response:
@@ -194,34 +194,113 @@ const ActionButton = styled.button`
 // --- Component ---
 
 const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) => {
+  // If logs are empty but we have a token ID, show a pending status
   if (!logs || logs.length === 0) {
     return (
       <ConfirmationContainer>
-        <Title>
+        <Title style={{ color: 'var(--success)' }}>
           <CheckCircleIcon style={{ width: '28px', height: '28px' }} />
-          Deployment Initiated
+          Deployment Initiated!
         </Title>
-        <Subtitle>Waiting for deployment details...</Subtitle>
+        <Subtitle>
+          Your token has been submitted for deployment. The backend is processing your request.
+          <br />
+          <br />
+          <strong>Token details will appear here when available. You can check back later.</strong>
+        </Subtitle>
         {tokenId && (
           <TokenInfo>
             <TokenIdLabel>Token ID:</TokenIdLabel>
             <TokenIdValue>{tokenId}</TokenIdValue>
           </TokenInfo>
         )}
+        
+        {/* Default chainInfo for ZetaChain when we have a token ID but no logs */}
+        {tokenId && (
+          <DeploymentList>
+            <DeploymentItem>
+              <ChainInfo>
+                <ChainName>ZetaChain Athens</ChainName>
+                <ContractAddress>
+                  Deployment in progress... 
+                </ContractAddress>
+              </ChainInfo>
+              <StatusSection>
+                <VerificationBadge className="pending">
+                  <IconWrapper>
+                    <ClockIcon style={{ width: '14px', height: '14px' }} />
+                  </IconWrapper>
+                  Processing
+                </VerificationBadge>
+              </StatusSection>
+            </DeploymentItem>
+          </DeploymentList>
+        )}
+        
+        <ActionButton onClick={onStartNewDeployment}>
+          Launch Another Token
+        </ActionButton>
       </ConfirmationContainer>
     );
   }
 
-  // Filter the successful deployments based on deploymentStatus
+  // Filter the deployments based on status
   const successfulDeployments = logs.filter(chain => chain.deploymentStatus === 'success');
+  const failedDeployments = logs.filter(chain => chain.deploymentStatus === 'failed');
+  const pendingDeployments = logs.filter(chain => 
+    chain.deploymentStatus === 'pending' || chain.deploymentStatus === 'processing'
+  );
+
+  // Determine overall deployment status
+  const allFailed = logs.length > 0 && failedDeployments.length === logs.length;
+  const allSuccessful = logs.length > 0 && successfulDeployments.length === logs.length;
+  const mixedResults = !allFailed && !allSuccessful;
+
+  // Choose appropriate title and icon based on deployment status
+  const getTitleContent = () => {
+    if (allSuccessful) {
+      return (
+        <>
+          <CheckCircleIcon style={{ width: '28px', height: '28px' }} />
+          Deployment Successful!
+        </>
+      );
+    } else if (allFailed) {
+      return (
+        <>
+          <XCircleIcon style={{ width: '28px', height: '28px', color: 'var(--error)' }} />
+          Deployment Failed
+        </>
+      );
+    } else {
+      return (
+        <>
+          <ExclamationCircleIcon style={{ width: '28px', height: '28px', color: 'var(--warning)' }} />
+          Partial Deployment
+        </>
+      );
+    }
+  };
+
+  // Choose appropriate subtitle based on deployment status
+  const getSubtitle = () => {
+    if (allSuccessful) {
+      return "Your universal token contracts have been deployed.";
+    } else if (allFailed) {
+      return "Token deployment failed on all chains. Please try again.";
+    } else {
+      return `Deployment succeeded on ${successfulDeployments.length} chain(s) and failed on ${failedDeployments.length} chain(s).`;
+    }
+  };
 
   return (
     <ConfirmationContainer>
-      <Title>
-        <CheckCircleIcon style={{ width: '28px', height: '28px' }} />
-        Deployment Successful!
+      <Title style={{ 
+        color: allSuccessful ? 'var(--success)' : allFailed ? 'var(--error)' : 'var(--warning)' 
+      }}>
+        {getTitleContent()}
       </Title>
-      <Subtitle>Your universal token contracts have been deployed.</Subtitle>
+      <Subtitle>{getSubtitle()}</Subtitle>
 
       {tokenId && (
         <TokenInfo>
@@ -231,11 +310,17 @@ const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) =>
       )}
 
       <DeploymentList>
-        {successfulDeployments.map((chain) => {
-          const explorerUrl = chain.verifiedUrl || chain.explorerUrl || `${chain.explorerUrl}/address/${chain.contractAddress}`;
+        {/* Show all deployments, not just successful ones */}
+        {logs.map((chain) => {
+          const explorerUrl = chain.verifiedUrl || 
+            (chain.explorerUrl && chain.contractAddress ? 
+              `${chain.explorerUrl}/address/${chain.contractAddress}` : null);
+          
           let verificationStatusText = chain.verificationStatus || 'Unknown';
           let VerificationIcon = ClockIcon; // Default to pending/processing style
+          let deploymentStatusClass = chain.deploymentStatus || 'pending';
 
+          // Set verification status icon and text
           switch (chain.verificationStatus?.toLowerCase()) {
             case 'verified':
               verificationStatusText = 'Verified';
@@ -247,7 +332,7 @@ const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) =>
               break;
             case 'processing':
               verificationStatusText = 'Verification Processing';
-              VerificationIcon = ClockIcon; // Or a spinner icon if you have one
+              VerificationIcon = ClockIcon;
               break;
             case 'failed':
               verificationStatusText = 'Verification Failed';
@@ -258,23 +343,31 @@ const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) =>
               VerificationIcon = XCircleIcon;
               break;
             default:
-               VerificationIcon = ClockIcon;
+              VerificationIcon = ClockIcon;
           }
 
           return (
-            <DeploymentItem key={`${chain.chainId}-${chain.contractAddress}`}>
+            <DeploymentItem key={`${chain.chainId}-${chain.contractAddress || chain.chainId}`}>
               <ChainInfo>
                 <ChainName>{chain.name || `Chain ID: ${chain.chainId}`}</ChainName>
-                <ContractAddress>{chain.contractAddress || 'N/A'}</ContractAddress>
+                <ContractAddress>
+                  {chain.deploymentStatus === 'failed' 
+                    ? (chain.deploymentError || 'Deployment failed') 
+                    : (chain.contractAddress || 'Address not available')}
+                </ContractAddress>
               </ChainInfo>
               <StatusSection>
-                <VerificationBadge className={chain.verificationStatus?.toLowerCase() || 'pending'}>
+                <VerificationBadge className={deploymentStatusClass}>
                   <IconWrapper>
-                    <VerificationIcon style={{ width: '14px', height: '14px' }} />
+                    {chain.deploymentStatus === 'failed' 
+                      ? <XCircleIcon style={{ width: '14px', height: '14px' }} />
+                      : <VerificationIcon style={{ width: '14px', height: '14px' }} />}
                   </IconWrapper>
-                  {verificationStatusText}
+                  {chain.deploymentStatus === 'failed' 
+                    ? 'Deployment Failed' 
+                    : verificationStatusText}
                 </VerificationBadge>
-                {explorerUrl && (
+                {explorerUrl && chain.deploymentStatus !== 'failed' && (
                   <ExplorerLink href={explorerUrl} target="_blank" rel="noopener noreferrer">
                     <LinkIcon />
                     View on Explorer
@@ -288,7 +381,7 @@ const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) =>
 
       {onStartNewDeployment && typeof onStartNewDeployment === 'function' && (
          <ActionButton onClick={onStartNewDeployment}>
-           Launch Another Token
+           {allSuccessful ? 'Launch Another Token' : 'Try Again'}
          </ActionButton>
       )}
     </ConfirmationContainer>
