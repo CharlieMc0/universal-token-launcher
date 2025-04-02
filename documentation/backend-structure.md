@@ -8,17 +8,7 @@ This document outlines the foundational backend system for the Universal Token L
 
 We will use **PostgreSQL** as our primary relational database. Data is normalized to avoid redundancy, with separate tables for token configurations and deployment logs. Key tables include:
 
-### 1.1. Users (Optional)
-*Purpose:* Store minimal user metadata if needed (wallet addresses).
-- **Fields:**
-  - `wallet_address` (TEXT, PRIMARY KEY, UNIQUE) – The user's wallet address.
-  - `created_at` (TIMESTAMP WITH TIME ZONE, default NOW())
-  - `updated_at` (TIMESTAMP WITH TIME ZONE)
-- **Notes:** 
-  - This table is optional since authentication is via wallet connection.
-  - Use this table to store user preferences or history if required later.
-
-### 1.2. TokenConfigurations
+<!-- ### 1.1. TokenConfigurations
 *Purpose:* Record each token deployment configuration initiated by a token creator.
 - **Fields:**
   - `id` (SERIAL, PRIMARY KEY)
@@ -35,27 +25,8 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - `updated_at` (TIMESTAMP WITH TIME ZONE)
 - **Indexes & Constraints:**
   - Index on `creator_wallet` for quick lookup.
-  - Constraint on `deployment_status` values (if using ENUM type, or check constraint).
+  - Constraint on `deployment_status` values (if using ENUM type, or check constraint). -->
 
-### 1.3. DeploymentLogs
-*Purpose:* Log the status of contract deployments on each selected chain.
-- **Fields:**
-  - `id` (SERIAL, PRIMARY KEY)
-  - `token_config_id` (INTEGER, NOT NULL) – Foreign key referencing `TokenConfigurations(id)`.
-  - `chain_name` (VARCHAR, NOT NULL) – E.g., 'Ethereum', 'Polygon'.
-  - `chain_id` (VARCHAR, NOT NULL) – Chain identifier (e.g., '1' for Ethereum).
-  - `contract_address` (TEXT) – Deployed contract address.
-  - `status` (VARCHAR) – e.g., 'pending', 'success', 'failure'.
-  - `transaction_hash` (VARCHAR) – Blockchain transaction hash for deployment.
-  - `error_message` (TEXT) – Detailed error if deployment fails.
-  - `verification_status` (VARCHAR) – e.g., 'pending', 'processing', 'verified', 'failed'.
-  - `verification_error` (TEXT) – Detailed error if verification fails.
-  - `verified_url` (TEXT) – URL to the verified contract on the explorer.
-  - `created_at` (TIMESTAMP WITH TIME ZONE, default NOW())
-  - `updated_at` (TIMESTAMP WITH TIME ZONE)
-- **Indexes & Constraints:**
-  - Foreign key on `token_config_id`.
-  - Index on `chain_name` for filtering by network.
 
 ---
 

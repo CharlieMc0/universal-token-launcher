@@ -7,6 +7,7 @@ import apiService from '../../../services/apiService';
 import { executeCrossChainTransfer } from '../../../utils/contractInteractions';
 import { switchToZetaChain } from '../../../utils/networkSwitchingUtility';
 import { CHAIN_IDS } from '../../../utils/contracts';
+import { formatTokenBalance } from '../../../utils/tokenUtils';
 
 const PageContainer = styled.div`
   max-width: ${props => props.embedded ? '100%' : '800px'};
@@ -31,6 +32,12 @@ const SectionTitle = styled.h2`
   font-size: 24px;
   font-weight: 600;
   margin-bottom: 16px;
+`;
+
+const TokenCountText = styled.p`
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
 `;
 
 const FormRow = styled.div`
@@ -168,6 +175,15 @@ const TransferButton = styled.button`
   }
 `;
 
+const NetworkButton = styled(TransferButton)`
+  background-color: transparent;
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-size: 14px;
+  padding: 10px 16px;
+  margin-left: 16px;
+`;
+
 const TransferResultCard = styled.div`
   margin-top: 30px;
   padding: 20px;
@@ -198,26 +214,151 @@ const NetworkWarning = styled.div`
   padding: 16px;
   margin-bottom: 24px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  text-align: center;
+  justify-content: space-between;
 `;
 
-const NetworkButton = styled.button`
-  background-color: var(--accent-secondary);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 20px;
+const PaginationContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+  margin-bottom: 16px;
+  gap: 16px;
+`;
+
+const PaginationButton = styled.button`
+  background-color: ${props => props.active ? 'var(--accent-primary)' : 'transparent'};
+  color: ${props => props.active ? 'white' : 'var(--text-primary)'};
+  border: 1px solid ${props => props.active ? 'var(--accent-primary)' : 'var(--border-color)'};
+  border-radius: 4px;
+  padding: 8px 16px;
   font-size: 14px;
-  font-weight: 600;
-  margin-top: 12px;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.5 : 1};
+  
+  &:hover:not(:disabled) {
+    background-color: ${props => props.active ? 'var(--accent-primary)' : 'rgba(0, 0, 0, 0.05)'};
+  }
+`;
+
+const PageInfo = styled.span`
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text-secondary);
+`;
+
+const SortControls = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+`;
+
+const SortSelect = styled.select`
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 14px;
+`;
+
+// Add these new styled components for the floating transfer box
+const FloatingTransferBox = styled.div`
+  position: fixed;
+  top: 100px;
+  right: 24px;
+  width: 320px;
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 20px;
+  z-index: 100;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  border: 2px solid var(--accent-primary);
+  
+  @media (max-width: 1200px) {
+    position: static;
+    width: 100%;
+    margin-top: 24px;
+    max-height: none;
+  }
+`;
+
+const CloseButton = styled.button`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  line-height: 1;
   
   &:hover {
-    opacity: 0.9;
+    color: var(--accent-primary);
   }
+`;
+
+const TransferBoxTitle = styled.h3`
+  font-size: 18px;
+  margin: 0 0 16px 0;
+  color: var(--text-primary);
+  padding-right: 20px;
+`;
+
+const TokenSelectionDisplay = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: rgba(0, 0, 0, 0.05);
+`;
+
+const ChainSelectionHeader = styled.div`
+  margin: 20px 0 12px 0;
+  font-weight: 600;
+  color: var(--text-primary);
+`;
+
+const DestinationChainGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+`;
+
+const DestinationChainTile = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  border-radius: 8px;
+  border: 2px solid ${props => props.selected ? 'var(--accent-primary)' : 'var(--border-color)'};
+  background-color: ${props => props.selected ? 'var(--accent-primary-transparent)' : 'transparent'};
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.5 : 1};
+  transition: all 0.2s ease;
+  
+  &:hover:not(:disabled) {
+    border-color: var(--accent-primary);
+  }
+`;
+
+const ChainLogo = styled.img`
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  margin-bottom: 4px;
+`;
+
+const ChainName = styled.div`
+  font-size: 12px;
+  text-align: center;
 `;
 
 const TransferTokens = ({ embedded = false }) => {
@@ -225,6 +366,7 @@ const TransferTokens = ({ embedded = false }) => {
   const chainId = useChainId();
   
   const [userTokens, setUserTokens] = useState([]);
+  const [totalTokenCount, setTotalTokenCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [transferring, setTransferring] = useState(false);
   const [transferResult, setTransferResult] = useState(null);
@@ -232,16 +374,27 @@ const TransferTokens = ({ embedded = false }) => {
   const [error, setError] = useState(null);
   const [switchingNetwork, setSwitchingNetwork] = useState(false);
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [tokensPerPage] = useState(10);
+  const [displayedTokens, setDisplayedTokens] = useState([]);
+  
+  // Sorting state
+  const [sortOption, setSortOption] = useState('balanceDesc');
+  
   const [formData, setFormData] = useState({
     tokenId: '',
     sourceChain: '',
-    destinationChain: '',  // Single chain
+    destinationChain: '',
     transferAmount: '',
     recipientAddress: ''
   });
 
   // Check if the user is on the correct network
   const isZetaChainNetwork = chainId === CHAIN_IDS.ZETACHAIN;
+
+  // New state for controlling the floating transfer box
+  const [showTransferBox, setShowTransferBox] = useState(false);
 
   // Handle network switch
   const handleSwitchToZetaChain = async () => {
@@ -282,8 +435,13 @@ const TransferTokens = ({ embedded = false }) => {
       ...formData,
       tokenId,
       sourceChain: chainId,
-      destinationChain: ''  // Reset destination chain when source changes
+      destinationChain: '',  // Reset destination chain when source changes
+      transferAmount: '',    // Reset amount when source changes
+      recipientAddress: ''   // Reset recipient when source changes
     });
+    
+    // Show the transfer box when a token is selected
+    setShowTransferBox(true);
   };
 
   const handleDestinationSelect = (chainId) => {
@@ -332,7 +490,7 @@ const TransferTokens = ({ embedded = false }) => {
       console.log('Transfer result:', result);
       setTransferResult(result);
       
-      // Reset form 
+      // Reset form but keep token and source chain selected
       setFormData({
         ...formData,
         transferAmount: '',
@@ -347,6 +505,96 @@ const TransferTokens = ({ embedded = false }) => {
     }
   };
 
+  // Sort tokens based on the selected option
+  const sortTokens = (tokens, option) => {
+    if (!tokens || tokens.length === 0) return [];
+    
+    const sortedTokens = [...tokens];
+    
+    // Helper to safely convert token balance strings to numbers
+    const safeParseBalance = (balance) => {
+      if (!balance) return 0;
+      
+      try {
+        // For very large numbers, just use the first few digits for sorting
+        // This avoids precision issues with Number
+        if (balance.length > 15) {
+          return Number(balance.substring(0, 15));
+        }
+        return Number(balance || '0');
+      } catch (e) {
+        console.error('Error parsing balance:', e);
+        return 0;
+      }
+    };
+    
+    switch (option) {
+      case 'balanceDesc':
+        // Sort by highest total balance first
+        return sortedTokens.sort((a, b) => {
+          const aTotal = a.balances ? Object.values(a.balances).reduce(
+            (sum, val) => sum + safeParseBalance(val), 0
+          ) : 0;
+          
+          const bTotal = b.balances ? Object.values(b.balances).reduce(
+            (sum, val) => sum + safeParseBalance(val), 0
+          ) : 0;
+          
+          return bTotal - aTotal;
+        });
+        
+      case 'balanceAsc':
+        // Sort by lowest total balance first
+        return sortedTokens.sort((a, b) => {
+          const aTotal = a.balances ? Object.values(a.balances).reduce(
+            (sum, val) => sum + safeParseBalance(val), 0
+          ) : 0;
+          
+          const bTotal = b.balances ? Object.values(b.balances).reduce(
+            (sum, val) => sum + safeParseBalance(val), 0
+          ) : 0;
+          
+          return aTotal - bTotal;
+        });
+        
+      case 'nameAsc':
+        // Sort alphabetically by name
+        return sortedTokens.sort((a, b) => 
+          a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1
+        );
+        
+      case 'nameDesc':
+        // Sort reverse alphabetically by name
+        return sortedTokens.sort((a, b) => 
+          a.name.toLowerCase() < b.name.toLowerCase() ? 1 : -1
+        );
+        
+      case 'symbolAsc':
+        // Sort alphabetically by symbol
+        return sortedTokens.sort((a, b) => 
+          a.symbol.toLowerCase() > b.symbol.toLowerCase() ? 1 : -1
+        );
+        
+      case 'symbolDesc':
+        // Sort reverse alphabetically by symbol
+        return sortedTokens.sort((a, b) => 
+          a.symbol.toLowerCase() < b.symbol.toLowerCase() ? 1 : -1
+        );
+        
+      default:
+        return sortedTokens;
+    }
+  };
+  
+  // Handle sort option change
+  const handleSortChange = (e) => {
+    const option = e.target.value;
+    setSortOption(option);
+    const sorted = sortTokens(userTokens, option);
+    setUserTokens(sorted);
+    updateDisplayedTokens(sorted, currentPage, tokensPerPage);
+  };
+
   // Fetch user's tokens - only if connected, regardless of network
   useEffect(() => {
     const fetchUserTokens = async () => {
@@ -357,22 +605,21 @@ const TransferTokens = ({ embedded = false }) => {
           const tokens = await apiService.getUserTokens(address);
           console.log('Tokens fetched successfully:', tokens);
           
-          // Ensure tokens have the expected format and default values
-          const processedTokens = tokens.map(token => ({
-            id: token.id,
-            name: token.name || 'Unnamed Token',
-            symbol: token.symbol || 'UNK',
-            iconUrl: token.iconUrl || '/chain-logos/zetachain.svg',
-            deployedChains: token.deployedChains || [],
-            balances: token.balances || {},
-            chainInfo: token.chainInfo || []
-          }));
+          // Sort tokens based on current sort option
+          const sortedTokens = sortTokens(tokens, sortOption);
           
-          setUserTokens(processedTokens);
+          // Set total token count for pagination
+          setTotalTokenCount(sortedTokens.length);
+          setUserTokens(sortedTokens);
+          
+          // Update displayed tokens based on pagination
+          updateDisplayedTokens(sortedTokens, currentPage, tokensPerPage);
         } catch (error) {
           console.error('Error fetching user tokens:', error);
           // Keep the UI functional with empty tokens rather than breaking
           setUserTokens([]);
+          setDisplayedTokens([]);
+          setTotalTokenCount(0);
         } finally {
           setLoading(false);
         }
@@ -380,7 +627,23 @@ const TransferTokens = ({ embedded = false }) => {
     };
     
     fetchUserTokens();
-  }, [isConnected, address]);
+  }, [isConnected, address, currentPage, tokensPerPage, sortOption]);
+
+  // Update displayed tokens based on pagination
+  const updateDisplayedTokens = (tokens, page, perPage) => {
+    const startIndex = (page - 1) * perPage;
+    const endIndex = startIndex + perPage;
+    setDisplayedTokens(tokens.slice(startIndex, endIndex));
+  };
+
+  // Handle page change for pagination
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    updateDisplayedTokens(userTokens, newPage, tokensPerPage);
+  };
+
+  // Calculate total pages for pagination
+  const totalPages = Math.ceil(totalTokenCount / tokensPerPage);
 
   const selectedToken = formData.tokenId ? 
     userTokens.find(token => token.id === formData.tokenId) : null;
@@ -391,8 +654,23 @@ const TransferTokens = ({ embedded = false }) => {
     
     // Return all supported chains except the source chain
     return supportedChains.filter(chain => 
-      chain.id !== formData.sourceChain
+      chain.id !== formData.sourceChain && 
+      // Only show chains that the token is deployed on
+      selectedToken.deployedChains.includes(chain.id)
     );
+  };
+
+  // Close the transfer box
+  const handleCloseTransferBox = () => {
+    setShowTransferBox(false);
+    // Reset the form data
+    setFormData({
+      tokenId: '',
+      sourceChain: '',
+      destinationChain: '',
+      transferAmount: '',
+      recipientAddress: ''
+    });
   };
 
   return (
@@ -425,9 +703,27 @@ const TransferTokens = ({ embedded = false }) => {
           <form onSubmit={handleSubmit}>
             <FormContainer>
               <SectionTitle>Your Universal Tokens</SectionTitle>
+              <TokenCountText>
+                {totalTokenCount} token{totalTokenCount !== 1 ? 's' : ''} found
+              </TokenCountText>
+              
+              {/* Sorting controls */}
+              <SortControls>
+                <SortSelect 
+                  value={sortOption}
+                  onChange={handleSortChange}
+                >
+                  <option value="balanceDesc">Highest Balance</option>
+                  <option value="balanceAsc">Lowest Balance</option>
+                  <option value="nameAsc">Name (A-Z)</option>
+                  <option value="nameDesc">Name (Z-A)</option>
+                  <option value="symbolAsc">Symbol (A-Z)</option>
+                  <option value="symbolDesc">Symbol (Z-A)</option>
+                </SortSelect>
+              </SortControls>
               
               {/* Show all tokens grouped by name */}
-              {userTokens.map(token => (
+              {displayedTokens.map(token => (
                 <TokenSection key={token.id}>
                   <TokenHeader>
                     <TokenIcon 
@@ -440,73 +736,94 @@ const TransferTokens = ({ embedded = false }) => {
                     </TokenTitle>
                   </TokenHeader>
                   <TokenGrid>
-                    {token.deployedChains.map(chainId => (
-                      <TokenTile
-                        key={`${token.id}-${chainId}`}
-                        token={token}
-                        chainId={chainId}
-                        balance={token.balances[chainId] || 0}
-                        selected={formData.tokenId === token.id && formData.sourceChain === chainId}
-                        onClick={handleTokenSelect}
-                      />
-                    ))}
+                    {token.deployedChains && token.deployedChains.map(chainId => {
+                      const chainInfo = token.chainInfo.find(info => info.chain_id === chainId);
+                      const balance = chainInfo ? chainInfo.balance : '0';
+                      
+                      return (
+                        <TokenTile
+                          key={`${token.id}-${chainId}`}
+                          token={token}
+                          chainId={chainId}
+                          balance={balance}
+                          selected={formData.tokenId === token.id && formData.sourceChain === chainId}
+                          onClick={handleTokenSelect}
+                        />
+                      );
+                    })}
                   </TokenGrid>
                 </TokenSection>
               ))}
+              
+              {/* Pagination controls */}
+              {totalPages > 1 && (
+                <PaginationContainer>
+                  <PaginationButton 
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </PaginationButton>
+                  
+                  <PageInfo>
+                    Page {currentPage} of {totalPages}
+                  </PageInfo>
+                  
+                  <PaginationButton 
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </PaginationButton>
+                </PaginationContainer>
+              )}
             </FormContainer>
 
-            {/* Show destination selection if a token is selected */}
-            {formData.tokenId && (
-              <FormContainer>
-                <SectionTitle>Select Destination Chain</SectionTitle>
-                <SelectedTokenSection>
-                  <SelectedTokenHeader>
-                    <SelectedTokenInfo>
-                      <TokenIcon 
-                        src={selectedToken.iconUrl || '/chain-logos/zetachain.svg'} 
-                        alt={`${selectedToken.symbol} icon`}
+            {/* Floating Transfer Box */}
+            {showTransferBox && formData.tokenId && selectedToken && (
+              <FloatingTransferBox>
+                <CloseButton onClick={handleCloseTransferBox}>×</CloseButton>
+                <TransferBoxTitle>Transfer {selectedToken.name}</TransferBoxTitle>
+                
+                {/* Source Chain Display */}
+                <TokenSelectionDisplay>
+                  <ChainLogo 
+                    src={chainLogos[formData.sourceChain]} 
+                    alt={`${chainNames[formData.sourceChain]} logo`}
+                  />
+                  <div>
+                    <strong>{chainNames[formData.sourceChain]}</strong>
+                    <div>
+                      {formatTokenBalance(
+                        selectedToken.chainInfo.find(c => c.chain_id === formData.sourceChain)?.balance || '0', 
+                        selectedToken.decimals
+                      )} {selectedToken.symbol}
+                    </div>
+                  </div>
+                </TokenSelectionDisplay>
+                
+                {/* Destination Chain Selection */}
+                <ChainSelectionHeader>Select destination:</ChainSelectionHeader>
+                <DestinationChainGrid>
+                  {getAvailableDestinationChains().map(chain => (
+                    <DestinationChainTile
+                      key={chain.id}
+                      selected={formData.destinationChain === chain.id}
+                      disabled={chain.disabled}
+                      onClick={() => !chain.disabled && handleDestinationSelect(chain.id)}
+                    >
+                      <ChainLogo 
+                        src={chain.logo} 
+                        alt={`${chain.name} logo`}
                       />
-                      <div>
-                        <SelectedTokenTitle>
-                          {selectedToken.name}
-                          <SelectedTokenSymbol>{selectedToken.symbol}</SelectedTokenSymbol>
-                        </SelectedTokenTitle>
-                        <SelectedChainInfo>
-                          <SelectedChainLogo 
-                            src={chainLogos[formData.sourceChain]} 
-                            alt={`${chainNames[formData.sourceChain]} logo`}
-                          />
-                          <SelectedChainName>{chainNames[formData.sourceChain]}</SelectedChainName>
-                          <SelectedBalance>
-                            {selectedToken.balances[formData.sourceChain] || 0} {selectedToken.symbol}
-                          </SelectedBalance>
-                        </SelectedChainInfo>
-                      </div>
-                    </SelectedTokenInfo>
-                  </SelectedTokenHeader>
-                  
-                  <TokenGrid>
-                    {getAvailableDestinationChains().map(chain => (
-                      <TokenTile
-                        key={`${selectedToken.id}-${chain.id}`}
-                        token={selectedToken}
-                        chainId={chain.id}
-                        balance={selectedToken.balances[chain.id] || 0}
-                        selected={formData.destinationChain === chain.id}
-                        disabled={chain.disabled}
-                        onClick={handleDestinationSelect}
-                      />
-                    ))}
-                  </TokenGrid>
-                </SelectedTokenSection>
-              </FormContainer>
-            )}
-            
-            {formData.tokenId && formData.destinationChain && (
-              <FormContainer>
-                <SectionTitle>Transfer Details</SectionTitle>
-                <FormRow>
-                  <FormGroup>
+                      <ChainName>{chain.name}</ChainName>
+                    </DestinationChainTile>
+                  ))}
+                </DestinationChainGrid>
+                
+                {/* Transfer Amount & Recipient */}
+                {formData.destinationChain && (
+                  <>
                     <FormInput
                       id="transferAmount"
                       label={`Amount to Transfer (${selectedToken.symbol})`}
@@ -514,49 +831,51 @@ const TransferTokens = ({ embedded = false }) => {
                       type="number"
                       value={formData.transferAmount}
                       onChange={handleChange}
-                      helperText={`Available: ${selectedToken.balances[formData.sourceChain] || 0} ${selectedToken.symbol}`}
+                      helperText={`Available: ${formatTokenBalance(
+                        selectedToken.chainInfo.find(c => c.chain_id === formData.sourceChain)?.balance || '0', 
+                        selectedToken.decimals
+                      )} ${selectedToken.symbol}`}
                     />
-                  </FormGroup>
-                  <FormGroup>
+                    
                     <FormInput
                       id="recipientAddress"
                       label="Recipient Address (Optional)"
                       name="recipientAddress"
                       value={formData.recipientAddress}
                       onChange={handleChange}
-                      helperText="Leave empty to send to your own address on destination chain"
+                      helperText="Leave empty to send to your own address"
                     />
-                  </FormGroup>
-                </FormRow>
-                
-                {/* Show error message if there is one */}
-                {error && (
-                  <div style={{ color: 'red', margin: '16px 0' }}>
-                    Error: {error}
-                  </div>
+                    
+                    {/* Error message */}
+                    {error && (
+                      <div style={{ color: 'red', margin: '16px 0', fontSize: '14px' }}>
+                        Error: {error}
+                      </div>
+                    )}
+                    
+                    {/* Processing status */}
+                    {transferring && processingStatus && (
+                      <div style={{ margin: '16px 0', fontSize: '14px' }}>
+                        <p>{processingStatus}</p>
+                      </div>
+                    )}
+                    
+                    <ButtonContainer>
+                      <TransferButton 
+                        type="submit" 
+                        disabled={
+                          transferring || 
+                          !formData.tokenId || 
+                          !formData.destinationChain || 
+                          !formData.transferAmount
+                        }
+                      >
+                        {transferring ? 'Processing...' : 'Transfer Tokens'}
+                      </TransferButton>
+                    </ButtonContainer>
+                  </>
                 )}
-                
-                {/* Show processing status if transferring */}
-                {transferring && processingStatus && (
-                  <div style={{ margin: '16px 0' }}>
-                    <p>{processingStatus}</p>
-                  </div>
-                )}
-                
-                <ButtonContainer>
-                  <TransferButton 
-                    type="submit" 
-                    disabled={
-                      transferring || 
-                      !formData.tokenId || 
-                      !formData.destinationChain || 
-                      !formData.transferAmount
-                    }
-                  >
-                    {transferring ? 'Processing...' : 'Transfer Tokens'}
-                  </TransferButton>
-                </ButtonContainer>
-              </FormContainer>
+              </FloatingTransferBox>
             )}
           </form>
           
@@ -570,7 +889,7 @@ const TransferTokens = ({ embedded = false }) => {
                   } on {
                     chainNames[transferResult.sourceChain] || transferResult.sourceChain
                   } to {
-                    chainNames[transferResult.destinationChains[0]] || transferResult.destinationChains[0]
+                    chainNames[transferResult.destinationChains?.[0]] || transferResult.destinationChain
                   }
                 </p>
                 <p>Transaction hash: 

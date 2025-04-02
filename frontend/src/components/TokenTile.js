@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
+import { formatTokenBalance } from '../utils/tokenUtils';
 
 // Chain mappings that can be used across components
 export const chainLogos = {
@@ -71,6 +72,18 @@ const Balance = styled.div`
   margin-top: 4px;
 `;
 
+const ComingSoon = styled.div`
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background-color: var(--text-secondary);
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+`;
+
 const TokenTile = ({
   token,
   chainId,
@@ -79,6 +92,9 @@ const TokenTile = ({
   disabled,
   onClick
 }) => {
+  // Format balance for display
+  const formattedBalance = formatTokenBalance(balance, token.decimals);
+  
   // Safely handle click event
   const handleClick = (e) => {
     e.stopPropagation(); // Prevent event bubbling
@@ -93,13 +109,17 @@ const TokenTile = ({
       $disabled={disabled}
       onClick={handleClick}
     >
+      {disabled && <ComingSoon>Coming Soon</ComingSoon>}
       <ChainInfo>
         <ChainLogo 
           src={chainLogos[chainId]} 
           alt={`${chainNames[chainId]} logo`}
+          onError={(e) => {
+            e.target.src = '/chain-logos/zetachain.svg'; // Fallback to ZetaChain logo
+          }}
         />
-        <ChainName>{chainNames[chainId]}</ChainName>
-        <Balance>{balance} {token.symbol}</Balance>
+        <ChainName>{chainNames[chainId] || `Chain ${chainId}`}</ChainName>
+        <Balance>{formattedBalance} {token.symbol}</Balance>
       </ChainInfo>
     </Tile>
   );

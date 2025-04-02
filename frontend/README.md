@@ -15,32 +15,47 @@ The frontend integrates with a backend server running on port 8000. The integrat
 
 The application uses the following API endpoints:
 
-- `/api/deploy` - Deploy token across multiple chains
-- `/api/verify` - Verify deployed contracts
-- `/api/chains` - Get supported chains information
+- `GET /api/chains` - Get supported chains information
+- `POST /api/deploy` - Deploy token across multiple chains, also used for fee payment confirmation
+- `GET /api/token/{identifier}` - Get token details by ID or contract address
+- `GET /api/users/{address}` - Get tokens owned by user
+- `POST /api/verify` - Verify deployed contracts
 
-> **Note:** The following endpoints are not currently implemented in the backend, but are expected by the frontend. The frontend has temporary workarounds for these missing endpoints:
-> - `/tokens/:id` - Get token details
-> - `/tokens/:id/logs` - Get deployment logs
-> - `/users/:walletAddress/tokens` - Get tokens held by user
-> - `/transfers` - Initiate token transfers
+### API Integration Updates
 
-### API Integration Issues & Fixes
+The API integration has been updated to align with the backend's actual API structure:
 
-Previously, there were API integration issues that have been fixed:
+1. **Correct Endpoint Paths**
+   - Updated to use the OpenAPI-documented endpoints like `/api/token/{identifier}` instead of `/api/tokens/{id}`
+   - Fixed the deployment endpoint to use `/api/deploy` for both creation and fee confirmation
+   - Updated user tokens endpoint to use `/api/users/{address}`
 
-1. **Double API Path Prefixing**
-   - Issue: Frontend was configured with base URL `http://localhost:8000/api` and then endpoints used `/api/deploy`, resulting in `/api/api/deploy`
-   - Fix: Modified frontend API calls to remove duplicate `/api` prefix in endpoint paths
-   
-2. **Missing Backend Endpoints**
-   - Issue: Frontend attempts to call endpoints that don't exist in the backend
-   - Fix: Implemented temporary solutions:
-     - Enhanced `getToken()` in apiService.js with fallback behavior:
-       - First attempts to use the `/tokens/{tokenId}` endpoint
-       - Falls back to `/deploy/{tokenId}` if first attempt fails
-       - Creates mock data if both attempts fail to maintain UI functionality
-     - Modified polling logic to simulate successful deployment after a few polls
+2. **Data Format Standardization**
+   - Ensured proper handling of snake_case from backend vs camelCase in frontend
+   - Added field name conversion to maintain consistency
+   - Improved error handling for validation errors
+   - Fixed data type handling (decimals as integers, amounts as strings)
+
+3. **Token Deployment Flow**
+   - Updated to match the backend's expected workflow:
+     - Create token configuration via `/api/deploy`
+     - Process fee payment transaction
+     - Confirm fee payment with token_id and fee_paid_tx
+     - Poll token status using `/api/token/{identifier}`
+
+4. **Chain Information Processing**
+   - Enhanced extraction of connected chain data from API responses
+   - Properly combines ZetaChain and other chain information
+   - Handles both standalone and nested chain data formats
+   - Added robust handling for missing or undefined fields with fallbacks
+   - Ensures all chain info entries have valid chainId, name, and contractAddress values
+
+5. **Error Handling and Validation**
+   - Improved extraction of validation errors from API responses
+   - Better formatting of error messages for users
+   - Enhanced retry and polling logic for network errors
+   - Added specific handling for different HTTP error codes
+   - Ensured all required fields are included in each API call
 
 ### API Data Format
 
@@ -49,23 +64,79 @@ The API service automatically converts between frontend's camelCase and backend'
 ```javascript
 // Example conversion in deployUniversalToken
 const apiData = {
-  token_name: tokenData.tokenName,
-  token_symbol: tokenData.tokenSymbol,
+  token_name: tokenData.token_name, 
+  token_symbol: tokenData.token_symbol,
   decimals: tokenData.decimals,
-  total_supply: tokenData.totalSupply,
-  selected_chains: tokenData.selectedChains,
-  deployer_address: tokenData.deployerAddress,
+  total_supply: tokenData.total_supply,
+  selected_chains: tokenData.selected_chains,
+  deployer_address: tokenData.deployer_address,
   allocations: tokenData.allocations
 };
 ```
 
-### Wallet Authentication
+### Error Handling
 
-The API service automatically includes wallet authentication:
+The API service now includes enhanced error handling:
 
-- Wallet address is stored in the API service when a user connects
-- Address is included in API requests via the `X-Wallet-Address` header
-- Address is also appended as a query parameter for added reliability
+```javascript
+// Error handler helper with validation error formatting
+if (error.response?.data?.detail && Array.isArray(error.response.data.detail)) {
+  // Format validation errors in a user-friendly way
+  const validationErrors = error.response.data.detail.map(err => {
+    const field = err.loc[err.loc.length-1];
+    return `${field}: ${err.msg}`;
+  }).join('; ');
+  
+  console.error('Validation errors:', error.response.data.detail);
+  throw new Error(`Validation error: ${validationErrors}`);
+}
+```
+
+### Token Response Processing
+
+The API service processes the token response data to make it compatible with the frontend:
+
+```javascript
+// Process connected chains information - combine both sources
+let chainInfo = [];
+
+// Add ZetaChain info if present
+if (data.token.zeta_chain_info) {
+  chainInfo.push({
+    ...data.token.zeta_chain_info,
+    isZetaChain: true,
+    chainId: data.token.zeta_chain_info.chainId || '7001',
+    name: data.token.zeta_chain_info.name || 'ZetaChain'
+  });
+}
+
+// Add connected chains if present
+if (data.token.connected_chains_json && typeof data.token.connected_chains_json === 'object') {
+  // Process each chain and ensure required fields exist
+  const connectedChains = Object.entries(data.token.connected_chains_json).map(([chainId, chainData]) => {
+    return {
+      ...chainData,
+      chainId: chainId || 'unknown',
+      name: chainData.name || `Chain ${chainId}`,
+      deploymentStatus: chainData.status || 'unknown'
+    };
+  });
+  
+  chainInfo = [...chainInfo, ...connectedChains];
+}
+
+// Ensure all chain info has required fields
+chainInfo = chainInfo.map(chain => ({
+  ...chain,
+  chainId: chain.chainId || 'unknown',
+  name: chain.name || `Chain ${chain.chainId || 'Unknown'}`,
+  deploymentStatus: chain.deploymentStatus || chain.status || 'unknown',
+  contractAddress: chain.contract_address || chain.contractAddress || 'Address not available'
+}));
+
+// Add the processed chainInfo to token
+data.token.chainInfo = chainInfo;
+```
 
 ## Transaction Handling
 
@@ -81,11 +152,98 @@ The application includes robust transaction handling for token deployment:
 - **Chain ID Specification:** Explicitly sets chain ID to ensure fee transactions happen on the correct network (ZetaChain).
 - **Transaction Hash Display:** Shows the fee payment transaction hash with a link to ZetaChain block explorer.
 - **Wallet Readiness Check:** Verifies wallet client is fully initialized before attempting transactions.
-- **Transaction Confirmation:** Waits for on-chain confirmation of the fee payment before notifying the backend.
+- **Resilient Transaction Confirmation:** Implements a robust retry mechanism with progressive delays to handle blockchain timing issues.
+- **Advanced Receipt Polling:** Automatically retries transaction receipt retrieval with increasing timeouts to prevent `TransactionReceiptNotFoundError` issues.
 - **Deployment Status Polling:** After initiating deployment with the backend, the frontend polls periodically to check the final deployment status (`completed` or `failed`).
 - **Deployment Confirmation Display:** Renders a detailed confirmation view (`DeploymentConfirmation` component) upon successful completion, showing deployed contracts, chains, verification status, and explorer links.
 
-### Transaction Workflow
+### Transaction Confirmation
+
+The application now features an improved transaction confirmation process:
+
+```javascript
+// Transaction confirmation function with retries
+const confirmTransaction = async (txHash) => {
+  let confirmed = false;
+  let attempts = 0;
+  const maxAttempts = 20; // Maximum number of attempts
+  
+  while (!confirmed && attempts < maxAttempts) {
+    try {
+      attempts++;
+      console.log(`Attempting to get transaction receipt (Attempt ${attempts}/${maxAttempts})...`);
+      
+      // Update UI with progress
+      setProcessingStep(`Waiting for transaction confirmation... (Attempt ${attempts}/${maxAttempts})`);
+      
+      // Add increasing delay between attempts
+      const delayMs = Math.min(2000 + (attempts * 1000), 10000); // Start with 2s, increase by 1s each try, max 10s
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      
+      // Try to get the transaction receipt
+      let receipt = null;
+      
+      try {
+        // Try to get the transaction receipt directly
+        receipt = await publicClient.getTransactionReceipt({ hash: txHash });
+        
+        if (receipt && receipt.status === 'success') {
+          console.log('Transaction confirmed successfully!', receipt);
+          setProcessingStep('Transaction confirmed successfully!');
+          return receipt; // Success!
+        } else if (receipt && receipt.status === 'reverted') {
+          setProcessingStep('Transaction was reverted on-chain');
+          throw new Error('Transaction was reverted on-chain');
+        } else if (receipt) {
+          // If we get here, receipt exists but status is not success - wait and try again
+          console.log(`Receipt found but status not success. Current status: ${receipt?.status || 'unknown'}`);
+          setProcessingStep(`Transaction processing... Current status: ${receipt?.status || 'unknown'}`);
+        }
+      } catch (receiptError) {
+        console.log('Error getting receipt directly:', receiptError.message);
+        
+        // Check if it's a "receipt not found" error, which is expected early on
+        if (receiptError.name === 'TransactionReceiptNotFoundError' || receiptError.message.includes('could not be found')) {
+          console.log(`Transaction receipt not found yet (attempt ${attempts}/${maxAttempts}). Waiting...`);
+          setProcessingStep(`Transaction not yet mined on ZetaChain... (Attempt ${attempts}/${maxAttempts})`);
+        } else {
+          // For other errors, log but continue retrying
+          console.error(`Error checking transaction (attempt ${attempts}/${maxAttempts}):`, receiptError.message);
+          setProcessingStep(`Error checking transaction: ${receiptError.message} (Retrying...)`);
+        }
+        
+        // Only throw on last attempt
+        if (attempts >= maxAttempts) {
+          setProcessingStep(`Failed to confirm transaction after ${maxAttempts} attempts`);
+          throw new Error(`Failed to confirm transaction after ${maxAttempts} attempts: ${receiptError.message}`);
+        }
+      }
+    } catch (error) {
+      // Only throw on last attempt
+      if (attempts >= maxAttempts) {
+        setProcessingStep(`Failed to confirm transaction after ${maxAttempts} attempts`);
+        throw new Error(`Failed to confirm transaction after ${maxAttempts} attempts: ${error.message}`);
+      }
+    }
+  }
+  
+  // If we get here, we've run out of attempts
+  setProcessingStep(`Transaction confirmation timed out after ${maxAttempts} attempts`);
+  throw new Error(`Transaction confirmation timed out after ${maxAttempts} attempts`);
+};
+```
+
+### Deployment UI Improvements
+
+The DeploymentConfirmation component has been enhanced to handle edge cases:
+
+- **Robust Key Generation:** Prevents React "duplicate key" warnings by using unique identifiers for each chain entry
+- **Fallback Values:** Provides graceful handling for missing or undefined chain information
+- **Error State Display:** Clearly displays error states for failed deployments
+- **Explorer Links:** Shows block explorer links only when they are available
+- **Status Indicators:** Uses different icons and colors for various deployment states
+
+## Transaction Workflow
 
 1. **Pre-Transaction Validation:**
    - Ensures wallet is properly connected.
@@ -94,8 +252,8 @@ The application includes robust transaction handling for token deployment:
    - Validates form inputs.
 
 2. **Token Configuration Creation:**
-   - Frontend calls `POST /api/tokens` with configuration data.
-   - Backend creates the `TokenConfiguration` record and returns the `tokenId`.
+   - Frontend calls `POST /api/deploy` with configuration data in snake_case format.
+   - Backend creates the token configuration and returns the `deployment_id`.
 
 3. **Fee Payment Transaction:**
    - Frontend prompts user to sign the fee payment transaction (1 ZETA to service wallet).
@@ -106,233 +264,111 @@ The application includes robust transaction handling for token deployment:
 4. **On-Chain Transaction Confirmation:**
    - Displays fee transaction hash immediately after submission.
    - Shows block explorer link for transaction tracking.
-   - Polls the blockchain (`publicClient.getTransactionReceipt`) until the fee transaction is confirmed (`status: 'success'`).
-   - Handles confirmation timeouts or reverted transactions.
+   - Implements a robust retry mechanism with progressive delays.
+   - Handles confirmation timeouts, transaction replacements, or reverted transactions.
 
 5. **Backend Deployment Initiation:**
-   - After fee transaction confirmation, frontend calls `POST /api/tokens/:id/deploy` with the confirmed fee transaction hash.
+   - After fee transaction confirmation, frontend calls `POST /api/deploy` with the token_id, fee_paid_tx hash, and all required token data fields.
    - Backend starts the asynchronous contract deployment process.
 
 6. **Deployment Status Polling:**
    - Frontend enters a polling state (`useEffect` hook).
-   - Periodically calls `GET /api/tokens/:id` to check the `deployment_status` field.
+   - Periodically calls `GET /api/token/{identifier}` to check the `deployment_status` field.
    - Updates UI with messages like "Backend is deploying contracts...".
 
 7. **Deployment Completion/Failure:**
    - **If status becomes `completed`:**
      - Polling stops.
-     - Frontend calls `GET /api/tokens/:id/logs` to fetch detailed deployment results.
-     - Frontend renders the `DeploymentConfirmation` component with the logs.
+     - Frontend extracts chain information from the token response.
+     - Frontend renders the `DeploymentConfirmation` component with the chain data.
    - **If status becomes `failed`:**
      - Polling stops.
-     - Frontend may call `GET /api/tokens/:id/logs` to get partial results or error details.
+     - Frontend extracts error details from the response.
      - Frontend displays an error message indicating deployment failure.
-
-### Common Transaction Issues & Solutions
-
-- **No Transaction Hash:** This usually occurs when the wallet is not properly connected or the transaction is rejected by the wallet. The application now checks wallet readiness, provides better error context, and offers a retry button.
-- **Insufficient Balance:** The app checks balance before attempting transactions and provides a clear error message if the balance is insufficient.
-- **Network Mismatch:** Transactions are now explicitly sent to the ZetaChain network to prevent network mismatch issues.
-- **Transaction Timing:** Shows clear status updates during transaction confirmation to prevent user confusion during the waiting period.
-
-## React Components
-
-### Component Props
-
-All embedded components use string props instead of boolean props to avoid React warnings:
-
-```jsx
-// Correct way to pass boolean attributes as string
-<Component embedded="true" /> 
-// Or when passing a variable
-<Component embedded={embedded.toString()} />
-```
 
 ## Troubleshooting & Common Issues
 
-### Non-Boolean Attribute Warning
-
-If you see the following warning in the console:
-
-```
-Warning: Received `true` for a non-boolean attribute `embedded`.
-```
-
-This is because React expects DOM attribute values to be strings, not booleans. The fix is to convert boolean values to strings:
-
-```jsx
-// Instead of:
-<PageContainer embedded={true}>
-
-// Use:
-<PageContainer embedded="true">
-
-// Or if passing a variable:
-<PageContainer embedded={embedded.toString()}>
-```
-
-### Backend Connection Issues
-
-If the app can't connect to the backend, check:
-
-1. Backend server is running on port 8000
-2. API URLs in apiService.js are properly configured (no double `/api/` prefix)
-3. Wallet connection is active (apiService now requires wallet authentication)
-4. Frontend is properly converting data formats between camelCase and snake_case
-5. REACT_APP_API_URL environment variable is correctly set (default is http://localhost:8000/api)
-
-### API Integration Roadmap
-
-Future API integration work should focus on:
-
-1. Implementing missing backend endpoints or adjusting the frontend to match the current backend API design:
-   - `GET /api/tokens/{tokenId}` - Get token details
-   - `GET /api/users/{address}/tokens` - Get user tokens
-   - `POST /api/tokens/{tokenId}/deploy` - Deploy token
-   - `GET /api/tokens/{tokenId}/logs` - Get deployment logs
-
-2. Enhancing API documentation with comprehensive endpoint details
-3. Implementing consistent error handling across the application
-4. Setting up proper environment configuration to ensure consistency in API URL structure
-
-5. Further consolidating API calls to use the new endpoints
-6. Adding proper TypeScript interfaces for API request/response types
-
-### Common API Issues & Solutions
+### API Integration Issues
 
 If you encounter API integration issues:
 
 1. **404 Not Found Errors**
-   - Check the API endpoint path - ensure there's no duplicate `/api` prefix
-   - Verify the backend route is properly registered and the server is running
+   - Check the endpoint paths: all API endpoints should start with `/api/`
+   - Ensure you're using the correct format: `/api/token/{id}` not `/api/tokens/{id}`
+   - Verify the backend is running on the expected port (8000 by default)
 
 2. **422 Unprocessable Entity Errors**
-   - These are validation errors from the backend
-   - Common validation requirements:
-     - Ensure addresses follow the `0x` prefixed Ethereum format (`^0x[a-fA-F0-9]{40}$`)
-     - `total_supply` must be a string (not a number) to handle large values
-     - `selected_chains` must be an array of string chain IDs
-     - `decimals` should be a number between 0 and 18
-   - Add console logging to see the exact payload being sent to diagnose issues
+   - These indicate validation errors from the backend
+   - Make sure to use snake_case for all API request fields: `token_name` not `tokenName`
+   - Ensure all required fields are included (`token_name`, `token_symbol`, `selected_chains`, `deployer_address`)
+   - Verify types are correct: numbers as integers, large values like `total_supply` as strings
+   - Check the browser console for detailed validation errors
 
-3. **Network CORS Issues**
-   - If you see CORS errors, ensure the backend has proper CORS configuration
-   - The current backend allows all origins in development (`allow_origins=["*"]`)
+3. **Data Format Issues**
+   - Backend requires snake_case format (`token_name` not `tokenName`)
+   - All chain IDs must be strings (like "7001" not 7001)
+   - Token amounts must be strings for large numbers
+   - ZetaChain must be included in `selected_chains`
 
-4. **Authentication Errors**
-   - Some endpoints may require wallet authentication in the future
-   - Ensure the wallet address is properly included in API requests
+4. **Transaction Confirmation Issues**
+   - Look for `TransactionReceiptNotFoundError` errors, which indicate timing issues
+   - Check that the transaction confirmation retry mechanism is working correctly
+   - Verify the transaction was actually submitted to the blockchain
+   - Ensure the wallet is connected to the correct network (ZetaChain Athens)
 
-### Transaction Handling Tips
+5. **Deployment UI Issues**
+   - If you see "Duplicate key" React warnings, check the key generation in the DeploymentConfirmation component
+   - For "undefined" chain IDs or names, verify the API response data processing in getToken
+   - Make sure chainInfo has properly processed the data from connected_chains_json
 
-If users experience transaction issues:
+6. **Debugging Tips**
+   - Look at browser console logs for detailed API requests and responses
+   - Check the error response details for validation errors
+   - Verify that all required fields are present in API requests
+   - Test API endpoints directly using tools like curl or Postman
 
-1.  Ensure they have sufficient ZETA balance (at least 1 ZETA + gas)
-2.  Verify they're connected to the ZetaChain network
-3.  If a transaction fails, use the retry button instead of refreshing the page
-4.  If multiple retries fail, note the token ID and contact support
-5.  Check the transaction on the ZetaChain explorer using the provided link
-6.  If the wallet seems disconnected, try reconnecting before retrying
-7.  **Wallet Interaction Note:** Be aware that wallet interaction functions (like `wagmi`'s `sendTransaction` or `sendTransactionAsync`) might return unexpected values (e.g., `undefined` or an object `{hash: '...'}` instead of just the hash string). Implement robust checks on the return value *before* using it or storing it in state intended for rendering, to prevent crashes (like React's "Objects are not valid as a React child" error). Using `sendTransactionAsync` and carefully extracting the hash string proved effective in resolving one such issue.
+### API Response Structure
 
-### Universal Token Service Wallet Address
+The token API endpoint returns data structured like this:
 
-The application uses the Universal Token Service Wallet address from the backend environment configuration (currently set to `0x04dA1034E7d84c004092671bBcEb6B1c8DCda7AE`). If the backend wallet address changes, update this value in:
-
-```jsx
-// src/pages/Launch/index.js
-const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x04dA1034E7d84c004092671bBcEb6B1c8DCda7AE';
-```
-
-## Contract Verification
-
-The application integrates with the backend's contract verification system to display verification status to users:
-
-### Verification Features
-
-- **Status Display:** Shows verification status for each deployed contract (verified, pending, or failed)
-- **Explorer Links:** Provides direct links to verified contracts on block explorers
-- **Error Information:** Displays error messages if verification fails
-
-### Implementation
-
-The verification status is retrieved as part of deployment logs and displayed in the UI:
-
-```jsx
-// Example code from TokenDetailsView.jsx
-function VerificationStatusBadge({ status, url, error }) {
-  return (
-    <div className="verification-badge">
-      {status === 'verified' && (
-        <a href={url} target="_blank" rel="noopener noreferrer" className="verified">
-          <CheckCircleIcon /> Verified
-        </a>
-      )}
-      {status === 'pending' && <span className="pending"><ClockIcon /> Verification Pending</span>}
-      {status === 'processing' && <span className="processing"><SpinnerIcon /> Verification in Progress</span>}
-      {status === 'failed' && (
-        <Tooltip content={error || 'Verification failed'}>
-          <span className="failed"><XCircleIcon /> Verification Failed</span>
-        </Tooltip>
-      )}
-    </div>
-  );
+```json
+{
+  "success": true,
+  "token": {
+    "id": 1,
+    "token_name": "Test Token",
+    "token_symbol": "TST",
+    "decimals": 18,
+    "total_supply": "1000000000000000000000000",
+    "deployment_status": "completed",
+    "error_message": null,
+    "deployer_address": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
+    "zc_contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
+    "connected_chains_json": {
+      "11155111": {
+        "status": "completed",
+        "contract_address": "0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB",
+        "transaction_hash": "0x...",
+        "verification_status": "pending",
+        "chain_id": "11155111",
+        "chain_name": "Sepolia Testnet",
+        "explorer_url": "https://sepolia.etherscan.io",
+        "blockscout_url": null,
+        "contract_url": "https://sepolia.etherscan.io/address/0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB"
+      }
+    },
+    "zeta_chain_info": {
+      "chain_id": "7001",
+      "contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
+      "status": "completed",
+      "explorer_url": "https://explorer.athens.zetachain.com",
+      "blockscout_url": "https://zetachain-testnet.blockscout.com/",
+      "verification_status": "unknown",
+      "contract_url": "https://zetachain-testnet.blockscout.com//address/0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b"
+    }
+  }
 }
 ```
-
-### Chain Integration
-
-The chain selection UI is fully integrated with the verification system:
-- Chains that are disabled in the API can be seen but not selected
-- Verification status is unique per chain and displayed in the deployment logs
-- ZetaChain verification is always shown first in the results
-- Chain-specific explorers are used for verification links (e.g., ZetaChain Explorer, Etherscan)
-
-No user action is required for verification - it happens automatically during deployment. Users can simply click on the "Verified" links to view their contract code on the respective block explorers.
-
-## Token Form Validation
-
-The application includes comprehensive form validation to ensure all data meets API requirements:
-
-### Validation Features
-
-- **Token Information Validation:**
-  - Token name must not be empty
-  - Token symbol must not be empty and should be 6 characters or less
-  - Decimals must be between 0 and 18
-  - Total supply must be a valid number
-
-- **Address Validation:**
-  - Wallet address must follow the Ethereum address format (`0x` followed by 40 hex characters)
-  - All distribution addresses are validated to ensure proper format
-
-- **Chain Selection Validation:**
-  - At least one chain must be selected
-  - ZetaChain is required for deployment
-
-- **Distribution Validation:**
-  - Validates CSV format when uploading distribution lists
-  - Ensures all distribution amounts are positive numbers
-  - Verifies all addresses follow proper Ethereum format
-
-### Data Formatting
-
-The application automatically formats data to match backend requirements:
-
-- Trims whitespace from text inputs
-- Converts numbers to strings for API compatibility
-- Ensures all chain IDs are in string format
-- Formats distribution amounts as strings
-
-### Error Handling
-
-- Displays specific error messages for each validation issue
-- Shows detailed API error responses when available
-- Provides structured feedback for CSV parsing errors
-- Allows retry for payment failures but not for user rejections
-- Handles API unavailability gracefully with informative messages
-- Falls back to predefined data when the API cannot be reached
-- Shows "Temporarily unavailable, please check back soon" when chains cannot be loaded
 
 ## Available Scripts
 
@@ -351,33 +387,6 @@ You may also see any lint errors in the console.
 Launches the test runner in the interactive watch mode.\
 See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-### `npm run test:integration`
-
-Runs integration tests that verify the frontend's interaction with the backend API. These tests validate:
-
-1. API Service functionality:
-   - Token creation API calls
-   - Token deployment API calls
-   - Token retrieval API calls
-   - Deployment logs retrieval
-   - Error handling
-
-2. Token Launch Page:
-   - Form submission
-   - API interaction
-   - Fee payment transaction
-   - Deployment status tracking
-   - Error handling
-
-3. Token Transfer Page:
-   - Token loading
-   - Transfer initiation
-   - Chain selection
-   - Amount validation
-   - Error handling
-
-**Note:** The backend server must be running on port 8000 for integration tests to pass.
-
 ### `npm run build`
 
 Builds the app for production to the `build` folder.\
@@ -386,39 +395,17 @@ It correctly bundles React in production mode and optimizes the build for the be
 The build is minified and the filenames include the hashes.\
 Your app is ready to be deployed!
 
-## Project Structure
-
-Key files and directories:
-
-- `src/services/apiService.js` - Service for API communication with the backend
-- `src/utils` - Utility functions including network switching and CSV parsing
-- `src/pages` - React components for each page in the application
-- `src/components` - Reusable UI components
-
-## Integration Tests
-
-Integration tests have been updated to work with the real backend instead of mocks:
-
-- `src/utils/apiService.test.js` - Tests API service methods with real backend
-  - Uses test wallet address from backend environment
-  - Gracefully handles backend errors and connection issues
-  - Skips tests when backend is unavailable
-
-Run the integration tests with:
-
-```bash
-npm test -- --testMatch="**/*Integration.test.js" --watchAll=false
-```
-
-**Note:** The backend server must be running on port 8000 for actual backend integration.
-
 ## Environment Setup
 
 The application uses the following environment variables:
 
-- `REACT_APP_API_URL` - Backend API URL (defaults to http://localhost:8000)
+- `REACT_APP_API_URL` - Backend API URL (defaults to http://localhost:8000/api)
 
 You can create a `.env` file in the project root to set these variables.
+
+```
+REACT_APP_API_URL=http://localhost:8000/api
+```
 
 ## Supported Chains
 

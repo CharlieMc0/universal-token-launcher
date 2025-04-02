@@ -347,9 +347,9 @@ const DeploymentConfirmation = ({ logs = [], tokenId, onStartNewDeployment }) =>
           }
 
           return (
-            <DeploymentItem key={`${chain.chainId}-${chain.contractAddress || chain.chainId}`}>
+            <DeploymentItem key={`chain-${chain.chainId || Math.random().toString(36).substr(2, 9)}-${chain.contractAddress || Math.random().toString(36).substr(2, 9)}`}>
               <ChainInfo>
-                <ChainName>{chain.name || `Chain ID: ${chain.chainId}`}</ChainName>
+                <ChainName>{chain.name || `Chain ID: ${chain.chainId || 'Unknown'}`}</ChainName>
                 <ContractAddress>
                   {chain.deploymentStatus === 'failed' 
                     ? (chain.deploymentError || 'Deployment failed') 

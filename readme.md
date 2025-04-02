@@ -9,6 +9,8 @@ Universal Token Launcher is a web application that allows users to deploy Univer
 - **Contract Verification**: Automatically verify deployed contracts on block explorers
 - **Token Transfers**: Simple interface for token holders to move tokens between chains
 - **ZetaChain Integration**: Leverage ZetaChain's interoperability for seamless cross-chain operations
+- **Pagination and Sorting**: Browse through tokens with pagination and multiple sorting options
+- **Detailed Token Information**: View token balances across different chains with proper formatting
 
 ## Documentation
 
@@ -85,6 +87,26 @@ npm test
 cd backend
 npm run run-demo
 ```
+
+## Frontend Features
+
+### Token Transfer Page
+
+The Token Transfer page allows users to easily transfer their tokens between different chains:
+
+- **Paged Token Display**: View up to 10 tokens per page with simple navigation controls
+- **Token Count**: Clearly see the total number of tokens you own
+- **Sorting Options**: Sort tokens by balance (high/low), name (A-Z/Z-A), or symbol (A-Z/Z-A)
+- **Detailed Chain Information**: View token balances across different chains with proper formatting
+- **Interactive Transfer Interface**: Select source chain, destination chain, and amount to transfer
+- **API Integration**: Proper integration with the `/api/users/{address}` endpoint for fetching user tokens
+
+### API Integration
+
+The frontend integrates with the backend API to:
+- Fetch token information from `/api/users/{address}`
+- Display token balances and chain information
+- Prepare and submit cross-chain transfers
 
 ## License
 
@@ -177,6 +199,7 @@ The server will be available at http://localhost:3000 (or the port specified in 
 - `GET /api/tokens/:id` - Get token configuration by ID
 - `GET /api/tokens/:id/logs` - Get deployment logs for a token
 - `POST /api/tokens/:id/deploy` - Deploy a token
+- `GET /api/users/:address` - Get tokens owned by a specific address
 
 ## Direct Contract Deployment
 
@@ -260,9 +283,44 @@ fetch('/api/upload', {
 })
 ```
 
-### Testing API Endpoints
+### User Token API Response
 
-You can use tools like Postman or curl to test API endpoints. For endpoints that accept file uploads, ensure you're not setting the Content-Type header when sending FormData.
+The `/api/users/{address}` endpoint returns token information in this format:
+
+```json
+{
+  "success": true,
+  "message": "User tokens retrieved successfully",
+  "wallet_address": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
+  "tokens": [
+    {
+      "token_name": "Test Token",
+      "token_symbol": "TST",
+      "decimals": 18,
+      "is_deployer": true,
+      "zc_contract_address": "0x7d2A9fe6eC18d5Ae31138F829AD854C39f30Bc6D",
+      "balances": [
+        {
+          "chain_id": "7001",
+          "chain_name": "ZetaChain Testnet",
+          "balance": "1000000000000000000000000",
+          "contract_address": "0x7d2a9fe6ec18d5ae31138f829ad854c39f30bc6d",
+          "explorer_url": "https://explorer.athens.zetachain.com",
+          "blockscout_url": "https://zetachain-testnet.blockscout.com/"
+        },
+        {
+          "chain_id": "11155111",
+          "chain_name": "Sepolia Testnet",
+          "balance": "0",
+          "contract_address": "0xDe5EDbA4ea8a08D46753a6a45db770564d92E3F0",
+          "explorer_url": "https://sepolia.etherscan.io",
+          "blockscout_url": null
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## Troubleshooting
 

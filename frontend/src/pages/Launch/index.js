@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useAccount, useBalance, useSendTransaction, useChainId, usePublicClient, useWalletClient } from 'wagmi';
-import { parseEther, formatEther } from 'ethers';
+import { parseEther } from 'viem';
 
 // Components
 import FormInput from '../../components/FormInput';
@@ -406,173 +406,258 @@ const LaunchPage = ({ embedded = false }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!validateForm()) {
+    // Validate form before submission
+    const validationErrors = validateForm();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
       return;
     }
     
     setIsSubmitting(true);
-    setProcessingStep('Creating and deploying token...');
+    setDeploymentStatus(DEPLOYMENT_STATUS.CREATING);
+    setProcessingStep('Preparing token configuration...');
     setErrors({});
     setTransactionRetries(0);
     setShowRetryButton(false);
     setPollingCount(0);
-    setDeploymentStatus(DEPLOYMENT_STATUS.CREATING);
     
     try {
-      // Format the deployment data according to backend requirements
-      const deploymentData = {
-        tokenName: formData.name.trim(),
-        tokenSymbol: formData.symbol.trim(),
+      // Format data according to the API requirements (snake_case properties)
+      const tokenData = {
+        token_name: formData.name.trim(),
+        token_symbol: formData.symbol.trim(),
         decimals: parseInt(formData.decimals, 10),
-        totalSupply: formData.totalSupply.toString(), // Ensure string format
-        selectedChains: formData.selectedChains.map(id => id.toString()), // Ensure string format
-        deployerAddress: address // current wallet address
+        total_supply: formData.totalSupply.toString(), // Must be a string for large numbers
+        selected_chains: formData.selectedChains.map(id => id.toString()), // Must be strings
+        deployer_address: address
       };
       
-      // Add distributions if present, ensuring proper format
+      // Handle token allocations
       if (distributions.length > 0) {
-        deploymentData.allocations = distributions.map(dist => ({
+        tokenData.allocations = distributions.map(dist => ({
           address: dist.address,
-          amount: dist.amount.toString() // Ensure string format
+          amount: dist.amount.toString() // Must be a string
         }));
+      } else {
+        // Default allocation - all tokens to deployer
+        tokenData.allocations = [{
+          address: address,
+          amount: formData.totalSupply.toString()
+        }];
       }
       
-      console.log("Preparing to submit deployment data:", JSON.stringify(deploymentData, null, 2));
+      console.log('Submitting token data:', tokenData);
       
-      // Start fee payment process
+      // Call the API to create and deploy the token
+      const response = await apiService.deployUniversalToken(tokenData);
+      console.log('Token creation response:', response);
+      
+      if (!response.deployment_id && !response.success) {
+        throw new Error('Failed to create token configuration');
+      }
+      
+      // Store the token ID for polling
+      const deploymentId = response.deployment_id || response.token?.id;
+      if (!deploymentId) {
+        throw new Error('No deployment ID returned from API');
+      }
+      
+      setCreatedTokenId(deploymentId);
+      console.log(`Token configuration created with ID: ${deploymentId}`);
+      
+      // Process fee payment
       setDeploymentStatus(DEPLOYMENT_STATUS.PAYING);
-      setProcessingStep('Processing fee payment transaction...');
-      const feeInWei = parseEther(ZETA_FEE.toString());
-      
-      // Validate wallet and network
-      if (!isConnected) {
-        throw new Error('Wallet not connected. Please connect your wallet and try again.');
-      }
-      
-      if (!isZetaChainNetwork) {
-        throw new Error('Please switch to ZetaChain network before proceeding.');
-      }
-      
-      if (!walletReady) {
-        // Wait briefly for wallet to be ready
-        setProcessingStep('Preparing wallet...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        if (!walletClient) {
-          throw new Error('Wallet client not available. Please ensure your wallet is properly connected.');
-        }
-      }
+      setProcessingStep('Preparing fee payment transaction...');
       
       // Prepare transaction parameters
       const txParams = {
         to: UNIVERSAL_TOKEN_SERVICE_WALLET,
-        value: feeInWei,
-        chainId: ZETACHAIN_ID
+        value: parseEther('1'), // 1 ZETA fee
+        chainId: 7001 // ZetaChain Athens
       };
       
-      setProcessingStep('Waiting for wallet signature...');
+      setProcessingStep('Waiting for wallet signature... Please check your wallet.');
       
       // Send the transaction
-      const txResult = await sendTransactionAsync(txParams);
+      const tx = await sendTransactionAsync(txParams);
       
-      // Extract transaction hash
-      let txHash;
-      if (txResult && typeof txResult === 'object' && txResult.hash) {
-        txHash = txResult.hash;
-      } else if (typeof txResult === 'string' && txResult.startsWith('0x')) {
-        txHash = txResult;
-      } else {
-        throw new Error('Wallet interaction failed unexpectedly. Invalid response received.');
+      // Ensure we have a valid transaction hash
+      if (!tx || !tx.hash) {
+        throw new Error('Transaction failed or no hash returned');
       }
       
-      // Set transaction hash for UI
+      const txHash = tx.hash;
       setTransactionHash(txHash);
-      console.log('Fee payment transaction submitted:', txHash);
+      setProcessingStep(`Fee payment transaction sent! Hash: ${txHash}`);
       
-      // Wait for transaction confirmation
-      setProcessingStep('Waiting for transaction confirmation...');
+      // Wait for transaction confirmation with retries
+      setProcessingStep('Waiting for transaction confirmation on ZetaChain...');
       
-      let confirmed = false;
-      let attempts = 0;
-      const maxAttempts = 20;
-      
-      while (!confirmed && attempts < maxAttempts) {
-        try {
-          attempts++;
-          
-          const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
-          
-          if (receipt && receipt.status === 'success') {
-            confirmed = true;
-          } else {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-          }
-        } catch (error) {
-          if (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-          }
-        }
+      try {
+        // Use our custom confirmTransaction function which has retry logic
+        await confirmTransaction(txHash);
+        
+        setProcessingStep('Payment confirmed! Initiating backend deployment...');
+        
+        // Pass the full token data again for the second API call
+        await apiService.deployToken(deploymentId, {
+          fee_paid_tx: txHash,
+          token_name: tokenData.token_name,
+          token_symbol: tokenData.token_symbol,
+          deployer_address: tokenData.deployer_address,
+          selected_chains: tokenData.selected_chains
+        });
+        
+        // Start polling for deployment status
+        setDeploymentStatus(DEPLOYMENT_STATUS.POLLING);
+        setProcessingStep('Deployment initiated! Polling for status updates...');
+      } catch (txError) {
+        console.error('Transaction confirmation error:', txError);
+        setErrors({ submission: `Transaction confirmation failed: ${txError.message}` });
+        setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT);
+        throw txError; // Re-throw to stop processing
       }
-      
-      if (!confirmed) {
-        throw new Error('Transaction confirmation timed out. The transaction may still complete - please check your wallet or block explorer.');
-      }
-      
-      // Add fee transaction to deployment data
-      deploymentData.fee_paid_tx = txHash;
-      
-      // Deploy the token using the new unified API
-      setProcessingStep('Deploying token contracts...');
-      setDeploymentStatus(DEPLOYMENT_STATUS.INITIATED);
-      
-      const deploymentResult = await apiService.deployUniversalToken(deploymentData);
-      console.log('Deployment initiated:', deploymentResult);
-      
-      // Set token ID from response
-      setCreatedTokenId(deploymentResult.deployment_id || deploymentResult.tokenId || deploymentResult.id);
-      
-      // Start polling for deployment status
-      setDeploymentStatus(DEPLOYMENT_STATUS.POLLING);
-      setProcessingStep('Monitoring deployment progress...');
       
     } catch (error) {
-      console.error('Error:', error);
-      setErrors({...errors, submission: `Token creation error: ${error.message}`});
-      setIsSubmitting(false);
-      setProcessingStep('');
+      console.error('Error during token creation:', error);
       
-      if (error.message.includes('rejected') || error.message.includes('denied')) {
-        setDeploymentStatus(DEPLOYMENT_STATUS.IDLE);
-        // User explicitly rejected, don't show retry button
-        setShowRetryButton(false);
-      } else {
-        // For other errors (like payment/confirmation timeout), allow retry
+      // Check if this was a user rejection
+      if (error.message.includes('rejected') || error.code === 'ACTION_REJECTED') {
+        setErrors({ submission: 'Transaction was rejected in wallet.' });
         setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT);
-        setShowRetryButton(true); // Ensure retry button is shown
+      } else if (error.name === 'TransactionReceiptNotFoundError' || 
+                error.message.includes('receipt') || 
+                error.message.includes('confirmation')) {
+        // Handle transaction confirmation errors specially
+        setErrors({ 
+          submission: 'Transaction may still be processing. You can check the explorer link below or try again later.' 
+        });
+        setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT);
+        setShowRetryButton(true);
+      } else if (error.response && error.response.data && error.response.data.detail) {
+        // Extract validation errors from API response
+        let errorMsg = 'Validation error: ';
+        
+        if (Array.isArray(error.response.data.detail)) {
+          errorMsg += error.response.data.detail.map(err => 
+            `${err.loc[err.loc.length-1]}: ${err.msg}`
+          ).join(', ');
+        } else {
+          errorMsg += error.response.data.detail;
+        }
+        
+        setErrors({ submission: errorMsg });
+        setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_CREATION);
+      } else {
+        setErrors({ submission: `Error: ${error.message || 'Unknown error occurred'}` });
+        
+        // Determine which phase failed
+        if (deploymentStatus === DEPLOYMENT_STATUS.CREATING) {
+          setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_CREATION);
+        } else if (deploymentStatus === DEPLOYMENT_STATUS.PAYING) {
+          setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT);
+          // Show retry button for payment failures
+          setShowRetryButton(true);
+        } else {
+          setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
+        }
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  // Transaction confirmation function with retries
+  const confirmTransaction = async (txHash) => {
+    let confirmed = false;
+    let attempts = 0;
+    const maxAttempts = 20; // Increase max attempts
+    
+    while (!confirmed && attempts < maxAttempts) {
+      try {
+        attempts++;
+        console.log(`Attempting to get transaction receipt (Attempt ${attempts}/${maxAttempts})...`);
+        
+        // Update UI with progress
+        setProcessingStep(`Waiting for transaction confirmation... (Attempt ${attempts}/${maxAttempts})`);
+        
+        // Add increasing delay between attempts
+        const delayMs = Math.min(2000 + (attempts * 1000), 10000); // Start with 2s, increase by 1s each try, max 10s
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        
+        // Try to get the transaction receipt
+        let receipt = null;
+        
+        try {
+          // Method 1: Direct getTransactionReceipt
+          receipt = await publicClient.getTransactionReceipt({ hash: txHash });
+          
+          if (receipt && receipt.status === 'success') {
+            console.log('Transaction confirmed successfully!', receipt);
+            setProcessingStep('Transaction confirmed successfully!');
+            return receipt; // Success!
+          } else if (receipt && receipt.status === 'reverted') {
+            setProcessingStep('Transaction was reverted on-chain');
+            throw new Error('Transaction was reverted on-chain');
+          } else if (receipt) {
+            // If we get here, receipt exists but status is not success - wait and try again
+            console.log(`Receipt found but status not success. Current status: ${receipt?.status || 'unknown'}`);
+            setProcessingStep(`Transaction processing... Current status: ${receipt?.status || 'unknown'}`);
+          }
+        } catch (receiptError) {
+          console.log('Error getting receipt directly:', receiptError.message);
+          
+          // Check if it's a "receipt not found" error, which is expected early on
+          if (receiptError.name === 'TransactionReceiptNotFoundError' || receiptError.message.includes('could not be found')) {
+            console.log(`Transaction receipt not found yet (attempt ${attempts}/${maxAttempts}). Waiting...`);
+            setProcessingStep(`Transaction not yet mined on ZetaChain... (Attempt ${attempts}/${maxAttempts})`);
+          } else {
+            // For other errors, log but continue retrying
+            console.error(`Error checking transaction (attempt ${attempts}/${maxAttempts}):`, receiptError.message);
+            setProcessingStep(`Error checking transaction: ${receiptError.message} (Retrying...)`);
+          }
+          
+          // Only throw on last attempt
+          if (attempts >= maxAttempts) {
+            setProcessingStep(`Failed to confirm transaction after ${maxAttempts} attempts`);
+            throw new Error(`Failed to confirm transaction after ${maxAttempts} attempts: ${receiptError.message}`);
+          }
+        }
+      } catch (error) {
+        // Only throw on last attempt
+        if (attempts >= maxAttempts) {
+          setProcessingStep(`Failed to confirm transaction after ${maxAttempts} attempts`);
+          throw new Error(`Failed to confirm transaction after ${maxAttempts} attempts: ${error.message}`);
+        }
       }
     }
+    
+    // If we get here, we've run out of attempts
+    setProcessingStep(`Transaction confirmation timed out after ${maxAttempts} attempts`);
+    throw new Error(`Transaction confirmation timed out after ${maxAttempts} attempts`);
   };
   
   const handleSwitchNetwork = async () => {
     await switchToZetaChain();
   };
   
-  const pollStatus = async (deploymentId) => {
+  const pollStatus = async () => {
     try {
       setPollingCount(prev => prev + 1);
       console.log(`[Polling Effect] Poll count: ${pollingCount + 1}`);
       
       // For demo purposes, make a real API call and handle errors properly
       try {
-        const tokenData = await apiService.getToken(deploymentId);
+        const tokenData = await apiService.getToken(createdTokenId);
         console.log('[Polling Effect] Token data from initial poll:', tokenData);
         
-        if (tokenData && tokenData.deploymentStatus) {
-          if (tokenData.deploymentStatus === 'completed') {
+        if (tokenData && tokenData.token) {
+          const status = tokenData.token.deployment_status || tokenData.token.deploymentStatus;
+          if (status === 'completed') {
             setDeploymentStatus(DEPLOYMENT_STATUS.COMPLETED);
-          } else if (tokenData.deploymentStatus === 'failed') {
+          } else if (status === 'failed') {
             setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
-            setErrors({ submission: tokenData.deploymentError || 'Deployment failed' });
+            setErrors({ submission: tokenData.token.error_message || tokenData.token.deploymentError || 'Deployment failed' });
           }
         }
       } catch (error) {
@@ -607,6 +692,8 @@ const LaunchPage = ({ embedded = false }) => {
       attempts++;
       try {
         console.log(`[Polling Effect] Checking token status for ID: ${createdTokenId} (Attempt: ${attempts}/${MAX_ATTEMPTS})`);
+        
+        // Get token data from API
         const tokenData = await apiService.getToken(createdTokenId);
         console.log('[Polling Effect] Token data:', tokenData);
 
@@ -615,78 +702,126 @@ const LaunchPage = ({ embedded = false }) => {
           setErrors(prev => ({...prev, submission: null}));
         }
 
-        // Check deploymentStatus field from API response (camelCase)
-        if (tokenData.deploymentStatus === 'completed') {
-          console.log('[Polling Effect] Deployment completed! Using token data...');
-          // Process chainInfo from token response instead of fetching separate logs
-          const chainInfoLogs = tokenData.chainInfo || [];
+        // Extract token object from response
+        const token = tokenData.token || tokenData;
+        
+        if (!token) {
+          console.warn('[Polling Effect] No token data in response');
+          if (attempts >= MAX_ATTEMPTS) {
+            setErrors({ submission: 'No token data received after maximum attempts' });
+            setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          return;
+        }
+        
+        // Get deployment status - check both snake_case and camelCase versions
+        const status = token.deployment_status || token.deploymentStatus;
+        console.log(`[Polling Effect] Deployment status: ${status}`);
+        
+        if (status === 'completed') {
+          console.log('[Polling Effect] Deployment completed!');
+          
+          // Extract chain info from the appropriate source
+          let chainInfoLogs = [];
+          
+          if (token.chainInfo && Array.isArray(token.chainInfo)) {
+            // Use the processed chainInfo if available
+            chainInfoLogs = token.chainInfo;
+          } else if (token.connected_chains_json) {
+            // Extract from connected_chains_json if available
+            chainInfoLogs = Object.values(token.connected_chains_json);
+          } else if (token.zeta_chain_info) {
+            // At minimum, include ZetaChain info if available
+            chainInfoLogs = [token.zeta_chain_info];
+          }
+          
           console.log('[Polling Effect] Chain info:', chainInfoLogs);
           
           setDeploymentLogs(chainInfoLogs);
           setDeploymentStatus(DEPLOYMENT_STATUS.COMPLETED);
           console.log('[Polling Effect] Status set to COMPLETED. Clearing interval.');
-          clearInterval(intervalId); // Explicitly clear here
-          intervalId = null; // Ensure intervalId is nullified
-        } else if (tokenData.deploymentStatus === 'failed') {
-          console.error('[Polling Effect] Deployment failed on backend.', tokenData);
-          // Use chain info from token response instead of fetching separate logs
-          const chainInfoLogs = tokenData.chainInfo || [];
+          clearInterval(intervalId);
+          intervalId = null;
+        } else if (status === 'failed') {
+          console.error('[Polling Effect] Deployment failed on backend.', token);
+          
+          // Extract chain info for failed deployment
+          let chainInfoLogs = [];
+          
+          if (token.chainInfo && Array.isArray(token.chainInfo)) {
+            chainInfoLogs = token.chainInfo;
+          } else if (token.connected_chains_json) {
+            chainInfoLogs = Object.values(token.connected_chains_json);
+          }
+          
           console.log('[Polling Effect] Chain info for failed deployment:', chainInfoLogs);
           
+          // Get error message (check various possible field names)
+          const errorMessage = token.error_message || token.deploymentError || 'Unknown error';
+          
           setDeploymentLogs(chainInfoLogs);
-          setErrors({ submission: `Deployment failed on backend. ${tokenData.deploymentError || 'Unknown error'}` });
+          setErrors({ submission: `Deployment failed on backend. ${errorMessage}` });
           setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
-          console.log('[Polling Effect] Status set to FAILED_DEPLOYMENT. Clearing interval.');
-          clearInterval(intervalId); // Explicitly clear here
-          intervalId = null; // Ensure intervalId is nullified
+          clearInterval(intervalId);
+          intervalId = null;
         } else {
           // Still pending or processing on backend
-          console.log(`[Polling Effect] Status is ${tokenData.deploymentStatus}. Continuing poll. Setting step message.`);
+          console.log(`[Polling Effect] Status is ${status}. Continuing poll.`);
           setProcessingStep('Backend is deploying contracts... Please wait.');
         }
       } catch (error) {
         console.error('[Polling Effect] Error during pollStatus API call:', error);
         
-        // Handle API errors properly, but don't immediately fail
+        // Handle API errors
         if (error.response) {
-          // The request was made and the server responded with an error status
+          console.log('[Polling Effect] Error response:', error.response.status, error.response.data);
+          
           if (error.response.status === 404) {
             console.error(`[Polling Effect] Token ID not found (404). Attempt ${attempts}/${MAX_ATTEMPTS}`);
             
             // Only fail after reaching max attempts
             if (attempts >= MAX_ATTEMPTS) {
-              setErrors({ submission: `Unable to find token deployment after ${MAX_ATTEMPTS} attempts. The token may still be processing.` });
+              setErrors({ submission: `Unable to find token deployment after ${MAX_ATTEMPTS} attempts.` });
               setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
               clearInterval(intervalId);
               intervalId = null;
             } else {
-              // Continue polling, the backend might just need more time to register the token
+              // Continue polling, might be pending indexing
               setProcessingStep(`Waiting for token to appear on server... (Attempt ${attempts}/${MAX_ATTEMPTS})`);
             }
           } else if (error.response.status >= 500) {
             // Server error, might be temporary
-            console.warn('[Polling Effect] Server error during poll. Will retry.');
             setProcessingStep('Server error during polling. Retrying...');
           } else {
-            // Other API error
-            console.error('[Polling Effect] API error during poll:', error.response.data);
-            // Continue polling even on other errors - only fail if max attempts reached
+            // Other API errors
             if (attempts >= MAX_ATTEMPTS) {
-              setErrors({ submission: `Deployment error: ${error.response.data?.message || 'Unknown API error'}` });
+              // Format error message
+              let errorMsg = 'Unknown API error';
+              if (error.response.data) {
+                if (error.response.data.detail) {
+                  errorMsg = typeof error.response.data.detail === 'string' 
+                    ? error.response.data.detail 
+                    : JSON.stringify(error.response.data.detail);
+                } else if (error.response.data.message) {
+                  errorMsg = error.response.data.message;
+                }
+              }
+              
+              setErrors({ submission: `Deployment error: ${errorMsg}` });
               setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
               clearInterval(intervalId);
               intervalId = null;
             }
           }
         } else if (error.request) {
-          // The request was made but no response was received (network error)
-          console.warn('[Polling Effect] Network error during poll. Will retry.');
+          // Network error
           setProcessingStep('Network error during polling. Retrying...');
         } else {
-          // Something else happened while setting up the request
-          console.error('[Polling Effect] Unexpected error during poll:', error.message);
+          // Other errors
           if (attempts >= MAX_ATTEMPTS) {
-            setErrors({ submission: `Unexpected error: ${error.message}` });
+            setErrors({ submission: `Error: ${error.message}` });
             setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
             clearInterval(intervalId);
             intervalId = null;
@@ -695,25 +830,24 @@ const LaunchPage = ({ embedded = false }) => {
       }
     };
 
-    // Only start polling if status is INITIATED or POLLING
+    // Start polling
     if (deploymentStatus === DEPLOYMENT_STATUS.INITIATED || deploymentStatus === DEPLOYMENT_STATUS.POLLING) {
-      console.log(`[Polling Effect] Status is ${deploymentStatus}. Starting polling interval.`);
-      // Start polling immediately when initiated, then continue every 5 seconds
-      pollStatus(); // Initial check right away
-      // Ensure no duplicate interval is set if effect re-runs
+      console.log(`[Polling Effect] Starting polling for token ID: ${createdTokenId}`);
+      
+      // Initial check right away
+      pollStatus();
+      
+      // Set up interval for subsequent checks
       if (!intervalId) {
          intervalId = setInterval(pollStatus, 5000); // Poll every 5 seconds
-         console.log(`[Polling Effect] setInterval created with ID: ${intervalId}`);
       }
-    } else {
-       console.log(`[Polling Effect] Status is ${deploymentStatus}. Not starting or stopping poll interval.`);
     }
 
-    // Cleanup function to clear interval when component unmounts or status changes
+    // Cleanup function
     return () => {
       if (intervalId) {
         clearInterval(intervalId);
-        console.log(`[Polling Effect Cleanup] Cleared interval ID: ${intervalId}`);
+        console.log(`[Polling Effect] Cleared polling interval`);
       }
     };
   }, [deploymentStatus, createdTokenId, errors.submission]);
