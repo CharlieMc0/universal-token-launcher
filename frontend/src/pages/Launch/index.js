@@ -328,17 +328,36 @@ const LaunchPage = ({ embedded = false }) => {
     return Object.keys(newErrors).length === 0;
   };
   
-  const processFeePayment = async (tokenId) => {
-    setDeploymentStatus(DEPLOYMENT_STATUS.PAYING); // Update status
-    setProcessingStep('Processing fee payment transaction...');
-    const feeInWei = parseEther(ZETA_FEE.toString());
-    setTransactionHash(null);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
-    // Declare txHashString in the outer scope
-    let txHashString;
-
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    setProcessingStep('Creating and deploying token...');
+    setErrors({});
+    setTransactionRetries(0);
+    setShowRetryButton(false);
+    setDeploymentStatus(DEPLOYMENT_STATUS.CREATING);
+    
     try {
-      // Check if the wallet is connected and on the right network
+      const deploymentData = {
+        tokenName: formData.name,
+        tokenSymbol: formData.symbol,
+        decimals: parseInt(formData.decimals, 10),
+        totalSupply: formData.totalSupply,
+        selectedChains: formData.selectedChains,
+        deployerAddress: address // current wallet address
+      };
+      
+      // Start fee payment process
+      setDeploymentStatus(DEPLOYMENT_STATUS.PAYING);
+      setProcessingStep('Processing fee payment transaction...');
+      const feeInWei = parseEther(ZETA_FEE.toString());
+      
+      // Validate wallet and network
       if (!isConnected) {
         throw new Error('Wallet not connected. Please connect your wallet and try again.');
       }
@@ -357,102 +376,51 @@ const LaunchPage = ({ embedded = false }) => {
         }
       }
       
-      // Add more detailed logging before starting transaction
-      console.log('Preparing to send transaction:', {
-        to: UNIVERSAL_TOKEN_SERVICE_WALLET,
-        value: feeInWei.toString(),
-        chainId: ZETACHAIN_ID
-      });
-      
       // Prepare transaction parameters
       const txParams = {
         to: UNIVERSAL_TOKEN_SERVICE_WALLET,
         value: feeInWei,
-        chainId: ZETACHAIN_ID // Ensure transaction is sent on the correct chain
+        chainId: ZETACHAIN_ID
       };
       
       setProcessingStep('Waiting for wallet signature...');
       
-      let txResult;
-      try {
-        // Add explicit check for walletClient right before sending
-        if (!walletClient) {
-          console.error('Wallet client is not available immediately before sending transaction.');
-          throw new Error('Wallet connection issue: Client unavailable. Please reconnect your wallet and try again.');
-        }
-
-        // Try to send the transaction with a separate try/catch
-        // Assign the result to a temporary variable
-        const asyncResult = await sendTransactionAsync(txParams); 
-        console.log('Transaction request sent (using async), waiting for user to sign:', asyncResult);
-
-        // Reliably extract the hash string
-        if (asyncResult && typeof asyncResult === 'object' && asyncResult.hash) {
-          txHashString = asyncResult.hash; // Extract hash from object
-        } else if (typeof asyncResult === 'string' && asyncResult.startsWith('0x')) {
-          txHashString = asyncResult; // Assume it's the hash string directly
-        } else {
-          // If we got something unexpected (like undefined or a different object)
-          console.error('sendTransactionAsync returned unexpected result:', asyncResult);
-          throw new Error('Wallet interaction failed unexpectedly. Invalid response received.');
-        }
-        
-        // Now txHashString is guaranteed to be the hash string (if successful)
-
-      } catch (sendError) {
-        // Specific error handling for sendTransactionAsync failures
-        console.error('Failed to send transaction:', sendError);
-        
-        // More descriptive error message for different error cases
-        if (sendError.message.includes('user rejected')) {
-          throw new Error('Transaction was rejected by the user. Please try again.');
-        } else if (sendError.message.includes('network') || sendError.message.includes('chain')) {
-          throw new Error('Network error: Please ensure you are connected to ZetaChain and try again.');
-        } else {
-          throw new Error(`Failed to send transaction: ${sendError.message}`);
-        }
+      // Send the transaction
+      const txResult = await sendTransactionAsync(txParams);
+      
+      // Extract transaction hash
+      let txHash;
+      if (txResult && typeof txResult === 'object' && txResult.hash) {
+        txHash = txResult.hash;
+      } else if (typeof txResult === 'string' && txResult.startsWith('0x')) {
+        txHash = txResult;
+      } else {
+        throw new Error('Wallet interaction failed unexpectedly. Invalid response received.');
       }
       
-      // Save and display transaction hash (use the direct string)
-      setTransactionHash(txHashString);
-      console.log('Fee payment transaction submitted (hash):', txHashString);
+      // Set transaction hash for UI
+      setTransactionHash(txHash);
+      console.log('Fee payment transaction submitted:', txHash);
       
       // Wait for transaction confirmation
-      setProcessingStep('Waiting for transaction confirmation (this may take 10-15 seconds)... Please do not close or refresh this page.'); // Added warning
+      setProcessingStep('Waiting for transaction confirmation...');
       
       let confirmed = false;
-      let receipt = null; // Store the receipt
       let attempts = 0;
-      const maxAttempts = 20; // 20 attempts * 1.5 seconds = 30 seconds max wait time
+      const maxAttempts = 20;
       
       while (!confirmed && attempts < maxAttempts) {
         try {
           attempts++;
-          console.debug(`Attempt ${attempts}/${maxAttempts}: Checking transaction receipt for ${txHashString}...`, { txHash: txHashString, attempt: attempts });
           
-          // Try to get transaction receipt to check if confirmed
-          receipt = await publicClient.getTransactionReceipt({ 
-            hash: txHashString // Use the hash string directly
-          });
+          const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
           
-          if (receipt) {
-            console.debug(`Receipt found for ${txHashString}`, { txHash: txHashString, status: receipt.status, blockNumber: receipt.blockNumber });
-            if (receipt.status === 'success') {
-              confirmed = true;
-              console.info('Transaction confirmed successfully!', { txHash: txHashString, receipt });
-            } else {
-              // Transaction reverted
-              console.warn(`Transaction ${txHashString} reverted (status: ${receipt.status})`, { txHash: txHashString, receipt });
-              throw new Error(`Transaction failed on-chain with status: ${receipt.status}.`);
-            }
+          if (receipt && receipt.status === 'success') {
+            confirmed = true;
           } else {
-            console.debug(`Receipt not yet available for ${txHashString}. Waiting...`, { txHash: txHashString });
-            // Wait before trying again
             await new Promise(resolve => setTimeout(resolve, 1500));
           }
         } catch (error) {
-          console.warn(`Error fetching receipt (attempt ${attempts}/${maxAttempts}): ${error.message}`, { txHash: txHashString, attempt: attempts });
-          // Wait before trying again if it's not a terminal error
           if (attempts < maxAttempts) {
             await new Promise(resolve => setTimeout(resolve, 1500));
           }
@@ -460,124 +428,41 @@ const LaunchPage = ({ embedded = false }) => {
       }
       
       if (!confirmed) {
-        console.error(`Transaction confirmation timed out after ${maxAttempts} attempts.`, { txHash: txHashString });
-        throw new Error('Transaction confirmation timed out. The transaction may still complete - please check your wallet or block explorer. Deployment cannot proceed automatically.');
+        throw new Error('Transaction confirmation timed out. The transaction may still complete - please check your wallet or block explorer.');
       }
       
-      // Start deployment with fee payment transaction
-      setProcessingStep('Transaction confirmed! Initiating token deployment with backend...');
-      console.info(`Calling apiService.deployToken for tokenId: ${tokenId}`, { tokenId, feeTxHash: txHashString });
+      // Add fee transaction to deployment data
+      deploymentData.fee_paid_tx = txHash;
       
-      try {
-          await apiService.deployToken(tokenId, {
-            fee_paid_tx: txHashString // Use the hash string directly
-          });
-          console.info(`apiService.deployToken call successful for tokenId: ${tokenId}`, { tokenId });
-          // Update status to initiated to start polling
-          setDeploymentStatus(DEPLOYMENT_STATUS.INITIATED);
-          setProcessingStep('Token deployment initiated with backend! Polling for status...');
-      } catch (apiError) {
-          console.error(`apiService.deployToken call failed for tokenId: ${tokenId}`, { tokenId, error: apiError.message, stack: apiError.stack });
-          // Rethrow the error so it's caught by the outer try/catch
-          throw new Error(`Failed to initiate deployment via API: ${apiError.message}`);
-      }
-
-      // Removed alert and form reset - happens on completion now
-      // setTimeout(() => { ... }, 2000);
-
-      return true;
-    } catch (txError) {
-      console.error('Transaction Error:', txError);
-      setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT); // Set specific failure status
+      // Deploy the token using the new unified API
+      setProcessingStep('Deploying token contracts...');
+      setDeploymentStatus(DEPLOYMENT_STATUS.INITIATED);
       
-      // Provide more descriptive error message based on error type
-      let errorMessage = txError.message;
+      const deploymentResult = await apiService.deployUniversalToken(deploymentData);
+      console.log('Deployment initiated:', deploymentResult);
       
-      if (txError.code === 4001) {
-        errorMessage = 'Transaction was rejected by the wallet. Please try again.';
-      } else if (txError.message.includes('insufficient funds')) {
-        errorMessage = 'Insufficient funds for transaction fee. Please add more ZETA to your wallet.';
-      }
+      // Set token ID from response
+      setCreatedTokenId(deploymentResult.tokenId || deploymentResult.id);
       
-      // If we created the token but the transaction failed, still provide the token ID
-      setErrors({
-        ...errors, 
-        submission: `Fee payment transaction failed: ${errorMessage}. Your token configuration (ID: ${tokenId}) was saved but not deployed.`
-      });
+      // Start polling for deployment status
+      setDeploymentStatus(DEPLOYMENT_STATUS.POLLING);
+      setProcessingStep('Monitoring deployment progress...');
       
-      // If we haven't exceeded retry limit, show retry button
-      if (transactionRetries < 3) {
-        setShowRetryButton(true);
-      }
-      
-      return false;
-    }
-  };
-
-  const handleRetryTransaction = async () => {
-    if (createdTokenId) {
-      setTransactionRetries(prev => prev + 1);
-      setShowRetryButton(false);
-      setErrors({});
-      setTransactionHash(null);
-      const success = await processFeePayment(createdTokenId);
-      if (!success && transactionRetries >= 2) {
-        // After 3 attempts, suggest manual deployment
-        setErrors({
-          ...errors,
-          submission: `Multiple transaction attempts failed. Please try again later or contact support with your Token ID: ${createdTokenId}.`
-        });
-        setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT); // Ensure status reflects failure
-      }
-    }
-  };
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
-    
-    setIsSubmitting(true);
-    setProcessingStep('Creating token configuration...');
-    setErrors({});
-    setTransactionRetries(0);
-    setShowRetryButton(false);
-    
-    try {
-      // Create FormData to send to backend
-      const formDataToSend = new FormData();
-      formDataToSend.append('token_name', formData.name);
-      formDataToSend.append('token_symbol', formData.symbol);
-      formDataToSend.append('decimals', formData.decimals);
-      formDataToSend.append('total_supply', formData.totalSupply);
-      
-      formDataToSend.append('selected_chains', JSON.stringify(formData.selectedChains));
-      
-      if (tokenIcon) {
-        formDataToSend.append('icon', tokenIcon);
-      }
-      
-      // Add distributions if available
-      if (distributions.length > 0) {
-        formDataToSend.append('distributions_json', JSON.stringify(distributions));
-      } else if (csvFile) {
-        formDataToSend.append('distributions_csv', csvFile);
-      }
-      
-      // Send data to backend to create token configuration
-      const response = await apiService.createToken(formDataToSend);
-      console.log('Token created:', response);
-      setCreatedTokenId(response.tokenId);
-      
-      // Process fee payment
-      await processFeePayment(response.tokenId);
     } catch (error) {
       console.error('Error:', error);
       setErrors({...errors, submission: `Token creation error: ${error.message}`});
       setIsSubmitting(false);
       setProcessingStep('');
+      
+      if (error.message.includes('rejected') || error.message.includes('denied')) {
+        setDeploymentStatus(DEPLOYMENT_STATUS.IDLE);
+        // User explicitly rejected, don't show retry button
+        setShowRetryButton(false);
+      } else {
+        // For other errors (like payment/confirmation timeout), allow retry
+        setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT);
+        setShowRetryButton(true); // Ensure retry button is shown
+      }
     }
   };
   
@@ -774,8 +659,8 @@ const LaunchPage = ({ embedded = false }) => {
                  <div style={{ marginTop: '20px' }}>
                    <p>Fee payment failed. Would you like to try again?</p>
                    <ButtonContainer>
-                     <SubmitButton onClick={handleRetryTransaction}>
-                       Retry Transaction
+                     <SubmitButton onClick={handleSubmit}>
+                       Try Again
                      </SubmitButton>
                    </ButtonContainer>
                  </div>

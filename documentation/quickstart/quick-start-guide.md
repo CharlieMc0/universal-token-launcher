@@ -4,7 +4,7 @@ This guide provides a quick overview of the Universal Token Launcher project and
 
 ## Project Overview
 
-The Universal Token Launcher is a web application that allows users to deploy Universal Tokens across multiple EVM chains with simple, single-signed transactions. Using ZetaChain's interoperability, it automates cross-chain contract deployments and asset distributions.
+The Universal Token Launcher is a web application that allows users to deploy Universal Tokens across multiple EVM chains with simple, single-signed transactions. Using ZetaChain's interoperability, it automates cross-chain contract deployments.
 
 ## Repository Structure
 
@@ -83,12 +83,11 @@ npm start
 2. User pays a deployment fee in ZETA on ZetaChain
 3. Backend deploys contracts on all selected chains
 4. Contracts are verified on block explorers
-5. Initial token distribution is processed
 
 ### Backend Architecture
 
 - **Express API**: RESTful endpoints for token configuration and management
-- **PostgreSQL Database**: Stores token configurations, deployment logs, distributions
+- **PostgreSQL Database**: Stores token configurations, deployment logs
 - **Contract Service**: Manages blockchain interactions and contract deployments
 - **Verification Service**: Handles contract verification on block explorers
 

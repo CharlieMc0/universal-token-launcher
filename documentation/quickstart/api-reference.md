@@ -39,7 +39,6 @@ Creates a new token configuration.
 | `decimals` | integer | no | Number of decimals (default: 18) |
 | `total_supply` | string | yes | Total supply of the token |
 | `selected_chains` | JSON string | yes | Array of chain IDs for deployment |
-| `distributions_json` | JSON string | no | Array of distribution objects |
 | `icon` | file | no | Token icon image file |
 
 **Example Request:**
@@ -53,7 +52,6 @@ curl -X POST http://localhost:8000/api/tokens \
   -F "decimals=18" \
   -F "total_supply=1000000000000000000000" \
   -F "selected_chains=[\"7001\",\"11155111\"]" \
-  -F "distributions_json=[{\"recipient_address\":\"0x4f1684A28E33F42cdf50AB96e29a709e17249E63\",\"chain_id\":\"7001\",\"token_amount\":\"100000000000000000000\"}]" \
   -F "icon=@path/to/icon.png"
 ```
 
@@ -178,7 +176,7 @@ Retrieves all tokens created by a wallet address.
 **Example Request:**
 
 ```bash
-curl -X GET http://localhost:8000/api/tokens?creator=0x4f1684A28E33F42cdf50AB96e29a709e17249E63 \
+curl -X GET http://localhost:8000/api/tokens?creator=0x4f1684a28e33f42cdf50ab96e29a709e17249e63 \
   -H "X-Wallet-Address: 0x4f1684A28E33F42cdf50AB96e29a709e17249E63"
 ```
 
@@ -199,93 +197,6 @@ curl -X GET http://localhost:8000/api/tokens?creator=0x4f1684A28E33F42cdf50AB96e
       "chainInfo": [
         // Chain info objects similar to other endpoints
       ]
-    }
-  ]
-}
-```
-
-### Get User Tokens
-
-Retrieves all tokens associated with a wallet address, including both created tokens and tokens visible on block explorers.
-
-**Endpoint:** `GET /api/users/:walletAddress/tokens`
-
-**Path Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `walletAddress` | string | Wallet address |
-
-**Example Request:**
-
-```bash
-curl -X GET http://localhost:8000/api/users/0x4f1684A28E33F42cdf50AB96e29a709e17249E63/tokens \
-  -H "X-Wallet-Address: 0x4f1684A28E33F42cdf50AB96e29a709e17249E63"
-```
-
-**Response:**
-
-```json
-{
-  "tokens": [
-    {
-      "address": "0x1234567890abcdef1234567890abcdef12345678",
-      "name": "My Token",
-      "symbol": "MTK",
-      "decimals": 18,
-      "type": "ERC-20",
-      "balance": "100000000000000000000",
-      "iconUrl": "/uploads/icons/icon-1743539938071-325605596.png",
-      "chainId": "7001",
-      "isUniversalToken": true
-    }
-  ]
-}
-```
-
-## Distribution Endpoints
-
-### Process CSV File
-
-Processes a CSV file with token distribution data.
-
-**Endpoint:** `POST /api/distributions/csv`
-
-**Content-Type:** `multipart/form-data`
-
-**Request Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `distributions_csv` | file | yes | CSV file with distribution data |
-
-**Example Request:**
-
-```bash
-curl -X POST http://localhost:8000/api/distributions/csv \
-  -H "Content-Type: multipart/form-data" \
-  -H "X-Wallet-Address: 0x4f1684A28E33F42cdf50AB96e29a709e17249E63" \
-  -F "distributions_csv=@path/to/distributions.csv"
-```
-
-**Response:**
-
-```json
-{
-  "message": "CSV file processed successfully",
-  "filename": "distributions_csv-1234567890.csv",
-  "totalRows": 3,
-  "validRows": 2,
-  "distributions": [
-    {
-      "recipient_address": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
-      "chain_id": "7001",
-      "token_amount": "100"
-    },
-    {
-      "recipient_address": "0x3a4Cc340A87C38d36e469CB8f8EB37Fba0e3daF3",
-      "chain_id": "11155111",
-      "token_amount": "50"
     }
   ]
 }
@@ -335,4 +246,4 @@ The `chainInfo` array in token responses contains detailed information about eac
 | `verificationStatus` | string | Verification status (pending, processing, verified, failed) |
 | `verificationError` | string | Error message if verification failed |
 | `verifiedUrl` | string | Direct URL to verified contract source code |
-``` 
+```

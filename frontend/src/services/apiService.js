@@ -38,6 +38,21 @@ const handleApiError = (error) => {
 };
 
 /**
+ * Deploy a Universal Token using the new unified deployment endpoint
+ * 
+ * @param {Object} tokenData - Token deployment data
+ * @returns {Promise<Object>} - Deployment result
+ */
+export const deployUniversalToken = async (tokenData) => {
+  try {
+    const response = await api.post('/deploy', tokenData);
+    return response.data;
+  } catch (error) {
+    return handleApiError(error);
+  }
+};
+
+/**
  * Get user tokens with connected contracts across all chains
  * 
  * @param {string} walletAddress - User's wallet address
@@ -89,6 +104,57 @@ export const getTokenDetails = async (tokenId) => {
 };
 
 /**
+ * Create a new token configuration 
+ * 
+ * @param {FormData} formData - Token configuration form data
+ * @returns {Promise<Object>} - Created token information including token ID
+ */
+export const createToken = async (formData) => {
+  try {
+    // Use axios instance but override content-type to allow form data
+    const response = await api.post('/tokens', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      }
+    });
+    return response.data;
+  } catch (error) {
+    return handleApiError(error);
+  }
+};
+
+/**
+ * Get a specific token by ID
+ * 
+ * @param {string} tokenId - Token ID
+ * @returns {Promise<Object>} - Token details
+ */
+export const getToken = async (tokenId) => {
+  try {
+    const response = await api.get(`/tokens/${tokenId}`);
+    return response.data;
+  } catch (error) {
+    return handleApiError(error);
+  }
+};
+
+/**
+ * Trigger token deployment after fee payment
+ * 
+ * @param {string} tokenId - Token ID to deploy
+ * @param {Object} deployData - Deployment data including fee transaction
+ * @returns {Promise<Object>} - Deployment result
+ */
+export const deployToken = async (tokenId, deployData) => {
+  try {
+    const response = await api.post(`/tokens/${tokenId}/deploy`, deployData);
+    return response.data;
+  } catch (error) {
+    return handleApiError(error);
+  }
+};
+
+/**
  * Initiate a cross-chain token transfer
  * 
  * @param {Object} transferData - Transfer parameters
@@ -103,9 +169,60 @@ export const initiateTokenTransfer = async (transferData) => {
   }
 };
 
+/**
+ * Get deployment logs for a token
+ * 
+ * @param {string} tokenId - Token ID
+ * @returns {Promise<Array>} - Array of deployment logs
+ */
+export const getDeploymentLogs = async (tokenId) => {
+  try {
+    const response = await api.get(`/tokens/${tokenId}/logs`);
+    return response.data;
+  } catch (error) {
+    return handleApiError(error);
+  }
+};
+
+/**
+ * Get supported chains information
+ * 
+ * @returns {Promise<Array>} - Array of supported chains
+ */
+export const getSupportedChains = async () => {
+  try {
+    const response = await api.get('/chains');
+    return response.data.chains;
+  } catch (error) {
+    return handleApiError(error);
+  }
+};
+
+/**
+ * Verify a deployed contract
+ * 
+ * @param {Object} verificationData - Contract verification data
+ * @returns {Promise<Object>} - Verification result
+ */
+export const verifyContract = async (verificationData) => {
+  try {
+    const response = await api.post('/verify', verificationData);
+    return response.data;
+  } catch (error) {
+    return handleApiError(error);
+  }
+};
+
 export default {
   getUserTokens,
   getTokenDetails,
   initiateTokenTransfer,
-  setWalletAddress
+  setWalletAddress,
+  createToken,
+  getToken,
+  deployToken,
+  getDeploymentLogs,
+  deployUniversalToken,
+  getSupportedChains,
+  verifyContract
 }; 
