@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 venv/
+venv_*
 .env/
 __pycache__/
 *.py[cod]

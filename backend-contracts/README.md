@@ -84,22 +84,8 @@ POST /api/deploy
 ```json
 {
   "success": true,
-  "message": "Deployment successful, ownership transferred",
-  "deployment": {
-    "zetaChain": {
-      "contractAddress": "0x...",
-      "transactionHash": "0x...",
-      "blockNumber": 123456
-    },
-    "evmChains": {
-      "11155111": {
-        "contractAddress": "0x...",
-        "transactionHash": "0x...",
-        "blockNumber": 789012
-      }
-    }
-  },
-  "verificationStatus": "pending"
+  "message": "Deployment process initiated successfully.",
+  "deploymentId": 123 // The ID of the new record in 'tokendeployments' table
 }
 ```
 
@@ -177,3 +163,116 @@ Set `LOG_LEVEL=debug` in the `.env` file for more detailed logs, which now inclu
 - Gas estimation parameters
 - Contract connection errors with full context
 - API responses from verification services 
+
+## Database Integration
+
+This service now uses a PostgreSQL database to track deployment status and store contract information.
+
+### Database Setup
+
+1.  **Install PostgreSQL:** Ensure you have PostgreSQL installed and running.
+2.  **Create Database:** Create a database for the service:
+    ```sql
+    CREATE DATABASE universal_token_registry;
+    ```
+3.  **Configure Environment:** Update the `.env` file with your database connection details:
+    ```dotenv
+    DB_DATABASE=universal_token_registry
+    DB_USERNAME=your_db_username
+    DB_PASSWORD=your_db_password
+    DB_HOST=localhost
+    DB_PORT=5432
+    ```
+4.  **Run Migrations:** Execute the database migrations to create the necessary tables:
+    ```bash
+    npx sequelize-cli db:migrate
+    ```
+
+### Database Schema
+
+The primary table used is `tokendeployments` (note the lowercase naming convention):
+
+| Column                | Type              | Description                                                                 |
+| --------------------- | ----------------- | --------------------------------------------------------------------------- |
+| `id`                  | INTEGER           | Auto-incrementing primary key, representing the deployment ID.              |
+| `token_name`          | STRING            | The name of the token being deployed.                                       |
+| `token_symbol`        | STRING            | The symbol of the token.                                                    |
+| `decimals`            | INTEGER           | The number of decimals for the token.                                       |
+| `total_supply`        | STRING            | The total supply of the token (stored as a string to handle large numbers). |
+| `zc_contract_address` | STRING            | The address of the deployed contract on ZetaChain.                          |
+| `deployer_address`    | STRING            | The wallet address that will receive final ownership of the contracts.      |
+| `connected_chains_json`| JSONB             | JSON object storing details for each deployed chain (see format below).    |
+| `deployment_status`   | STRING            | Current status of the overall deployment process (see states below).        |
+| `error_message`       | TEXT              | Stores any error messages encountered during the deployment.                |
+| `created_at`          | TIMESTAMP WITH TZ | Timestamp of record creation.                                               |
+| `updated_at`          | TIMESTAMP WITH TZ | Timestamp of last record update.                                            |
+
+**`connected_chains_json` Format:**
+
+This JSONB column stores an object where keys are chain IDs (as strings). Each chain ID maps to an object with the following structure:
+
+```json
+{
+  "7001": { // Example: ZetaChain Testnet
+    "contractAddress": "0x...",
+    "deploymentStatus": "success", // "pending", "deploying", "success", "failed"
+    "verificationStatus": "verified", // "pending", "in_progress", "verified", "failed"
+    "verificationError": null, // Error message if verification failed
+    "verifiedUrl": "https://blockscout...", // Link to verified source code
+    "explorerUrl": "https://athens.explorer...",
+    "blockscoutUrl": "https://zetachain-testnet.blockscout..."
+  },
+  "11155111": { // Example: Sepolia Testnet
+    "contractAddress": "0x...",
+    "deploymentStatus": "success",
+    "verificationStatus": "pending",
+    "verificationError": null,
+    "verifiedUrl": null,
+    "explorerUrl": "https://sepolia.etherscan.io...",
+    "blockscoutUrl": null
+  }
+  // ... other selected chains
+}
+```
+
+**Deployment Status States (`deployment_status` column):**
+
+- `starting`: Initial state when the request is received.
+- `deploying_zeta`: Deploying the contract on ZetaChain.
+- `deploying_evm_<chainId>`: Deploying contract on a specific EVM chain (e.g., `deploying_evm_11155111`).
+- `connecting`: Attempting to connect contracts across chains (placeholder/future implementation).
+- `verifying`: Initiating contract verification process on explorers.
+- `verification_issues`: Verification process completed, but one or more contracts failed verification.
+- `transferring_ownership`: Transferring contract ownership and initial tokens to the `deployerAddress`.
+- `completed`: All steps finished successfully.
+- `failed`: A critical error occurred during deployment, connection, or ownership transfer.
+
+### Naming Conventions
+
+This service follows these naming conventions for database objects:
+
+- **Table Names:** Lowercase with plural form (e.g., `tokendeployments`)
+- **Column Names:** Lowercase with underscores (snake_case) (e.g., `token_name`, `deployer_address`)
+- **Timestamp Columns:** `created_at` and `updated_at` (not camelCase)
+
+### Troubleshooting Database Issues
+
+If you encounter database connection or model loading issues:
+
+1. **Check Environment Variables:** Ensure your `.env` file has the correct database credentials.
+2. **Verify Database Exists:** Confirm that the database specified in `DB_DATABASE` exists in PostgreSQL.
+3. **Run Migrations:** Make sure migrations are up-to-date with `npx sequelize-cli db:migrate`.
+4. **Check Logs:** The service logs detailed information about model loading at startup:
+   - `Available database models: ...` - Shows all loaded models
+   - `tokendeployment model found with table: ...` - Confirms model loading
+   - If you see `CRITICAL ERROR: tokendeployment model not available`, check your model definitions and naming.
+5. **Model Case Sensitivity:** The service will try to find the model using multiple case variations (camelCase, PascalCase, lowercase) for compatibility.
+
+**Response (Error Example):**
+```json
+{
+  "success": false,
+  "message": "Deployment failed. Please check logs for details. Record ID: 123",
+  "deploymentId": 123
+}
+``` 
