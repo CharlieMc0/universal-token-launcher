@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import FormInput from '../../../components/FormInput';
 import TokenTile, { chainLogos, chainNames } from '../../../components/TokenTile';
 import apiService from '../../../services/apiService';
+import { executeCrossChainTransfer } from '../../../utils/contractInteractions';
+import { switchToZetaChain } from '../../../utils/networkSwitchingUtility';
+import { CHAIN_IDS } from '../../../utils/contracts';
 
 const PageContainer = styled.div`
   max-width: ${props => props.embedded ? '100%' : '800px'};
@@ -188,21 +191,73 @@ const ResultTitle = styled.h4`
   color: var(--accent-secondary);
 `;
 
+const NetworkWarning = styled.div`
+  background-color: rgba(255, 180, 0, 0.1);
+  border: 1px solid #ffb400;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+`;
+
+const NetworkButton = styled.button`
+  background-color: var(--accent-secondary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    opacity: 0.9;
+  }
+`;
+
 const TransferTokens = ({ embedded = false }) => {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   
   const [userTokens, setUserTokens] = useState([]);
   const [loading, setLoading] = useState(true);
   const [transferring, setTransferring] = useState(false);
   const [transferResult, setTransferResult] = useState(null);
+  const [processingStatus, setProcessingStatus] = useState("");
+  const [error, setError] = useState(null);
+  const [switchingNetwork, setSwitchingNetwork] = useState(false);
   
   const [formData, setFormData] = useState({
     tokenId: '',
     sourceChain: '',
-    destinationChain: [],
+    destinationChain: '',  // Single chain
     transferAmount: '',
     recipientAddress: ''
   });
+
+  // Check if the user is on the correct network
+  const isZetaChainNetwork = chainId === CHAIN_IDS.ZETACHAIN;
+
+  // Handle network switch
+  const handleSwitchToZetaChain = async () => {
+    try {
+      setSwitchingNetwork(true);
+      const success = await switchToZetaChain();
+      if (!success) {
+        setError("Failed to switch to ZetaChain network. Please switch manually in your wallet.");
+      }
+    } catch (error) {
+      console.error('Error switching to ZetaChain:', error);
+      setError("Failed to switch to ZetaChain network: " + error.message);
+    } finally {
+      setSwitchingNetwork(false);
+    }
+  };
 
   // All supported chains
   const supportedChains = [
@@ -227,32 +282,51 @@ const TransferTokens = ({ embedded = false }) => {
       ...formData,
       tokenId,
       sourceChain: chainId,
-      destinationChain: []
+      destinationChain: ''  // Reset destination chain when source changes
     });
   };
 
   const handleDestinationSelect = (chainId) => {
+    // Updated to set a single destination chain instead of an array
     setFormData({
       ...formData,
-      destinationChain: formData.destinationChain.includes(chainId)
-        ? formData.destinationChain.filter(id => id !== chainId)
-        : [...formData.destinationChain, chainId]
+      destinationChain: formData.destinationChain === chainId ? '' : chainId
     });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(null);
     
     try {
       setTransferring(true);
+      setProcessingStatus("Initiating transfer...");
       setTransferResult(null);
       
-      const result = await apiService.transferTokens({
-        tokenId: formData.tokenId,
+      // Get the selected token
+      const selectedToken = userTokens.find(token => token.id === formData.tokenId);
+      if (!selectedToken) {
+        throw new Error("Selected token not found");
+      }
+      
+      // Get contract address for the source chain
+      const tokenContract = selectedToken.chainInfo.find(
+        chain => chain.chain_id === formData.sourceChain
+      );
+      
+      if (!tokenContract || !tokenContract.contract_address) {
+        throw new Error(`Contract address not found for chain ID ${formData.sourceChain}`);
+      }
+      
+      setProcessingStatus("Connecting to wallet...");
+      
+      // Use direct contract interaction instead of API
+      const result = await executeCrossChainTransfer({
         sourceChain: formData.sourceChain,
         destinationChain: formData.destinationChain,
-        transferAmount: formData.transferAmount,
-        recipientAddress: formData.recipientAddress || address
+        tokenAddress: tokenContract.contract_address,
+        recipientAddress: formData.recipientAddress || address,
+        amount: formData.transferAmount
       });
       
       console.log('Transfer result:', result);
@@ -266,18 +340,20 @@ const TransferTokens = ({ embedded = false }) => {
       });
     } catch (error) {
       console.error('Transfer failed:', error);
-      alert(`Transfer failed: ${error.message}`);
+      setError(error.message);
     } finally {
       setTransferring(false);
+      setProcessingStatus("");
     }
   };
 
-  // Fetch user's tokens
+  // Fetch user's tokens - only if connected, regardless of network
   useEffect(() => {
     const fetchUserTokens = async () => {
       if (isConnected && address) {
         try {
           setLoading(true);
+          // Fetch tokens regardless of which network the user is on
           const tokens = await apiService.getUserTokens(address);
           console.log('Tokens fetched successfully:', tokens);
           
@@ -322,6 +398,19 @@ const TransferTokens = ({ embedded = false }) => {
   return (
     <PageContainer embedded={embedded.toString()}>
       <PageTitle embedded={embedded.toString()}>Transfer Your Universal Tokens</PageTitle>
+      
+      {/* Display network warning if not on ZetaChain */}
+      {isConnected && !isZetaChainNetwork && (
+        <NetworkWarning>
+          <p>Please switch to ZetaChain network to view and transfer your tokens.</p>
+          <NetworkButton 
+            onClick={handleSwitchToZetaChain}
+            disabled={switchingNetwork}
+          >
+            {switchingNetwork ? 'Switching...' : 'Switch to ZetaChain'}
+          </NetworkButton>
+        </NetworkWarning>
+      )}
       
       {loading ? (
         <FormContainer>
@@ -369,7 +458,7 @@ const TransferTokens = ({ embedded = false }) => {
             {/* Show destination selection if a token is selected */}
             {formData.tokenId && (
               <FormContainer>
-                <SectionTitle>Select Destination Chains</SectionTitle>
+                <SectionTitle>Select Destination Chain</SectionTitle>
                 <SelectedTokenSection>
                   <SelectedTokenHeader>
                     <SelectedTokenInfo>
@@ -403,7 +492,7 @@ const TransferTokens = ({ embedded = false }) => {
                         token={selectedToken}
                         chainId={chain.id}
                         balance={selectedToken.balances[chain.id] || 0}
-                        selected={formData.destinationChain.includes(chain.id)}
+                        selected={formData.destinationChain === chain.id}
                         disabled={chain.disabled}
                         onClick={handleDestinationSelect}
                       />
@@ -413,7 +502,7 @@ const TransferTokens = ({ embedded = false }) => {
               </FormContainer>
             )}
             
-            {formData.tokenId && formData.destinationChain.length > 0 && (
+            {formData.tokenId && formData.destinationChain && (
               <FormContainer>
                 <SectionTitle>Transfer Details</SectionTitle>
                 <FormRow>
@@ -440,13 +529,27 @@ const TransferTokens = ({ embedded = false }) => {
                   </FormGroup>
                 </FormRow>
                 
+                {/* Show error message if there is one */}
+                {error && (
+                  <div style={{ color: 'red', margin: '16px 0' }}>
+                    Error: {error}
+                  </div>
+                )}
+                
+                {/* Show processing status if transferring */}
+                {transferring && processingStatus && (
+                  <div style={{ margin: '16px 0' }}>
+                    <p>{processingStatus}</p>
+                  </div>
+                )}
+                
                 <ButtonContainer>
                   <TransferButton 
                     type="submit" 
                     disabled={
                       transferring || 
                       !formData.tokenId || 
-                      formData.destinationChain.length === 0 || 
+                      !formData.destinationChain || 
                       !formData.transferAmount
                     }
                   >
@@ -467,14 +570,12 @@ const TransferTokens = ({ embedded = false }) => {
                   } on {
                     chainNames[transferResult.sourceChain] || transferResult.sourceChain
                   } to {
-                    transferResult.destinationChains.map(
-                      chainId => chainNames[chainId] || chainId
-                    ).join(', ')
+                    chainNames[transferResult.destinationChains[0]] || transferResult.destinationChains[0]
                   }
                 </p>
                 <p>Transaction hash: 
                   <TransactionHash 
-                    href={`https://athens.explorer.zetachain.com/cc/tx/${transferResult.transactionHash}`}
+                    href={`https://explorer.zetachain.com/tx/${transferResult.transactionHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >

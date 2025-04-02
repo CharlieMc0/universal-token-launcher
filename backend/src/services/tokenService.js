@@ -1039,8 +1039,8 @@ class TokenService {
         
         if (matchedTokens.length > 0) {
           logger.info(`Found ${matchedTokens.length} matching tokens`);
-          // Process matched tokens, then combine with known tokens
-          const processedTokens = this.processTokens(matchedTokens, address);
+          // Process matched tokens to include connected contracts
+          const processedTokens = await this.processTokensWithConnectedContracts(matchedTokens, address);
           logger.info(`Combining ${processedTokens.length} processed tokens with ${knownTokens.length} known tokens`);
           return [...processedTokens, ...knownTokens];
         } else {
@@ -1048,22 +1048,28 @@ class TokenService {
           
           // If no matches through API but we have deployments, create token entries from the deployments
           if (deployments.length > 0) {
-            const dbTokens = deployments.map(deployment => {
+            const dbTokens = await Promise.all(deployments.map(async deployment => {
               const tokenConfig = deployment.TokenConfiguration;
+              
+              // Get connected contracts for this token
+              const connectedContracts = await this.getConnectedContractsForToken(deployment.contractAddress);
+              
+              // Get balances across chains
+              const balances = await this.getBalancesAcrossChains(connectedContracts, address);
+              
               return {
                 id: tokenConfig.id,
                 tokenName: tokenConfig.tokenName,
                 tokenSymbol: tokenConfig.tokenSymbol,
                 iconUrl: tokenConfig.iconUrl,
-                deployedContracts: { 
-                  [deployment.chainId]: deployment.contractAddress 
-                },
-                balances: { [deployment.chainId]: "0" }, // We don't know the balance
+                // Include all connected contracts, not just ZetaChain
+                deployedContracts: connectedContracts,
+                balances: balances,
                 source: "database"
               };
-            });
+            }));
             
-            logger.info(`Created ${dbTokens.length} tokens from database deployments`);
+            logger.info(`Created ${dbTokens.length} tokens from database deployments with connected contracts`);
             // Combine with known tokens and return
             return [...dbTokens, ...knownTokens];
           }
@@ -1077,20 +1083,26 @@ class TokenService {
         
         // If API call failed but we have deployments, create token entries from the deployments
         if (deployments.length > 0) {
-          const dbTokens = deployments.map(deployment => {
+          const dbTokens = await Promise.all(deployments.map(async deployment => {
             const tokenConfig = deployment.TokenConfiguration;
+            
+            // Get connected contracts for this token
+            const connectedContracts = await this.getConnectedContractsForToken(deployment.contractAddress);
+            
+            // Get balances across chains
+            const balances = await this.getBalancesAcrossChains(connectedContracts, address);
+            
             return {
               id: tokenConfig.id,
               tokenName: tokenConfig.tokenName,
               tokenSymbol: tokenConfig.tokenSymbol,
               iconUrl: tokenConfig.iconUrl,
-              deployedContracts: { 
-                [deployment.chainId]: deployment.contractAddress 
-              },
-              balances: { [deployment.chainId]: "0" }, // We don't know the balance
+              // Include all connected contracts, not just ZetaChain
+              deployedContracts: connectedContracts,
+              balances: balances,
               source: "database"
             };
-          });
+          }));
           
           logger.info(`Created ${dbTokens.length} tokens from database deployments`);
           // Combine with known tokens and return
@@ -1106,20 +1118,26 @@ class TokenService {
       // Even if API fails, try to get tokens from the database
       try {
         if (deployments && deployments.length > 0) {
-          const dbTokens = deployments.map(deployment => {
+          const dbTokens = await Promise.all(deployments.map(async deployment => {
             const tokenConfig = deployment.TokenConfiguration;
+            
+            // Get connected contracts for this token
+            const connectedContracts = await this.getConnectedContractsForToken(deployment.contractAddress);
+            
+            // Get balances across chains
+            const balances = await this.getBalancesAcrossChains(connectedContracts, address);
+            
             return {
               id: tokenConfig.id,
               tokenName: tokenConfig.tokenName,
               tokenSymbol: tokenConfig.tokenSymbol,
               iconUrl: tokenConfig.iconUrl,
-              deployedContracts: { 
-                [deployment.chainId]: deployment.contractAddress 
-              },
-              balances: { [deployment.chainId]: "0" }, // We don't know the balance
+              // Include all connected contracts, not just ZetaChain
+              deployedContracts: connectedContracts,
+              balances: balances,
               source: "database"
             };
-          });
+          }));
           
           logger.info(`Created ${dbTokens.length} tokens from database after API error`);
           // Combine with known tokens and return
@@ -1131,6 +1149,103 @@ class TokenService {
       
       // Fallback to known tokens on error
       return knownTokens;
+    }
+  }
+
+  /**
+   * Process tokens to include connected contracts across all chains
+   * @param {Array} matchedTokens - Tokens matched from Blockscout API
+   * @param {string} address - User's wallet address
+   * @returns {Promise<Array>} - Enhanced token objects with connected contracts
+   */
+  async processTokensWithConnectedContracts(matchedTokens, address) {
+    logger.info(`Processing ${matchedTokens.length} matched tokens for ${address}`);
+    
+    const processedTokensPromises = matchedTokens.map(async matchedToken => {
+      const { config, ...tokenData } = matchedToken;
+      // Access nested data correctly
+      const deploymentLog = config.deploymentLog;
+      const tokenConfig = config.tokenConfig; 
+      const contractAddress = tokenData.address.toLowerCase();
+      
+      // Get connected contracts across all chains
+      const connectedContracts = await this.getConnectedContractsForToken(contractAddress);
+      
+      // Get token balances across all chains
+      const balances = await this.getBalancesAcrossChains(connectedContracts, address);
+      
+      // Format token data for the response
+      return {
+        id: tokenConfig ? tokenConfig.id : null,
+        tokenName: tokenData.name || (tokenConfig ? tokenConfig.tokenName : "Unknown Token"),
+        tokenSymbol: tokenData.symbol || (tokenConfig ? tokenConfig.tokenSymbol : "???"),
+        iconUrl: tokenConfig ? tokenConfig.iconUrl : null,
+        deployedContracts: connectedContracts,
+        balances: balances,
+        source: "blockscout"
+      };
+    });
+    
+    return Promise.all(processedTokensPromises);
+  }
+  
+  /**
+   * Get connected contracts for a token from ZetaChain
+   * @param {string} zetaContractAddress - ZetaChain contract address
+   * @returns {Promise<Object>} - Map of chainId to contract address
+   */
+  async getConnectedContractsForToken(zetaContractAddress) {
+    try {
+      // Import the connectedContracts utility
+      const { getConnectedContracts } = require('../utils/connectedContracts');
+      
+      // Get connected contracts
+      const connectedContracts = await getConnectedContracts(zetaContractAddress);
+      logger.info(`Found ${Object.keys(connectedContracts).length} connected contracts for ${zetaContractAddress}`);
+      
+      return connectedContracts;
+    } catch (error) {
+      logger.error(`Error getting connected contracts: ${error.message}`, {
+        zetaContractAddress,
+        stack: error.stack
+      });
+      
+      // Return just the ZetaChain contract as fallback
+      const zetaChainId = chainInfo.getPrimaryZetaChainId();
+      return {
+        [zetaChainId]: zetaContractAddress
+      };
+    }
+  }
+  
+  /**
+   * Get token balances across all chains
+   * @param {Object} contractAddresses - Map of chainId to contract address
+   * @param {string} walletAddress - User's wallet address
+   * @returns {Promise<Object>} - Map of chainId to token balance
+   */
+  async getBalancesAcrossChains(contractAddresses, walletAddress) {
+    try {
+      // Import the balances utility
+      const { getTokenBalancesAcrossChains } = require('../utils/connectedContracts');
+      
+      // Get balances across chains
+      const balances = await getTokenBalancesAcrossChains(contractAddresses, walletAddress);
+      return balances;
+    } catch (error) {
+      logger.error(`Error getting balances across chains: ${error.message}`, {
+        walletAddress,
+        contractAddresses: Object.keys(contractAddresses).join(','),
+        stack: error.stack
+      });
+      
+      // Return empty balances as fallback
+      const defaultBalances = {};
+      Object.keys(contractAddresses).forEach(chainId => {
+        defaultBalances[chainId] = "0";
+      });
+      
+      return defaultBalances;
     }
   }
 }

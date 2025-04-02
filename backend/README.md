@@ -69,6 +69,35 @@ npm run migrate
 - The fix involved replacing the incorrect call with a direct Sequelize database query using `DeploymentLog.findAll` to fetch deployments based on the `creatorWallet`.
 - Adjusted token processing logic to handle the data structure returned by the new query.
 
+### User Token Retrieval Endpoint Fix
+
+We fixed an issue with the `/api/users/:walletAddress/tokens` endpoint that was causing a `TypeError: Failed to fetch` error on the frontend. The primary issues were:
+
+1. **Incorrect Blockscout API URL**: The system was using an outdated URL (`https://athens.explorer.zetachain.com/`) when it should have been using `https://zetachain-testnet.blockscout.com/api/v2/`.
+
+2. **Early Return Logic Issue**: The token service was immediately returning hardcoded tokens when available, preventing the retrieval of tokens from the database for known wallet addresses.
+
+3. **Token Combination Logic**: The system wasn't properly combining tokens from different sources (hardcoded, API, and database).
+
+#### Changes Made:
+
+1. Updated the Blockscout API URL to use the correct endpoint:
+   ```javascript
+   const baseUrl = 'https://zetachain-testnet.blockscout.com/api/v2/';
+   const apiUrl = `${baseUrl}addresses/${address}/tokens?type=ERC-20%2CERC-721%2CERC-1155`;
+   ```
+
+2. Modified the token retrieval logic to:
+   - Store hardcoded tokens without immediately returning them
+   - Query the database for all tokens created by the user regardless of hardcoded status
+   - Attempt to retrieve tokens from the Blockscout API
+   - Combine tokens from all three sources (hardcoded, database, and API)
+   - Implement better fallback strategies when the API call fails
+
+3. Added more comprehensive logging to track the token retrieval process
+
+These changes ensure that users see all their tokens in the UI, both from hardcoded sources and from actual database records of deployed tokens.
+
 ## Prerequisites
 
 - Node.js v16+
@@ -385,7 +414,7 @@ This structured approach ensures all deployment activities are properly tracked 
 ### Create a Token Configuration
 
 ```bash
-curl -X POST http://localhost:3001/api/tokens \
+curl -X POST http://localhost:8000/api/tokens \
   -H "Content-Type: multipart/form-data" \
   -H "X-Wallet-Address: YOUR_WALLET_ADDRESS" \
   -F "token_name=My Token" \
@@ -400,7 +429,7 @@ curl -X POST http://localhost:3001/api/tokens \
 ### Deploy a Token
 
 ```bash
-curl -X POST http://localhost:3001/api/tokens/1/deploy \
+curl -X POST http://localhost:8000/api/tokens/1/deploy \
   -H "Content-Type: application/json" \
   -H "X-Wallet-Address: YOUR_WALLET_ADDRESS" \
   -d '{"fee_paid_tx": "0x123abc..."}'
@@ -409,14 +438,14 @@ curl -X POST http://localhost:3001/api/tokens/1/deploy \
 ### Get Deployment Status
 
 ```bash
-curl -X GET http://localhost:3001/api/tokens/1/logs \
+curl -X GET http://localhost:8000/api/tokens/1/logs \
   -H "X-Wallet-Address: YOUR_WALLET_ADDRESS"
 ```
 
 ### Get Contract Verification Status
 
 ```bash
-curl -X GET http://localhost:3001/api/tokens/1/verification \
+curl -X GET http://localhost:8000/api/tokens/1/verification \
   -H "X-Wallet-Address: YOUR_WALLET_ADDRESS"
 ```
 

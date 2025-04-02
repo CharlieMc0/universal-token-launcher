@@ -528,14 +528,16 @@ class TokenController {
         // Get formatted chain info for all chains this token is deployed on
         const formattedChains = chainInfo.getFormattedChainInfoList(deployedChains);
         
-        // Enhance chain info with contract addresses
+        // Enhance chain info with contract addresses and balances
         const enhancedChainInfo = formattedChains.map(chain => {
           const contractAddress = token.deployedContracts ? token.deployedContracts[chain.chainId] : null;
+          const balance = token.balances ? token.balances[chain.chainId] : '0';
           
           return {
             ...chain,
             contractAddress: contractAddress,
-            deploymentStatus: 'success', // If we have a contract address, it was successfully deployed
+            balance: balance,
+            deploymentStatus: contractAddress ? 'success' : 'pending', // If we have a contract address, it was successfully deployed
             explorerUrl: contractAddress ? 
               chainInfo.getExplorerAddressUrl(chain.chainId, contractAddress) : null,
             blockscoutUrl: chain.blockscoutUrl && contractAddress ? 
@@ -551,8 +553,8 @@ class TokenController {
           iconUrl: token.iconUrl,
           deployedContracts: token.deployedContracts, // Map of chainId -> contractAddress
           deployedChains: deployedChains, // Array of chain IDs for convenience
-          chainInfo: enhancedChainInfo, // Enhanced info with explorer URLs
-          balances: token.balances || {} // Balance information
+          chainInfo: enhancedChainInfo, // Enhanced info with contract addresses, explorer URLs, and balances
+          balances: token.balances || {} // Raw balance information
         };
       }));
       
