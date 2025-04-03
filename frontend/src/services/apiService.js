@@ -320,21 +320,22 @@ export const getToken = async (tokenId) => {
  * Trigger token deployment after fee payment
  * 
  * @param {string} tokenId - Token ID to deploy
- * @param {Object} deployData - Deployment data including fee transaction
+ * @param {Object} deployData - Deployment data including fee transaction and token details
  * @returns {Promise<Object>} - Deployment result
  */
 export const deployToken = async (tokenId, deployData) => {
   try {
     // For fee transaction confirmation, we need to send full token data after fee payment
-    // This is required because the backend API expects all fields in each call
     const apiData = {
       token_id: tokenId,
       fee_paid_tx: deployData.fee_paid_tx,
-      // Adding required fields that the API expects
-      token_name: 'Universal Token', // Placeholder
-      token_symbol: 'UTK', // Placeholder
-      selected_chains: ['7001'], // Default to ZetaChain
-      deployer_address: localStorage.getItem('currentWalletAddress') || currentWalletAddress || '0x0000000000000000000000000000000000000000'
+      token_name: deployData.token_name,
+      token_symbol: deployData.token_symbol,
+      decimals: deployData.decimals,
+      total_supply: deployData.total_supply,
+      selected_chains: deployData.selected_chains,
+      deployer_address: deployData.deployer_address,
+      allocations: deployData.allocations
     };
     
     console.log(`Confirming fee payment for token ID: ${tokenId}`, apiData);

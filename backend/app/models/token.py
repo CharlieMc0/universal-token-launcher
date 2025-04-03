@@ -25,6 +25,7 @@ class TokenModel(Base):
     deployer_address = Column(String, nullable=False)
     connected_chains_json = Column(JSONB, nullable=False, default={})
     deployment_status = Column(String, nullable=False, default='starting')
+    verification_status = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(
         TIMESTAMP(timezone=True),
@@ -50,6 +51,7 @@ class TokenModel(Base):
             "deployer_address": self.deployer_address,
             "connected_chains_json": self.connected_chains_json,
             "deployment_status": self.deployment_status,
+            "verification_status": self.verification_status,
             "error_message": self.error_message,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None

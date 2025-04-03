@@ -537,8 +537,11 @@ const LaunchPage = ({ embedded = false }) => {
           fee_paid_tx: txHash,
           token_name: tokenData.token_name,
           token_symbol: tokenData.token_symbol,
+          decimals: tokenData.decimals,
+          total_supply: tokenData.total_supply,
+          selected_chains: tokenData.selected_chains,
           deployer_address: tokenData.deployer_address,
-          selected_chains: tokenData.selected_chains
+          allocations: tokenData.allocations
         });
         
         // Start polling for deployment status

@@ -110,7 +110,7 @@ class TokenService:
                 "status": token_data["deployment_status"],
                 "explorer_url": explorer_url,
                 "blockscout_url": blockscout_url,
-                "verification_status": "unknown",  # Default value
+                "verification_status": token_data.get("verification_status", "pending"),
                 "contract_url": (
                     f"{blockscout_url}/address/{token_data['zc_contract_address']}"
                     if blockscout_url else None
@@ -141,7 +141,7 @@ class TokenService:
                 "status": chain_data.get("status", "completed"),  # Default to completed
                 "explorer_url": explorer_url,
                 "blockscout_url": blockscout_url,
-                "verification_status": chain_data.get("verification_status", "unknown"),
+                "verification_status": chain_data.get("verification_status", "pending"),
                 "contract_url": None  # Will be populated below
             }
             

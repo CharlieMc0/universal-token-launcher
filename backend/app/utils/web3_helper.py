@@ -193,157 +193,86 @@ async def call_contract_method(
 
 
 def load_contract_data():
-    """Load contract ABIs and bytecodes from artifact files."""
+    """Load contract ABIs and bytecode."""
     global UNIVERSAL_TOKEN_ABI, UNIVERSAL_TOKEN_BYTECODE
     global ZC_UNIVERSAL_TOKEN_ABI, ZC_UNIVERSAL_TOKEN_BYTECODE
     global UNIVERSAL_NFT_ABI, UNIVERSAL_NFT_BYTECODE
     global ZC_UNIVERSAL_NFT_ABI, ZC_UNIVERSAL_NFT_BYTECODE
-    
+
     try:
-        # Load Token contracts
+        # Load ZetaChain token artifact first
+        zc_token_path = os.path.join(SMART_CONTRACTS_DIR, "ZetaChainUniversalToken_bytecode.json")
+        zc_abi_path = os.path.join(SMART_CONTRACTS_DIR, "ZetaChainUniversalToken_abi.json")
         
-        # Check if artifact files exist
-        if not os.path.exists(EVM_TOKEN_PATH):
-            logger.warning(
-                f"EVM token artifact not found at {EVM_TOKEN_PATH}, "
-                "using placeholder data"
-            )
-            # Fallback to placeholder data for EVMUniversalToken (6 args)
-            UNIVERSAL_TOKEN_ABI = [
+        if os.path.exists(zc_token_path) and os.path.exists(zc_abi_path):
+            with open(zc_token_path, 'r') as f:
+                ZC_UNIVERSAL_TOKEN_BYTECODE = json.load(f)
+            with open(zc_abi_path, 'r') as f:
+                ZC_UNIVERSAL_TOKEN_ABI = json.load(f)
+            logger.info("Loaded ZetaChain token artifacts from JSON files")
+        else:
+            logger.warning("ZetaChain token artifacts not found, using fallback")
+            # Fallback ABI and bytecode
+            ZC_UNIVERSAL_TOKEN_ABI = [
                 {"inputs": [
-                    {"internalType": "string", "name": "name_", "type": "string"}, 
+                    {"internalType": "string", "name": "name_", "type": "string"},
                     {"internalType": "string", "name": "symbol_", "type": "string"},
                     {"internalType": "uint8", "name": "decimals_", "type": "uint8"},
-                    {
-                        "internalType": "uint256", 
-                        "name": "initialSupply", 
-                        "type": "uint256"
-                    },
-                    {
-                        "internalType": "uint256", 
-                        "name": "currentChainId", 
-                        "type": "uint256"
-                    },
-                    {
-                        "internalType": "address", 
-                        "name": "initialOwner", 
-                        "type": "address"
-                    }
+                    {"internalType": "uint256", "name": "initialSupply", "type": "uint256"},
+                    {"internalType": "address", "name": "initialOwner", "type": "address"}
                 ], "stateMutability": "nonpayable", "type": "constructor"},
                 {"inputs": [
-                    {"internalType": "address", "name": "to", "type": "address"}, 
+                    {"internalType": "address", "name": "to", "type": "address"},
                     {"internalType": "uint256", "name": "amount", "type": "uint256"}
-                ], 
-                "name": "mint", 
-                "outputs": [], 
-                "stateMutability": "nonpayable", 
-                "type": "function"},
+                ],
+                "name": "mint",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"}
             ]
-            # Complete bytecode for testing purposes (longer than placeholder)
-            UNIVERSAL_TOKEN_BYTECODE = "0x60806040523480156200001157600080fd5b5060405162000a4838038062000a488339810160408190526200003491620001db565b8251839083906200004d90600390602085019062000068565b5080516200006390600490602084019062000068565b5050505062000281565b828054620000769062000245565b90600052602060002090601f0160209004810192826200009a5760008555620000e5565b82601f10620000b557805160ff1916838001178555620000e5565b82800160010185558215620000e5579182015b82811115620000e5578251825591602001919060010190620000c8565b50620000f3929150620000f7565b5090565b5b80821115620000f35760008155600101620000f8565b634e487b7160e01b600052604160045260246000fd5b600082601f8301126200013657600080fd5b81516001600160401b03808211156200015357620001536200010e565b604051601f8301601f19908116603f011681019082821181831017156200017e576200017e6200010e565b816040528381526020925086838588010111156200019b57600080fd5b600091505b83821015620001bf5785820183015181830184015290820190620001a0565b83821115620001d15760008385830101525b9695505050505050565b600080600060608486031215620001f157600080fd5b83516001600160a01b03811681146200020957600080fd5b60208501519093506001600160401b03808211156200022757600080fd5b6200023587838801620001245b604086015191508082111562000250566200025062000110565b506200025f8682860162000124565b9150509250925092565b600181811c908216806200025457607f821691505b602082108114156200027b57634e487b7160e01b600052602260045260246000fd5b50919050565b6107b780620002916000396000f300"
-        else:
-            # Load EVM token artifact
-            with open(EVM_TOKEN_PATH, 'r') as f:
-                evm_token_data = json.load(f)
-                UNIVERSAL_TOKEN_ABI = evm_token_data.get('abi')
-                UNIVERSAL_TOKEN_BYTECODE = evm_token_data.get('bytecode')
-                logger.info(f"Loaded EVM token artifact from {EVM_TOKEN_PATH}")
+            # Placeholder bytecode for testing
+            ZC_UNIVERSAL_TOKEN_BYTECODE = "0x60806040523480156200001157600080fd5b50604051620000a4..."
         
-        if not os.path.exists(ZC_TOKEN_PATH):
-            logger.warning(
-                f"ZetaChain token artifact not found at {ZC_TOKEN_PATH}, "
-                "using EVM data"
-            )
-            # Fallback to EVM data
-            ZC_UNIVERSAL_TOKEN_ABI = UNIVERSAL_TOKEN_ABI
-            ZC_UNIVERSAL_TOKEN_BYTECODE = UNIVERSAL_TOKEN_BYTECODE
-        else:
-            # Load ZetaChain token artifact
-            with open(ZC_TOKEN_PATH, 'r') as f:
-                zc_token_data = json.load(f)
-                ZC_UNIVERSAL_TOKEN_ABI = zc_token_data.get('abi')
-                ZC_UNIVERSAL_TOKEN_BYTECODE = zc_token_data.get('bytecode')
-                logger.info(f"Loaded ZetaChain token artifact from {ZC_TOKEN_PATH}")
+        # Use ZetaChain token ABI/bytecode for EVM token initially
+        UNIVERSAL_TOKEN_ABI = ZC_UNIVERSAL_TOKEN_ABI
+        UNIVERSAL_TOKEN_BYTECODE = ZC_UNIVERSAL_TOKEN_BYTECODE
         
-        # Load NFT contracts
-        
-        # Check if artifact files exist
-        if not os.path.exists(EVM_NFT_PATH):
-            logger.warning(
-                f"EVM NFT artifact not found at {EVM_NFT_PATH}, "
-                "using placeholder data"
-            )
-            # Fallback to placeholder data for EVMUniversalNFT (6 args)
-            UNIVERSAL_NFT_ABI = [
-                {"inputs": [
-                    {"internalType": "string", "name": "name_", "type": "string"}, 
-                    {"internalType": "string", "name": "symbol_", "type": "string"},
-                    {"internalType": "string", "name": "baseURI_", "type": "string"},
-                    {
-                        "internalType": "uint256", 
-                        "name": "maxSupply_", 
-                        "type": "uint256"
-                    },
-                    {
-                        "internalType": "uint256", 
-                        "name": "currentChainId", 
-                        "type": "uint256"
-                    },
-                    {
-                        "internalType": "address", 
-                        "name": "initialOwner", 
-                        "type": "address"
-                    }
-                ], "stateMutability": "nonpayable", "type": "constructor"},
-                {"inputs": [
-                    {"internalType": "address", "name": "to", "type": "address"}
-                ], 
-                "name": "mint", 
-                "outputs": [
-                    {"internalType": "uint256", "name": "", "type": "uint256"}
-                ], 
-                "stateMutability": "nonpayable", 
-                "type": "function"},
-            ]
-            # Complete bytecode for testing purposes (longer than placeholder)
-            UNIVERSAL_NFT_BYTECODE = "0x60806040523480156200001157600080fd5b5060405162000a4838038062000a488339810160408190526200003491620001db565b8251839083906200004d90600390602085019062000068565b5080516200006390600490602084019062000068565b5050505062000281565b828054620000769062000245565b90600052602060002090601f0160209004810192826200009a5760008555620000e5565b82601f10620000b557805160ff1916838001178555620000e5565b82800160010185558215620000e5579182015b82811115620000e5578251825591602001919060010190620000c8565b50620000f3929150620000f7565b5090565b5b80821115620000f35760008155600101620000f8565b634e487b7160e01b600052604160045260246000fd5b600082601f8301126200013657600080fd5b81516001600160401b03808211156200015357620001536200010e565b604051601f8301601f19908116603f011681019082821181831017156200017e576200017e6200010e565b816040528381526020925086838588010111156200019b57600080fd5b600091505b83821015620001bf5785820183015181830184015290820190620001a0565b83821115620001d15760008385830101525b9695505050505050565b600080600060608486031215620001f157600080fd5b83516001600160a01b03811681146200020957600080fd5b60208501519093506001600160401b03808211156200022757600080fd5b6200023587838801620001245b604086015191508082111562000250566200025062000110565b506200025f8682860162000124565b9150509250925092565b600181811c908216806200025457607f821691505b602082108114156200027b57634e487b7160e01b600052602260045260246000fd5b50919050565b6107b780620002916000396000f300"
-        else:
-            # Load EVM NFT artifact
-            with open(EVM_NFT_PATH, 'r') as f:
-                evm_nft_data = json.load(f)
-                UNIVERSAL_NFT_ABI = evm_nft_data.get('abi')
-                UNIVERSAL_NFT_BYTECODE = evm_nft_data.get('bytecode')
-                logger.info(f"Loaded EVM NFT artifact from {EVM_NFT_PATH}")
-        
-        if not os.path.exists(ZC_NFT_PATH):
-            logger.warning(
-                f"ZetaChain NFT artifact not found at {ZC_NFT_PATH}, "
-                "using EVM NFT data"
-            )
-            # Fallback to EVM data
-            ZC_UNIVERSAL_NFT_ABI = UNIVERSAL_NFT_ABI
-            ZC_UNIVERSAL_NFT_BYTECODE = UNIVERSAL_NFT_BYTECODE
-        else:
-            # Load ZetaChain NFT artifact
-            with open(ZC_NFT_PATH, 'r') as f:
-                zc_nft_data = json.load(f)
-                ZC_UNIVERSAL_NFT_ABI = zc_nft_data.get('abi')
-                ZC_UNIVERSAL_NFT_BYTECODE = zc_nft_data.get('bytecode')
-                logger.info(f"Loaded ZetaChain NFT artifact from {ZC_NFT_PATH}")
+        # Load NFT contracts (placeholder for now)
+        UNIVERSAL_NFT_ABI = [
+            {"inputs": [
+                {"internalType": "string", "name": "name_", "type": "string"},
+                {"internalType": "string", "name": "symbol_", "type": "string"},
+                {"internalType": "string", "name": "baseURI_", "type": "string"}
+            ], "stateMutability": "nonpayable", "type": "constructor"},
+            {"inputs": [
+                {"internalType": "address", "name": "to", "type": "address"}
+            ],
+            "name": "mint",
+            "outputs": [
+                {"internalType": "uint256", "name": "", "type": "uint256"}
+            ],
+            "stateMutability": "nonpayable",
+            "type": "function"}
+        ]
+        # Placeholder bytecode for NFT
+        UNIVERSAL_NFT_BYTECODE = "0x60806040523480156200001157600080fd5b50604051620000a4..."
+        ZC_UNIVERSAL_NFT_ABI = UNIVERSAL_NFT_ABI
+        ZC_UNIVERSAL_NFT_BYTECODE = UNIVERSAL_NFT_BYTECODE
         
         logger.info("Contract data loaded successfully")
         return True
+
     except Exception as e:
-        logger.error(f"Error loading contract data: {str(e)}")
-        # Fallback to placeholder data with minimal ABI for tokens
+        logger.error(f"Error loading contract data: {e}", exc_info=True)
+        # Set fallback minimal data
         UNIVERSAL_TOKEN_ABI = [
             {"inputs": [
-                {"internalType": "address", "name": "initialOwner", "type": "address"}, 
-                {"internalType": "string", "name": "name", "type": "string"}, 
+                {"internalType": "address", "name": "initialOwner", "type": "address"},
+                {"internalType": "string", "name": "name", "type": "string"},
                 {"internalType": "string", "name": "symbol", "type": "string"}
             ], "stateMutability": "nonpayable", "type": "constructor"},
             {"inputs": [
-                {"internalType": "address", "name": "to", "type": "address"}, 
+                {"internalType": "address", "name": "to", "type": "address"},
                 {"internalType": "uint256", "name": "amount", "type": "uint256"}
             ], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"},
         ]
@@ -352,18 +281,19 @@ def load_contract_data():
         ZC_UNIVERSAL_TOKEN_ABI = UNIVERSAL_TOKEN_ABI
         ZC_UNIVERSAL_TOKEN_BYTECODE = UNIVERSAL_TOKEN_BYTECODE
         
-        # Fallback to placeholder data with minimal ABI for NFTs
         UNIVERSAL_NFT_ABI = [
             {"inputs": [
-                {"internalType": "string", "name": "name_", "type": "string"}, 
-                {"internalType": "string", "name": "symbol_", "type": "string"}, 
+                {"internalType": "string", "name": "name_", "type": "string"},
+                {"internalType": "string", "name": "symbol_", "type": "string"},
                 {"internalType": "string", "name": "baseURI_", "type": "string"}
             ], "stateMutability": "nonpayable", "type": "constructor"},
             {"inputs": [
                 {"internalType": "address", "name": "to", "type": "address"}
-            ], "name": "mint", "outputs": [
-                {"internalType": "uint256", "name": "", "type": "uint256"}
-            ], "stateMutability": "nonpayable", "type": "function"},
+            ],
+            "name": "mint",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"}
         ]
         # Minimal bytecode for testing
         UNIVERSAL_NFT_BYTECODE = "0x60806040523480156200001157600080fd5b50604051620000a4..."

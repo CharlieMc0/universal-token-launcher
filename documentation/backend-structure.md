@@ -8,6 +8,42 @@ This document outlines the foundational backend system for the Universal Token L
 
 We will use **PostgreSQL** as our primary relational database. Data is normalized to avoid redundancy, with separate tables for token configurations and deployment logs. Key tables include:
 
+### 1.1. Token Deployments Table
+*Purpose:* Record each token deployment configuration and status across multiple chains.
+- **Fields:**
+  - `id` (SERIAL, PRIMARY KEY)
+  - `token_name` (VARCHAR, NOT NULL)
+  - `token_symbol` (VARCHAR, NOT NULL)
+  - `decimals` (INTEGER, NOT NULL, default 18)
+  - `total_supply` (STRING, NOT NULL)
+  - `zc_contract_address` (STRING, nullable) – The ZetaChain contract address
+  - `deployer_address` (STRING, NOT NULL) – The wallet address of the token creator
+  - `connected_chains_json` (JSONB, NOT NULL, default {}) – Stores per-chain deployment data including:
+    ```json
+    {
+      "chain_id": {
+        "contract_address": "0x...",
+        "transaction_hash": "0x...",
+        "status": "completed|failed|pending",
+        "verification_status": "verified|pending|failed",
+        "verification_message": "Error message if failed",
+        "chain_name": "Chain Name",
+        "explorer_url": "https://...",
+        "blockscout_url": "https://...",
+        "contract_url": "https://..."
+      }
+    }
+    ```
+  - `deployment_status` (VARCHAR, NOT NULL, default 'starting') – Overall deployment status
+  - `verification_status` (VARCHAR, nullable) – Verification status for ZetaChain contract
+  - `error_message` (TEXT, nullable) – Any error messages during deployment
+  - `created_at` (TIMESTAMP WITH TIME ZONE, default NOW())
+  - `updated_at` (TIMESTAMP WITH TIME ZONE)
+- **Indexes & Constraints:**
+  - Index on `deployer_address` for quick lookup
+  - Index on `zc_contract_address` for verification lookups
+  - JSONB index on `connected_chains_json` for efficient chain-specific queries
+
 <!-- ### 1.1. TokenConfigurations
 *Purpose:* Record each token deployment configuration initiated by a token creator.
 - **Fields:**
@@ -415,31 +451,43 @@ We have implemented a comprehensive contract verification service that allows de
    - Stores verification status in the DeploymentLog model
    - Provides explorer URLs for verified contracts
 
-### 9.2 Database Schema Updates
+### 9.2 Verification Status Storage
 
-New fields have been added to the DeploymentLog model to track verification:
+The verification status is stored differently for ZetaChain and EVM chain contracts:
 
-```javascript
-// New fields in DeploymentLog model
-verificationStatus: {
-  type: DataTypes.STRING,
-  field: 'verification_status',
-  defaultValue: 'pending'  // Values: pending, processing, verified, failed, skipped
-},
-verificationError: {
-  type: DataTypes.TEXT,
-  field: 'verification_error'
-},
-verifiedUrl: {
-  type: DataTypes.STRING,
-  field: 'verified_url'
-}
-```
+1. **ZetaChain Contract Verification:**
+   - Status stored in the top-level `verification_status` column of the `token_deployments` table
+   - Possible values: 'pending', 'verified', 'failed'
+   - Direct field access for quick status checks
+   - Used by BlockScout verification process
 
-A migration script has been created to add these fields to the existing database:
-- Located at `src/db/migrations/20240402000000-add-verification-fields.js`
-- Adds verification_status, verification_error, and verified_url columns
-- Handles existing tables gracefully
+2. **EVM Chain Contract Verification:**
+   - Status stored within the `connected_chains_json` JSONB field
+   - Each chain entry contains:
+     ```json
+     {
+       "chain_id": {
+         "verification_status": "pending|verified|failed",
+         "verification_message": "Error details if failed",
+         "verification_guid": "Explorer verification GUID"
+       }
+     }
+     ```
+   - Supports different verification states per chain
+   - Includes explorer-specific details (e.g., Etherscan GUID)
+
+3. **Status Management:**
+   - Automatic updates via the `VerificationService`
+   - Status polling for Etherscan-like explorers
+   - Immediate status for BlockScout verifications
+   - Non-blocking verification process
+   - Proper error handling and status propagation
+
+4. **API Response Integration:**
+   - Combined status reporting in token info endpoints
+   - Chain-specific verification details in responses
+   - Explorer URLs for verified contracts
+   - Detailed error messages when verification fails
 
 ### 9.3 Integration with Deployment Process
 

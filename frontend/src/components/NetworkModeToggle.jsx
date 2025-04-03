@@ -5,8 +5,8 @@ import { useNetworkMode } from '../contexts/NetworkModeContext';
 const ToggleContainer = styled.div`
   display: flex;
   align-items: center;
-  width: 220px;
-  justify-content: space-between;
+  width: 260px;
+  justify-content: flex-start;
   padding: 4px;
 `;
 
@@ -14,41 +14,48 @@ const ToggleLabel = styled.span`
   font-size: 15px;
   font-weight: 500;
   color: var(--text-secondary);
-  margin-right: 12px;
+  margin-right: 16px;
   flex-shrink: 0;
 `;
 
 const ToggleSwitch = styled.div`
   position: relative;
-  width: 120px;
+  width: 160px;
   height: 32px;
   background: ${props => 
     props.$active ? 'linear-gradient(135deg, #4A9FFF 0%, #A269FF 100%)' : 'var(--bg-secondary)'};
   border-radius: 16px;
   cursor: ${props => props.$switching ? 'wait' : 'pointer'};
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
   flex-shrink: 0;
   border: 1px solid ${props => props.$active ? 'transparent' : 'var(--border)'};
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  overflow: hidden;
   
-  min-width: 120px;
-  max-width: 120px;
+  min-width: 160px;
+  max-width: 160px;
   
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   }
 `;
 
 const ToggleKnob = styled.div`
   position: absolute;
-  top: 4px;
-  left: ${props => props.$active ? '84px' : '4px'};
-  width: 22px;
-  height: 22px;
-  background-color: white;
-  border-radius: 50%;
+  top: 2px;
+  left: ${props => props.$active ? 'calc(50% - 2px)' : '2px'};
+  width: calc(50% - 4px);
+  height: 28px;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
   transition: all 0.3s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  z-index: 1;
   
   ${props => props.$switching && `
     &:after {
@@ -60,7 +67,7 @@ const ToggleKnob = styled.div`
       height: 12px;
       margin-top: -6px;
       margin-left: -6px;
-      border: 2px solid #4A9FFF;
+      border: 2px solid #FFFFFF;
       border-top-color: transparent;
       border-radius: 50%;
       animation: spin 1s linear infinite;
@@ -74,15 +81,17 @@ const ToggleKnob = styled.div`
 
 const NetworkModeText = styled.span`
   font-size: 14px;
-  font-weight: 500;
-  position: absolute;
-  top: 7px;
+  font-weight: ${props => props.$active ? '600' : '500'};
   color: white;
-  ${props => props.$mainnet ? 'right: 12px;' : 'left: 12px;'}
-  width: 40px;
-  text-align: ${props => props.$mainnet ? 'right' : 'left'};
-  opacity: ${props => props.$active ? 1 : 0.7};
-  transition: opacity 0.3s ease;
+  width: 50%;
+  text-align: center;
+  z-index: 2;
+  position: relative;
+  transition: all 0.3s ease;
+  opacity: ${props => props.$active ? 1 : 0.65};
+  pointer-events: none;
+  text-shadow: ${props => props.$active ? '0 0 8px rgba(255, 255, 255, 0.3)' : 'none'};
+  transform: ${props => props.$active ? 'scale(1.05)' : 'scale(1)'};
 `;
 
 const NetworkModeToggle = () => {
@@ -105,8 +114,8 @@ const NetworkModeToggle = () => {
     <ToggleContainer>
       <ToggleLabel>Network:</ToggleLabel>
       <ToggleSwitch onClick={handleToggle} $active={isMainnet} $switching={isSwitching}>
-        <NetworkModeText $active={!isMainnet} $mainnet={false}>Test</NetworkModeText>
-        <NetworkModeText $active={isMainnet} $mainnet={true}>Main</NetworkModeText>
+        <NetworkModeText $active={!isMainnet}>Test</NetworkModeText>
+        <NetworkModeText $active={isMainnet}>Main</NetworkModeText>
         <ToggleKnob $active={isMainnet} $switching={isSwitching} />
       </ToggleSwitch>
     </ToggleContainer>
