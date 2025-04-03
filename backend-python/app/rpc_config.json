@@ -6,7 +6,8 @@
     "blockscout_url": null,
     "currency_symbol": "ETH",
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "137": {
     "name": "Polygon Mainnet",
@@ -15,7 +16,8 @@
     "blockscout_url": null,
     "currency_symbol": "MATIC",
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": "0x40a056A77a1A37014eA476496e7cC1a3964482Fb"
   },
   "56": {
     "name": "Binance Smart Chain",
@@ -24,7 +26,8 @@
     "blockscout_url": null,
     "currency_symbol": "BNB",
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": "0xD6A724F516C76c76035B0b4C91bd850b5d35a8ef"
   },
   "97": {
     "name": "Binance Smart Chain Testnet",
@@ -33,7 +36,8 @@
     "blockscout_url": null,
     "currency_symbol": "BNB",
     "testnet": true,
-    "enabled": true
+    "enabled": true,
+    "gateway_address": "0x0c487a766110c85d301d96e33579c5b317fa4995"
   },
   "7000": {
     "name": "ZetaChain",
@@ -42,7 +46,8 @@
     "blockscout_url": "https://explorer.zetachain.com",
     "currency_symbol": "ZETA",
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "7001": {
     "name": "ZetaChain Testnet",
@@ -51,7 +56,8 @@
     "blockscout_url": "https://zetachain-testnet.blockscout.com/",
     "currency_symbol": "ZETA",
     "testnet": true,
-    "enabled": true
+    "enabled": true,
+    "gateway_address": null
   },
   "11155111": {
     "name": "Sepolia Testnet",
@@ -60,7 +66,8 @@
     "blockscout_url": null,
     "currency_symbol": "ETH",
     "testnet": true,
-    "enabled": true
+    "enabled": true,
+    "gateway_address": "0x6c533f7fe93fae114d0954697069df33c9b74fd7"
   },
   "42161": {
     "name": "Arbitrum One",
@@ -69,7 +76,8 @@
     "blockscout_url": null,
     "currency_symbol": "ETH", 
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "421614": {
     "name": "Arbitrum Sepolia",
@@ -78,7 +86,8 @@
     "blockscout_url": null,
     "currency_symbol": "ETH",
     "testnet": true,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "8453": {
     "name": "Base",
@@ -87,7 +96,8 @@
     "blockscout_url": null,
     "currency_symbol": "ETH",
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "84532": {
     "name": "Base Sepolia",
@@ -96,7 +106,8 @@
     "blockscout_url": null,
     "currency_symbol": "ETH",
     "testnet": true,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "43114": {
     "name": "Avalanche C-Chain",
@@ -105,7 +116,8 @@
     "blockscout_url": null,
     "currency_symbol": "AVAX",
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "43113": {
     "name": "Avalanche Fuji Testnet",
@@ -114,7 +126,8 @@
     "blockscout_url": null,
     "currency_symbol": "AVAX",
     "testnet": true,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "1399811149": {
     "name": "Solana",
@@ -123,7 +136,8 @@
     "blockscout_url": null,
     "currency_symbol": "SOL",
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "1399811148": {
     "name": "Solana Testnet",
@@ -132,7 +146,8 @@
     "blockscout_url": null,
     "currency_symbol": "SOL",
     "testnet": true,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "784": {
     "name": "SUI",
@@ -141,7 +156,8 @@
     "blockscout_url": null,
     "currency_symbol": "SUI",
     "testnet": false,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "7840": {
     "name": "SUI Testnet",
@@ -150,7 +166,8 @@
     "blockscout_url": null,
     "currency_symbol": "SUI",
     "testnet": true,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   },
   "0": {
     "name": "TON Testnet",
@@ -159,6 +176,7 @@
     "blockscout_url": null,
     "currency_symbol": "TON",
     "testnet": true,
-    "enabled": false
+    "enabled": false,
+    "gateway_address": null
   }
 }

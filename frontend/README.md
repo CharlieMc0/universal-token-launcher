@@ -2,6 +2,16 @@
 
 This project is the frontend for the Universal Token Launcher, which allows users to deploy and transfer tokens and NFTs across multiple blockchains using ZetaChain's cross-chain technology.
 
+## ✨ UI/UX Enhancement Initiative (In Progress)
+
+To elevate the user experience and visual polish, we are implementing several enhancements based on the updated `documentation/design.md`:
+
+- **Enhanced Visual Feedback:** Implementing subtle micro-interactions (hover/active states, transitions) on buttons, inputs, and tiles.
+- **Improved Loading States:** Replacing basic text indicators with skeleton loaders and spinners for a more engaging feel during data fetching and transactions.
+- **Component Refinement:** Polishing input field states (focus, error, disabled), card/container internal structure, and toggle component visuals.
+- **Workflow Clarity:** Introducing visual process steppers for multi-step actions like deployment and improving the interaction flow of contextual elements like the transfer panel.
+- **Typography & Readability:** Refining type hierarchy and improving the display of data like addresses and transaction hashes (monospace font, copy functionality).
+
 ## Backend Integration
 
 The frontend integrates with a backend server running on port 8000. The integration is handled through the `apiService.js` file, which provides methods for:
@@ -379,12 +389,22 @@ The application includes robust cross-chain token transfer functionality through
 - **Network Verification**: Ensures the user is on the correct blockchain network (ZetaChain) before initiating transfers
 - **Auto Network Switching**: Automatically prompts to switch networks when needed and verifies the switch was successful
 - **Balance Verification**: Checks token balance before attempting transfers to prevent failed transactions
+- **Contract Setup Verification**: **NEW:** Before attempting a transfer, the app now checks if the necessary cross-chain contract addresses (`connectedContracts` on ZetaChain, `zetaChainContract` on EVM chains) are properly set up by the owner. This prevents transactions that would inevitably fail due to incomplete token configuration.
 - **Fallback ABI Mechanism**: Uses fallback ABI if standard one fails, improving compatibility with different contract versions
 - **Dynamic Gas Estimation**: Estimates gas directly from the contract with a 30% buffer for safety
 - **Transaction Retries**: Automatically retries failed transactions with increased gas (50% more) when appropriate
-- **Detailed Error Messages**: Provides user-friendly error messages for common issues like insufficient funds or balance
+- **Detailed Error Messages**: Provides user-friendly error messages for common issues like insufficient funds or balance, and **NEW:** errors related to incomplete contract setup.
 - **Signer Validation**: Verifies wallet connection and signer availability at multiple checkpoints
 - **Better Decimals Handling**: Properly handles token decimals for amount formatting to prevent precision errors
+
+### Minting Functionality (NEW)
+
+- **Conditional Minting**: The UI now displays a "Mint" tab alongside "Transfer" if the connected wallet:
+  - Is the original deployer/owner of the selected token contract.
+  - OR has a balance greater than 0 for the selected token on the chosen source chain.
+- **Mint Form**: Allows the deployer/owner (or eligible user) to specify the amount to mint and an optional recipient address (defaults to their own address).
+- **Mint Transaction**: Uses the `mintTokens` function with robust gas estimation, fallback logic, and error handling similar to the transfer function.
+- **Permissions Check**: Ensures only the authorized owner can execute the mint transaction on-chain.
 
 ### Contract Interaction Improvements
 
@@ -395,6 +415,7 @@ The application includes robust cross-chain token transfer functionality through
 - **Wait Time Optimization**: Uses appropriate wait periods between network switching and transactions
 - **Safe Contract Method Access**: Checks interface and method availability with proper null/undefined handling
 - **Contract Verification**: Validates contracts by testing basic methods before attempting complex operations
+- **Mint Gas Handling**: **NEW:** Implemented robust gas estimation and retry logic for the `mint` function, similar to the `crossChainTransfer` function, resolving previous gas-related errors.
 
 ### Error Handling and Recovery
 
@@ -405,29 +426,34 @@ The application includes robust cross-chain token transfer functionality through
 - **Wallet Connection Issues**: Checks for wallet availability and connectivity before transactions
 - **Parameters Validation**: Validates and properly formats all transaction parameters before sending
 - **Console Diagnostics**: Provides detailed logging for troubleshooting in the browser console
+- **Incomplete Setup Errors**: **NEW:** Clearly informs the user if a transfer fails because the token's cross-chain setup (linking contracts) hasn't been completed by the owner.
 
 ### Common Cross-Chain Transfer Issues
 
-1. **"Cannot convert undefined or null to object"**
-   - Check that the contract ABI is properly defined and accessible
-   - Verify the contract address is correct and accessible on the current network
-   - Enable console logging to see where the null object is occurring
-
-2. **Transaction Revert Errors**
-   - Look for specific revert messages in the error details
-   - Check token balance to ensure sufficient tokens for the transfer
-   - Verify that the recipient address is correctly formatted
-   - Ensure the destination chain ID is supported by the contract
-
-3. **Network Switching Issues**
-   - Make sure the wallet (MetaMask) has ZetaChain configured
-   - Check for wallet permission issues when switching networks
-   - Allow sufficient time for network switching to complete before proceeding
-
-4. **Gas Estimation Failures**
-   - If gas estimation fails, the application will use a fallback estimate
-   - Consider manually increasing gas in MetaMask if transactions consistently fail
-   - Check wallet balance for sufficient ZETA to cover gas costs
+1.  **"Token setup incomplete..." Errors**
+    - **NEW:** This error indicates the contract owner hasn't finished setting up the cross-chain links (`connectedContracts` or `zetaChainContract`). The owner must call the appropriate setup function (`setConnectedContract` or `setZetaChainContract`) on the deployed contracts.
+    - Check the console logs for specific details about which link is missing.
+2.  **"Cannot convert undefined or null to object"**
+    - Check that the contract ABI is properly defined and accessible
+    - Verify the contract address is correct and accessible on the current network
+    - Enable console logging to see where the null object is occurring
+3.  **Transaction Revert Errors**
+    - Look for specific revert messages in the error details
+    - Check token balance to ensure sufficient tokens for the transfer
+    - Verify that the recipient address is correctly formatted
+    - Ensure the destination chain ID is supported by the contract
+4.  **Network Switching Issues**
+    - Make sure the wallet (MetaMask) has ZetaChain configured
+    - Check for wallet permission issues when switching networks
+    - Allow sufficient time for network switching to complete before proceeding
+5.  **Gas Estimation Failures**
+    - If gas estimation fails, the application will use a fallback estimate
+    - Consider manually increasing gas in MetaMask if transactions consistently fail
+    - Check wallet balance for sufficient ZETA to cover gas costs
+6.  **Minting Errors**
+    - **NEW:** "Only the token owner..." error means the connected wallet doesn't have permission to mint.
+    - **NEW:** Ensure the mint amount and recipient address are valid.
+    - Gas errors during minting should be less common now due to improved estimation and retries.
 
 ### API Response Structure
 

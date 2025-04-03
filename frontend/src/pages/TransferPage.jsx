@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getTokenDetails, initiateTokenTransfer } from '../services/apiService';
+import Button from '../components/Button';
 import { formatTokenBalance, getChainName } from '../utils/tokenUtils';
 import { 
   estimateCrossChainGas, 
@@ -307,9 +308,9 @@ const TransferPage = ({ walletAddress }) => {
       <div className="transfer-error">
         <h2>Error Loading Token</h2>
         <p>{error}</p>
-        <button onClick={() => navigate('/tokens')}>
+        <Button variant="secondary" onClick={() => navigate('/tokens')}>
           Back to Tokens
-        </button>
+        </Button>
       </div>
     );
   }
@@ -327,16 +328,16 @@ const TransferPage = ({ walletAddress }) => {
           <p>Amount: {amount} {token.symbol}</p>
           <p>Recipient: {recipient}</p>
         </div>
-        <button onClick={() => {
+        <Button variant="primary" onClick={() => {
           setTxHash(null);
           // Reload token data to get updated balances
           window.location.reload();
         }}>
           New Transfer
-        </button>
-        <button onClick={() => navigate('/tokens')} className="secondary-button">
+        </Button>
+        <Button variant="secondary" onClick={() => navigate('/tokens')}>
           Back to Tokens
-        </button>
+        </Button>
       </div>
     );
   }
@@ -359,16 +360,16 @@ const TransferPage = ({ walletAddress }) => {
           <p>Amount: {regularAmount} {token.symbol}</p>
           <p>Recipient: {regularRecipient}</p>
         </div>
-        <button onClick={() => {
+        <Button variant="primary" onClick={() => {
           setTransferTxHash(null);
           // Reload token data to get updated balances
           window.location.reload();
         }}>
           New Transfer
-        </button>
-        <button onClick={() => navigate('/tokens')} className="secondary-button">
+        </Button>
+        <Button variant="secondary" onClick={() => navigate('/tokens')}>
           Back to Tokens
-        </button>
+        </Button>
       </div>
     );
   }
@@ -391,16 +392,16 @@ const TransferPage = ({ walletAddress }) => {
           <p>Amount: {mintAmount} {token.symbol}</p>
           <p>Recipient: {mintRecipient}</p>
         </div>
-        <button onClick={() => {
+        <Button variant="primary" onClick={() => {
           setMintTxHash(null);
           // Reload token data to get updated balances
           window.location.reload();
         }}>
           Mint More Tokens
-        </button>
-        <button onClick={() => navigate('/tokens')} className="secondary-button">
+        </Button>
+        <Button variant="secondary" onClick={() => navigate('/tokens')}>
           Back to Tokens
-        </button>
+        </Button>
       </div>
     );
   }
@@ -509,13 +510,12 @@ const TransferPage = ({ walletAddress }) => {
                 placeholder="0.0"
                 required
               />
-              <button 
+              <Button 
                 type="button" 
-                className="max-button"
                 onClick={handleRegularMaxAmount}
               >
                 MAX
-              </button>
+              </Button>
             </div>
             <div className="amount-detail">
               {sourceChain && (
@@ -525,13 +525,12 @@ const TransferPage = ({ walletAddress }) => {
           </div>
           
           {/* Submit Button */}
-          <button 
+          <Button 
             type="submit" 
-            className="submit-button"
             disabled={isTransferring || !sourceChain || !regularRecipient || !regularAmount}
           >
             {isTransferring ? 'Transferring...' : 'Transfer Tokens'}
-          </button>
+          </Button>
         </form>
       )}
       
@@ -594,13 +593,12 @@ const TransferPage = ({ walletAddress }) => {
                 placeholder="0.0"
                 required
               />
-              <button 
+              <Button 
                 type="button" 
-                className="max-button"
                 onClick={handleMaxAmount}
               >
                 MAX
-              </button>
+              </Button>
             </div>
             <div className="amount-detail">
               {sourceChain && (
@@ -630,13 +628,12 @@ const TransferPage = ({ walletAddress }) => {
           )}
           
           {/* Submit Button */}
-          <button 
+          <Button 
             type="submit" 
-            className="submit-button"
             disabled={isSubmitting || !sourceChain || !destChain || !amount || !recipient}
           >
             {isSubmitting ? 'Processing...' : 'Transfer Tokens'}
-          </button>
+          </Button>
         </form>
       )}
       
@@ -696,13 +693,12 @@ const TransferPage = ({ walletAddress }) => {
           </div>
           
           {/* Submit Button */}
-          <button 
+          <Button 
             type="submit" 
-            className="submit-button"
             disabled={isMinting || !sourceChain || !mintRecipient || !mintAmount}
           >
             {isMinting ? 'Minting...' : 'Mint Tokens'}
-          </button>
+          </Button>
         </form>
       )}
       
@@ -710,16 +706,16 @@ const TransferPage = ({ walletAddress }) => {
       {transferType === 'mint' && !isDeployer && (
         <div className="not-deployer-message">
           <p>Only the token deployer can mint new tokens. Please select a different transfer type.</p>
-          <button onClick={() => setTransferType('regular')} className="secondary-button">
+          <Button variant="secondary" onClick={() => setTransferType('regular')}>
             Regular Transfer
-          </button>
+          </Button>
         </div>
       )}
       
       <div className="back-button-container">
-        <button onClick={() => navigate('/tokens')} className="back-button">
+        <Button variant="secondary" onClick={() => navigate('/tokens')}>
           Back to Tokens
-        </button>
+        </Button>
       </div>
     </div>
   );

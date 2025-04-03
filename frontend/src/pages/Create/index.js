@@ -27,22 +27,53 @@ const PageDescription = styled.p`
 const ToggleContainer = styled.div`
   display: flex;
   justify-content: center;
-  margin-bottom: 40px;
+  margin: 0 auto 40px auto; /* Keep auto margins for horizontal centering */
+  position: relative;
+  background-color: var(--card-bg); /* Background for the container */
+  border-radius: var(--radius-sm, 8px);
+  padding: 4px; /* Padding to contain the pill */
+  width: fit-content; /* Keep width fitting content */
+  /* Removed display: inline-flex; Let default block behavior + margin: auto handle centering */
+
+  /* The sliding pill */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 4px; /* Start positioned at the left padding edge */
+    width: 50%; /* Assume buttons divide space equally */
+    background-color: var(--accent-primary);
+    border-radius: var(--radius-sm, 8px); /* Match button radius */
+    transition: left 0.3s ease-in-out; /* Transition the left property */
+    z-index: 1;
+  }
+
+  /* Position the pill based on activeTab */
+  /* Default position is handled by left: 4px; */
+
+  &[data-active-tab="nft"]::before {
+    left: calc(50%); /* Move pill to start of the second half */
+  }
 `;
 
 const ToggleButton = styled.button`
-  background-color: ${props => props.active ? 'var(--accent-primary)' : 'transparent'};
-  color: ${props => props.active ? 'white' : 'var(--text-secondary)'};
-  border: 1px solid ${props => props.active ? 'var(--accent-primary)' : 'var(--border)'};
-  border-radius: ${props => props.position === 'left' ? '8px 0 0 8px' : '0 8px 8px 0'};
+  background-color: transparent; /* Buttons are initially transparent */
+  color: ${props => props.active ? 'var(--text-primary)' : 'var(--text-secondary)'}; /* Active text is brighter */
+  border: none; /* Remove border */
+  border-radius: var(--radius-sm, 8px); /* Keep radius */
   padding: 12px 24px;
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.3s ease-in-out; /* Transition text color */
+  position: relative; /* Needed for z-index */
+  z-index: 2; /* Ensure text is above the pill */
+  flex: 1; /* Allow buttons to take equal space */
+  text-align: center; /* Center text within button */
   
   &:hover {
-    background-color: ${props => props.active ? 'var(--accent-primary)' : 'rgba(60, 157, 242, 0.1)'};
+    color: var(--text-primary); /* Text brightens on hover */
   }
 `;
 
@@ -60,17 +91,15 @@ const CreatePage = () => {
         Launch tokens or NFT collections that work seamlessly across multiple blockchains with ZetaChain technology.
       </PageDescription>
       
-      <ToggleContainer>
+      <ToggleContainer data-active-tab={activeTab}>
         <ToggleButton 
           active={activeTab === 'token'} 
-          position="left"
           onClick={() => setActiveTab('token')}
         >
           Create Token
         </ToggleButton>
         <ToggleButton 
           active={activeTab === 'nft'} 
-          position="right"
           onClick={() => setActiveTab('nft')}
         >
           Create NFT Collection

@@ -1,6 +1,6 @@
 """Web3 helper utilities for interacting with blockchain networks."""
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from web3 import Web3
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
@@ -9,6 +9,8 @@ import os
 import subprocess
 import requests
 import re
+import time
+from web3.exceptions import TransactionNotFound
 
 from app.config import Config
 from app.utils.logger import logger
@@ -64,6 +66,128 @@ ZC_NFT_PATH = os.path.join(
     "ZetaChainUniversalNFT.sol", 
     "ZetaChainUniversalNFT.json"
 )
+
+# TODO: Replace with a dynamic lookup or configuration
+# Addresses of ZRC-20 gas tokens on ZetaChain Testnet (7001)
+ZRC20_GAS_TOKEN_ADDRESSES = {
+    11155111: "0x48f80608B672DC30DC7e3dbBd0343c5F02C738Eb",  # Sepolia ETH (gETH)
+    80001: "0x99e4Ab14cBC175B89BC7d151C50B9769477b9111",  # Mumbai MATIC
+    97: "0x66c9bd2f316539f881311c7f8b7c761498631f5c",     # BSC Testnet BNB
+    421614: "0x08d9D2C4759E9a18F4A5915c9f848Ab1E2188f73", # Arbitrum Sepolia ETH
+    11155420: "0x2F4Baf06533A60Ae8e3132F011aF126656102918", # Optimism Sepolia ETH
+    84532: "0xFA7ab9A9976aFa523B61F602E33988f17ECD3583",    # Base Sepolia ETH
+    43113: "0x9fd402f8981564FB789785C5442100A67771ea84",    # Fuji AVAX
+    # Add other relevant chain IDs and their ZRC-20 addresses here
+}
+
+async def get_zrc20_address(chain_id: int) -> str | None:
+    """Get ZRC-20 gas token address for a given EVM chain ID on ZetaChain Testnet."""
+    address = ZRC20_GAS_TOKEN_ADDRESSES.get(chain_id)
+    if not address:
+        logger.warning(f"ZRC-20 gas token address not found for chain ID: {chain_id}")
+    return address
+
+
+async def call_contract_method(
+    web3: Web3,
+    account,
+    contract_address: str,
+    contract_abi: List[Dict],
+    method_name: str,
+    args: tuple = (),
+    value: int = 0,           # Optional value for payable functions
+    gas_limit: int = 1_000_000, # Default gas limit, adjust as needed
+    max_retries: int = 3,
+    retry_delay: int = 5,     # seconds
+) -> Dict[str, Any]:
+    """Builds, signs, and sends a transaction to call a contract method."""
+    try:
+        contract_address = web3.to_checksum_address(contract_address)
+        contract = web3.eth.contract(address=contract_address, abi=contract_abi)
+        
+        # Get nonce
+        nonce = web3.eth.get_transaction_count(account.address)
+        
+        # Prepare the transaction dictionary
+        tx_params = {
+            'from': account.address,
+            'nonce': nonce,
+            'value': value,
+            'gasPrice': web3.eth.gas_price,  # Use current gas price
+            # 'gas': gas_limit  # Gas estimation can be tricky
+        }
+
+        logger.info(
+            f"Calling method '{method_name}' on {contract_address} with args {args}"
+        )
+        
+        # Build transaction using the contract function
+        # Use build_transaction() which includes gas estimation
+        try:
+            transaction = contract.functions[method_name](*args).build_transaction(tx_params)
+        except Exception as build_err:
+             logger.error(f"Failed to build transaction for {method_name}: {build_err}")
+             # Try again with a fixed gas limit if estimation failed
+             logger.warning(f"Retrying build with fixed gas limit: {gas_limit}")
+             tx_params['gas'] = gas_limit
+             try:
+                 transaction = contract.functions[method_name](*args).build_transaction(tx_params)
+             except Exception as build_err_fixed:
+                 logger.error(f"Failed to build transaction with fixed gas: {build_err_fixed}")
+                 return {"success": False, "error": True, "message": f"Failed to build transaction: {build_err_fixed}"}
+
+        # Sign transaction
+        signed_tx = web3.eth.account.sign_transaction(transaction, private_key=account.key)
+
+        # --- DEBUGGING LOG ---
+        logger.debug(f"Signed transaction object type: {type(signed_tx)}")
+        logger.debug(f"Signed transaction object dir: {dir(signed_tx)}")
+        if hasattr(signed_tx, 'raw_transaction'):
+            logger.debug(f"Signed transaction raw_transaction exists.")
+        else:
+            # This error log should hopefully not appear now
+            logger.error(f"Signed transaction raw_transaction DOES NOT exist. Object: {signed_tx}")
+        # --- END DEBUGGING LOG ---
+
+        # Send transaction using the CORRECT attribute name
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        logger.info(f"Transaction sent for {method_name}. Hash: {web3.to_hex(tx_hash)}")
+        
+        # Wait for transaction receipt with retries
+        receipt = None
+        for attempt in range(max_retries):
+            try:
+                receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)  # Increased timeout
+                logger.info(f"Transaction {web3.to_hex(tx_hash)} confirmed in block {receipt.blockNumber}")
+                break # Success, exit retry loop
+            except TransactionNotFound:
+                logger.warning(
+                    f"Tx {web3.to_hex(tx_hash)} not found, attempt {attempt + 1}/" 
+                    f"{max_retries}. Retrying in {retry_delay}s..."
+                )
+                time.sleep(retry_delay)
+            except Exception as wait_err:  # Catch other potential wait errors
+                 logger.error(f"Error waiting for receipt for {web3.to_hex(tx_hash)}: {wait_err}")
+                 # Decide if this error is retryable or fatal
+                 if attempt == max_retries - 1:
+                     return {"success": False, "error": True, "transaction_hash": web3.to_hex(tx_hash), "message": f"Error waiting for receipt: {wait_err}"}
+                 time.sleep(retry_delay)
+
+        if receipt:
+            # Check transaction status
+            if receipt.status == 1:
+                logger.info(f"Method '{method_name}' call successful. Tx: {web3.to_hex(tx_hash)}")
+                return {"success": True, "error": False, "transaction_hash": web3.to_hex(tx_hash), "receipt": dict(receipt)}
+            else:
+                logger.error(f"Method '{method_name}' call failed (reverted). Tx: {web3.to_hex(tx_hash)}")
+                return {"success": False, "error": True, "transaction_hash": web3.to_hex(tx_hash), "message": "Transaction reverted", "receipt": dict(receipt)}
+        else:
+            logger.error(f"Transaction {web3.to_hex(tx_hash)} timed out after {max_retries} attempts.")
+            return {"success": False, "error": True, "transaction_hash": web3.to_hex(tx_hash), "message": "Transaction timed out or not found after retries"}
+
+    except Exception as e:
+        logger.error(f"Error calling contract method '{method_name}' on {contract_address}: {str(e)}", exc_info=True)
+        return {"success": False, "error": True, "message": f"Error calling contract method: {str(e)}"}
 
 
 def load_contract_data():
@@ -283,76 +407,86 @@ def get_account() -> Optional[LocalAccount]:
         return None
 
 
-def deploy_contract(
-    web3: Web3,
-    account: LocalAccount,
-    contract_abi: list,
-    contract_bytecode: str,
-    constructor_args: list = []
-) -> Dict[str, Any]:
-    """
-    Deploy a contract to the specified chain.
-    
-    Args:
-        web3: Web3 instance for the target chain
-        account: Account to deploy from
-        contract_abi: Contract ABI
-        contract_bytecode: Contract bytecode
-        constructor_args: Constructor arguments
-        
-    Returns:
-        Dict with deployment results
-    """
+def deploy_contract(web3: Web3, account, contract_abi: List, contract_bytecode: str, constructor_args: List = [], gas_limit_override: Optional[int] = None) -> Dict[str, Any]:
+    """Deploys a contract and waits for the receipt."""
     try:
-        # Create contract factory
-        contract = web3.eth.contract(
-            abi=contract_abi, 
-            bytecode=contract_bytecode
-        )
+        Contract = web3.eth.contract(abi=contract_abi, bytecode=contract_bytecode)
         
-        # Prepare constructor transaction
-        construct_txn = contract.constructor(*constructor_args).build_transaction({
+        # Get nonce
+        nonce = web3.eth.get_transaction_count(account.address)
+        logger.info(f"Using nonce: {nonce}")
+
+        # Set a higher default gas limit for deployment
+        deploy_gas_limit = gas_limit_override if gas_limit_override else 3_000_000
+
+        # Prepare transaction
+        tx_params = {
             'from': account.address,
-            'nonce': web3.eth.get_transaction_count(account.address),
-            'gas': 5000000,  # Gas limit
-            'gasPrice': web3.eth.gas_price,
-        })
+            'nonce': nonce,
+            'gas': deploy_gas_limit, # Use a higher fixed limit initially
+            'gasPrice': web3.eth.gas_price 
+        }
         
+        # Build transaction
+        logger.info(f"Building deployment transaction with args: {constructor_args}")
+        try:
+             # estimate_gas might fail if limit is too low, but we set a high one above
+             # For deployment, build transaction is part of the Contract object constructor call
+             transaction = Contract.constructor(*constructor_args).build_transaction(tx_params)
+        except Exception as build_err:
+             logger.error(f"Failed to build deployment transaction: {build_err}", exc_info=True)
+             # Fallback if needed, maybe try gas estimation again? Less likely needed now.
+             return {"success": False, "error": True, "message": f"Failed to build deployment transaction: {build_err}"}
+
+
         # Sign transaction
-        signed_txn = account.sign_transaction(construct_txn)
+        signed_tx = web3.eth.account.sign_transaction(transaction, private_key=account.key)
         
         # Send transaction
-        # Web3.py v6 uses .raw_transaction instead of .rawTransaction
-        if hasattr(signed_txn, 'raw_transaction'):
-            tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
-        else:
-            # Fallback for older versions
-            tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         
+        # --- Log TX Hash Immediately ---
+        hex_tx_hash = web3.to_hex(tx_hash)
+        logger.info(f"Deployment transaction sent. Hash: {hex_tx_hash}")
+        # --- End Log ---
+
         # Wait for transaction receipt
-        logger.info(f"Waiting for transaction receipt...")
-        tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
-        
-        # Get contract address
-        contract_address = tx_receipt.contractAddress
-        
-        logger.info(f"Contract deployed at: {contract_address}")
-        
-        # Return deployment information
-        return {
-            "success": True,
-            "contract_address": contract_address,
-            "transaction_hash": tx_hash.hex(),
-            "gas_used": tx_receipt.gasUsed,
-            "block_number": tx_receipt.blockNumber
-        }
+        logger.info("Waiting for transaction receipt...")
+        try:
+            # Increased timeout to 300 seconds (5 minutes)
+            receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=300) 
+            
+            if receipt.status == 1:
+                contract_address = receipt.contractAddress
+                logger.info(f"Contract deployed at: {contract_address}")
+                return {
+                    "success": True, 
+                    "error": False,
+                    "contract_address": contract_address,
+                    "transaction_hash": hex_tx_hash,
+                    "receipt": dict(receipt)
+                }
+            else:
+                logger.error(f"Contract deployment failed (reverted). Tx: {hex_tx_hash}")
+                return {
+                    "success": False, 
+                    "error": True,
+                    "transaction_hash": hex_tx_hash, 
+                    "message": "Deployment transaction reverted",
+                    "receipt": dict(receipt)
+                }
+        except Exception as e: # Catch timeout errors etc.
+            logger.error(f"Error waiting for deployment receipt for {hex_tx_hash}: {e}", exc_info=True)
+            return {
+                "success": False, 
+                "error": True,
+                "transaction_hash": hex_tx_hash, 
+                "message": f"Error or timeout waiting for receipt: {e}"
+            }
+
     except Exception as e:
-        logger.error(f"Contract deployment failed: {str(e)}")
-        return {
-            "success": False,
-            "error": True,
-            "message": str(e)
-        }
+        logger.error(f"Contract deployment failed: {str(e)}", exc_info=True)
+        return {"success": False, "error": True, "message": f"Contract deployment failed: {str(e)}"}
 
 
 def extract_compiler_version(source_code: str) -> str:

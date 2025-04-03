@@ -2,10 +2,10 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Path
 from sqlalchemy.orm import Session
-from typing import Dict, Any, List
+from typing import Dict, Any
 import re
 
-from app.models import TokenSchema, TokenVerifySchema, TokenResponse
+from app.models import TokenSchema, TokenVerifySchema, TokenResponse, TokenModel
 from app.services.deployment import deployment_service
 from app.services.verification import verification_service
 from app.services.token import token_service
@@ -28,16 +28,19 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
     try:
         logger.info(f"Received deployment request for token '{token_data.token_name}'")
         
-        # Prepare token configuration
+        # Prepare token configuration (excluding allocations)
         token_config = {
             "token_name": token_data.token_name,
             "token_symbol": token_data.token_symbol,
             "decimals": token_data.decimals,
             "total_supply": token_data.total_supply,
-            "allocations": [a.model_dump() for a in token_data.allocations] 
-                          if token_data.allocations else []
+            # Allocations handled separately below
         }
         
+        # Extract allocations
+        allocations = [a.model_dump() for a in token_data.allocations] \
+                      if token_data.allocations else []
+
         # Convert string chain identifiers to numeric chain IDs
         numeric_chain_ids = []
         for chain_id in token_data.selected_chains:
@@ -57,56 +60,118 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
         
         logger.info(f"Deploying to chains: {numeric_chain_ids}")
         
-        # Deploy tokens
+        # Deploy tokens with updated service call signature
         deployment_result = await deployment_service.deploy_universal_token(
-            token_config,
-            numeric_chain_ids,
-            token_data.deployer_address,
-            db
+            token_config=token_config,
+            selected_chains=numeric_chain_ids,
+            final_owner_address=token_data.deployer_address,
+            allocations=allocations, # Pass allocations separately
+            db=db
         )
         
-        # Check for deployment errors
-        has_errors = False
+        # --- Refactored Response Handling ---
+        # Get the deployment ID first
+        deployment_id = deployment_result.get("deploymentId")
+        if not deployment_id:
+             # Handle case where deployment failed so early ID wasn't returned
+             logger.error("Critical deployment failure: No deployment ID available.")
+             # Raise internal server error as something went very wrong
+             raise HTTPException(status_code=500, detail="Critical deployment failure, could not retrieve status.")
+
+        # Fetch the final state of the deployment record from the DB
+        db_deployment = db.query(TokenModel).filter(TokenModel.id == deployment_id).first()
+        if not db_deployment:
+             logger.error(f"Could not find deployment record with ID {deployment_id} in DB.")
+             raise HTTPException(status_code=404, detail="Deployment record not found after process.")
+        
+        # Now use db_deployment for status checks and final response construction
+        connected_chains_data = db_deployment.connected_chains_json or {}
+        final_status_summary = {"zetaChain": {}, "evmChains": {}}
+        has_major_errors = False
+        is_partial = False
+        overall_message = "Deployment completed successfully."
         error_details = []
-        
-        # Check for ZetaChain errors
-        if (deployment_result.get("zetaChain") and 
-                deployment_result["zetaChain"].get("error")):
-            has_errors = True
-            error_details.append(
-                f"ZetaChain: {deployment_result['zetaChain'].get('message', 'Unknown error')}"
-            )
-        
-        # Check for EVM chain errors
-        for chain_id, chain_result in deployment_result.get("evmChains", {}).items():
-            if chain_result.get("error"):
-                has_errors = True
-                error_details.append(
-                    f"Chain {chain_id}: {chain_result.get('message', 'Unknown error')}"
-                )
-        
-        # Return appropriate response
-        if has_errors:
-            # Partial success - some deployments succeeded but others failed
-            return TokenResponse(
-                success=True,
-                message="Deployment partially successful",
-                detail="Some chains were deployed successfully, but others encountered errors",
-                errors=error_details,
-                deployment=deployment_result,
-                verification_status="pending",
-                deployment_id=deployment_result.get("deploymentId")
-            )
+        verification_status = db_deployment.verification_status or "unknown" 
+
+        # Analyze ZetaChain result (using deployment_result for initial call outcome, db_deployment for final state)
+        zeta_chain_id_str = "7001" # Define zeta chain id str for use later
+        zc_result = deployment_result.get("zetaChain", {}) # Keep using result for call details
+        zc_ownership_status = zc_result.get("ownership_status") 
+        # Check DB state for final success
+        if db_deployment.zc_contract_address and zc_ownership_status == "transferred": # Check if ownership transfer *call* succeeded
+             final_status_summary["zetaChain"] = {"status": "completed", "details": zc_result}
+             verification_status = db_deployment.verification_status or "pending" 
         else:
-            # Complete success
-            return TokenResponse(
-                success=True,
-                message="Deployment successful",
-                deployment=deployment_result,
-                verification_status="pending",
-                deployment_id=deployment_result.get("deploymentId")
-            )
-    
+             has_major_errors = True
+             # Use details from DB if available, else from call result
+             error_message = zc_result.get('message', f"Deployment status: {db_deployment.deployment_status}, Ownership: {zc_ownership_status}")
+             error_details.append(f"ZetaChain: Failed - {error_message}")
+             final_status_summary["zetaChain"] = {"status": "failed", "details": zc_result}
+             verification_status = "failed"
+
+
+        # Analyze EVM chain results (using connected_chains_data from DB for final state)
+        requested_evm_chains = [cid for cid in numeric_chain_ids if cid != zeta_chain_id_str]
+        for chain_id in requested_evm_chains:
+             chain_db_info = connected_chains_data.get(chain_id, {})
+             final_setup_status = chain_db_info.get("setup_status")
+             
+             if final_setup_status == "completed":
+                  final_status_summary["evmChains"][chain_id] = {"status": "completed", "details": chain_db_info}
+                  is_partial = True 
+             else:
+                  has_major_errors = True 
+                  error_message = chain_db_info.get("error_message", f"Setup status: {final_setup_status or 'unknown'}")
+                  error_details.append(f"Chain {chain_id}: Failed - {error_message}")
+                  final_status_summary["evmChains"][chain_id] = {"status": "failed", "details": chain_db_info}
+                  if chain_db_info.get("contract_address"):
+                        is_partial = True
+
+
+        # Determine overall message and success status
+        if has_major_errors:
+            if final_status_summary["zetaChain"].get("status") != "completed" and not is_partial:
+                 overall_message = "Deployment failed."
+                 success_bool = False 
+            else:
+                 overall_message = "Deployment partially successful. Check details."
+                 success_bool = True 
+        else:
+            overall_message = "Deployment completed successfully."
+            success_bool = True
+
+        # Construct the final response safely using db_deployment where needed
+        response_data = {
+             "success": success_bool,
+             "message": overall_message,
+             "deployment_id": db_deployment.id, # Use ID from DB model
+             "verification_status": verification_status, # Determined above
+             "errors": error_details if error_details else None,
+             "deployment": { 
+                 "deploymentId": db_deployment.id, # Include ID here as well?
+                 "zc_contract_address": db_deployment.zc_contract_address, 
+                 "deployer_address": db_deployment.deployer_address, # Final owner
+                 "chain_statuses": {
+                     chain_id: status_info["status"]
+                     for chain_id, status_info in final_status_summary["evmChains"].items()
+                 },
+                 "zeta_chain_status": final_status_summary["zetaChain"].get("status", "unknown")
+             },
+         }
+
+        # Log the exact data before attempting to create the response object
+        logger.debug(f"Attempting to return TokenResponse with data: {response_data}")
+
+        try:
+            # Return the response using the model
+            return TokenResponse(**response_data)
+        except Exception as response_err:
+             # Log the specific error during response creation
+             logger.error(f"Error creating TokenResponse object: {response_err}", exc_info=True)
+             # Raise a more informative error
+             raise HTTPException(status_code=500, detail=f"Failed to format deployment response: {response_err}")
+
+
     except ValueError as e:
         logger.error(f"Deployment failed due to validation error: {str(e)}")
         raise HTTPException(
@@ -114,10 +179,11 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
             detail=str(e)
         )
     except Exception as e:
-        logger.error(f"Deployment failed: {str(e)}")
+        # Log the actual error causing the 500 - now moved inside the final try/except
+        logger.error(f"Unexpected error during deployment processing: {str(e)}", exc_info=True) 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Deployment failed: {str(e)}"
+            detail=f"Deployment failed due to unexpected server error: {str(e)}"
         )
 
 

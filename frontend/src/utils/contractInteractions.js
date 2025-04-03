@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { ethers, formatUnits } from 'ethers';
 import { getAccount, getPublicClient, getWalletClient } from 'wagmi/actions';
 import { getAbiForChain, estimateCrossChainGas, CHAIN_IDS } from './contracts';
 import { switchToNetwork } from './networkSwitchingUtility';
@@ -225,31 +225,54 @@ async function processTransfer(tokenContract, destinationChain, recipientAddress
     
     const amountBigInt = ethers.toBigInt(amount);
     if (balance < amountBigInt) {
-      throw new Error(`Insufficient token balance. You have ${balance.toString()} but trying to transfer ${amount}`);
+      throw new Error(`Insufficient token balance. You have ${formatUnits(balance, decimals)} but trying to transfer ${formatUnits(amountBigInt, decimals)}`);
     }
     
     // Safe check for contract interface and functions
     console.log('Contract address:', tokenContract.target);
     console.log('Contract runner:', tokenContract.runner.address);
+    console.log('Source Chain ID:', sourceChain);
+    console.log('Destination Chain ID:', destinationChain);
     
-    // Check if destination chain has a connected contract
-    try {
-      const connectedContract = await tokenContract.connectedContracts(destinationChain);
-      console.log(`Connected contract for chain ${destinationChain}:`, connectedContract);
-      
-      if (connectedContract === ethers.ZeroAddress) {
-        throw new Error(`No connected contract found for chain ID ${destinationChain}. Cross-chain transfer not possible.`);
+    // Explicitly check contract connection status before proceeding
+    console.log('Verifying contract cross-chain connection setup...');
+    if (sourceChain === CHAIN_IDS.ZETACHAIN) {
+      // We are on ZetaChain, check connectedContracts mapping for the destination
+      try {
+        const connectedContract = await tokenContract.connectedContracts(destinationChain);
+        console.log(`Connected contract for chain ${destinationChain}:`, connectedContract);
+        if (!connectedContract || connectedContract === ethers.ZeroAddress) {
+          throw new Error(`Token setup incomplete: No connected contract address found for destination chain ${destinationChain} on the ZetaChain contract. The owner needs to set this.`);
+        }
+      } catch (err) {
+        console.error('Error checking connectedContracts:', err);
+        // If the call itself fails, it might be an ABI issue or network problem
+        throw new Error(`Failed to verify connection for destination chain ${destinationChain}. Ensure the contract ABI is correct and the network is stable. Error: ${err.message}`);
       }
-    } catch (err) {
-      console.log('Could not check connected contracts, continuing anyway:', err.message);
+    } else {
+      // We are on an EVM chain, check if zetaChainContract is set
+      try {
+        const zetaAddress = await tokenContract.zetaChainContract();
+        console.log('ZetaChain contract address set on EVM contract:', zetaAddress);
+        if (!zetaAddress || zetaAddress === ethers.ZeroAddress) {
+          throw new Error('Token setup incomplete: The ZetaChain contract address has not been set on this EVM chain contract. The owner needs to set this.');
+        }
+      } catch (err) {
+        console.error('Error checking zetaChainContract:', err);
+         // If the call itself fails, it might be an ABI issue or network problem
+         throw new Error(`Failed to verify the ZetaChain contract connection on this EVM contract. Ensure the contract ABI is correct and the network is stable. Error: ${err.message}`);
+      }
     }
-    
+    console.log('Contract cross-chain connection verified.');
+
     // Get symbol and decimals for better error messages
     let symbol = "tokens";
-    let decimals = 18;
+    let decimals = 18; // Default to 18 if call fails
     try {
       symbol = await tokenContract.symbol();
-      decimals = await tokenContract.decimals();
+      // Use Number() cautiously, decimals should be small
+      const decimalsResult = await tokenContract.decimals();
+      decimals = Number(decimalsResult);
       console.log(`Token has ${decimals} decimals and symbol ${symbol}`);
     } catch (e) {
       console.log('Could not get token details:', e.message);

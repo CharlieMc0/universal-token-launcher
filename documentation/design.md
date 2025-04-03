@@ -146,7 +146,10 @@ const ButtonContainer = styled.div`
 `;
 ```
 
----
+**Interaction & Feedback:**
+- **Hover State:** Subtle scale transform (`transform: scale(1.03);`) and brightness increase (`filter: brightness(1.1);`)
+- **Active State:** Slightly larger scale (`transform: scale(0.98);`) and darker background/border.
+- **Transitions:** Apply smooth transitions (`transition: all 0.2s ease-in-out;`) to hover/active states.
 
 ### Inputs
 
@@ -162,7 +165,10 @@ Styles:
 - Focus: Blue glow shadow
 - Error: Red border and helper message
 
----
+**Interaction & Feedback:**
+- **Focus State:** Combine `var(--accent-primary)` border color with the existing blue glow shadow (`box-shadow: 0 0 0 3px rgba(60, 157, 242, 0.3);`). Add transition.
+- **Error State:** Combine red border (`border-color: var(--error);`) with subtle red glow (`box-shadow: 0 0 0 3px rgba(255, 82, 82, 0.2);`). Field highlight persists until error is resolved.
+- **Disabled/Read-Only:** Clearly differentiate visually (e.g., lighter grey background for disabled, different border style for read-only).
 
 ### Cards & Containers
 
@@ -174,9 +180,8 @@ Styles:
 Container Types:
 - FormContainer: Used for grouped form elements with section titles
 - FeeInfo: Light blue background (rgba(60, 157, 242, 0.1)), 16px padding, 8px border radius
-- ConfirmationContainer / Results Display: Can reuse `FormContainer` styles. Lists within (like deployment logs) should use item styles with distinct backgrounds (e.g., `rgba(255, 255, 255, 0.05)`), clear separation, and display status/links effectively.
-
----
+- ConfirmationContainer / Results Display: Can reuse `FormContainer` styles. Ensure consistent internal spacing and hierarchy. Use styled dividers (`<hr style="border-color: var(--border); opacity: 0.5;">`) or subtle background variations (`background-color: rgba(255, 255, 255, 0.03); padding: 8px; border-radius: 4px;`) for list items (like deployment logs) to improve structure without adding clutter. Display status/links effectively.
+- **Loading States:** Utilize skeleton loaders (`div` with animated gradient background) for components fetching data. For actions, use spinner icons within buttons or dedicated loading indicators.
 
 ### Toggle Components
 
@@ -202,7 +207,7 @@ const ToggleButton = styled.button`
 `;
 ```
 
----
+**Enhancement:** Implement a "sliding pill" background style for the active toggle option instead of just changing button styles for a more modern feel.
 
 ### Floating Transfer Box
 
@@ -274,15 +279,14 @@ Features:
 - Visual distinction with border and shadow
 - Contextual appearance based on user interaction
 
----
+**Interaction & Feedback:**
+- **Appearance/Disappearance:** Use smooth transitions (e.g., `opacity` and `transform: translateX(10px);` for slide-in effect from right on desktop).
 
 ### Tooltips / Modals / Toasts
 
 - Modals: Centered, overlay, max width 480px
 - Toasts: Top-right, dismissible after 5s
 - Tooltips: Fade in on hover
-
----
 
 ### Token Tiles
 
@@ -297,6 +301,10 @@ Example:
   onClick={handleClick}
 />
 ```
+
+**Interaction & Feedback:**
+- **Hover State:** Subtle scale transform (`transform: scale(1.05);`) and potentially a slightly brighter border or background. Add smooth transitions.
+- **Selected State:** Enhance visual distinction - e.g., thicker accent border, persistent background change, and/or a small checkmark icon overlay.
 
 Variants:
 - Default: Shows chain logo, name, and token balance
@@ -413,6 +421,40 @@ Usage:
 </PaginationContainer>
 ```
 
+### Process Steppers
+
+Visualize multi-step processes like deployment or complex transfers.
+
+**Structure:**
+- Horizontal list of steps (e.g., Configure, Pay Fee, Confirm, Deploy).
+- Each step has an icon, title, and status indicator (Pending, Active, Completed, Error).
+- Connecting lines between steps show progress.
+- Active step is highlighted. Completed steps show success indicator (e.g., checkmark). Error steps show error indicator.
+
+```jsx
+const StepperContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+  position: relative;
+  /* Add pseudo-element for connecting lines */
+`;
+
+const Step = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1;
+  position: relative;
+  /* Style based on status (active, completed, error) */
+`;
+
+const StepIcon = styled.div` /* Circle with icon */ `;
+const StepTitle = styled.div` /* Small text below icon */ `;
+```
+
 ---
 
 ## 🔁 Interaction Patterns
@@ -425,6 +467,16 @@ Usage:
 | Bridge in progress     | Live status: "Burning… Minting… ✅ Done"   |
 | Token Selected         | Show floating transfer box                 |
 | Destination Selected   | Reveal transfer amount and recipient fields |
+| Button Hover/Click     | Subtle scale/brightness change, smooth transition.                         | Defined in Button component section.                         |
+| Input Focus/Error      | Accent border + glow (focus), Red border + glow (error), smooth transition. | Defined in Input component section.                          |
+| Form Validation Error  | Highlight specific field(s) with error style, show clear message nearby.   | Prefer inline messages near fields over generic toasts.      |
+| Data Loading           | Use skeleton loaders for components, spinners for actions.                 | Avoid jarring layout shifts during loading.                  |
+| Async Action Start     | Disable relevant controls, show inline spinner or progress indicator.      | E.g., Within the "Deploy" button or near status text.        |
+| Async Action Success   | Show success message (e.g., Toast), update UI state smoothly.            | Use subtle animations for state changes if appropriate.      |
+| Async Action Error     | Show clear error message (Toast or inline), allow user action (retry?).   | Provide option to view detailed error if useful.             |
+| Multi-Step Process     | Update visual stepper component to reflect current step and status.        | Defined in Process Steppers section.                         |
+| Panel Appearance       | Smooth transition (fade-in, slide-in).                                     | E.g., Floating Transfer Box.                                 |
+| Token/Item Selection   | Clear visual change (border, background, icon), smooth transition.         | Defined in Token Tile section.                               |
 
 ---
 

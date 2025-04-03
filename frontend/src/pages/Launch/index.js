@@ -11,6 +11,7 @@ import ImageUpload from '../../components/ImageUpload';
 import DistributionInput from '../../components/DistributionInput';
 import DistributionList from '../../components/DistributionList';
 import DeploymentConfirmation from '../../components/DeploymentConfirmation';
+import Button from '../../components/Button'; // Import the new Button component
 
 // Utils
 import { switchToZetaChain } from '../../utils/networkSwitchingUtility';
@@ -79,28 +80,6 @@ const ButtonContainer = styled.div`
   margin-top: 32px;
 `;
 
-const SubmitButton = styled.button`
-  background-color: var(--accent-primary);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 14px 32px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    opacity: 0.9;
-  }
-  
-  &:disabled {
-    background-color: #666;
-    cursor: not-allowed;
-    opacity: 0.7;
-  }
-`;
-
 const FeeSection = styled.div`
   background-color: rgba(60, 157, 242, 0.1);
   border-radius: 8px;
@@ -147,11 +126,17 @@ const ToggleButton = styled.button`
   padding: 8px 16px;
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease-in-out, border-color 0.2s ease-in-out, background-color 0.2s ease-in-out;
+  position: relative; /* Optional: for future pseudo-elements */
 
   &:hover {
     border-color: var(--accent-primary);
     color: ${props => props.$active ? 'white' : 'var(--accent-primary)'};
+    background-color: ${props => !props.$active && 'rgba(60, 157, 242, 0.1)'}; /* Subtle background on hover if not active */
+  }
+
+  &:active {
+    transform: scale(0.98);
   }
 `;
 
@@ -547,13 +532,13 @@ const LaunchPage = ({ embedded = false }) => {
         }
         
         setErrors({ submission: errorMsg });
-        setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_CREATION);
+        setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
       } else {
         setErrors({ submission: `Error: ${error.message || 'Unknown error occurred'}` });
         
         // Determine which phase failed
         if (deploymentStatus === DEPLOYMENT_STATUS.CREATING) {
-          setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_CREATION);
+          setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
         } else if (deploymentStatus === DEPLOYMENT_STATUS.PAYING) {
           setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT);
           // Show retry button for payment failures
@@ -873,9 +858,9 @@ const LaunchPage = ({ embedded = false }) => {
            <ErrorMessage>
              You need to be on ZetaChain network to launch a token.
              <ButtonContainer>
-               <SubmitButton onClick={handleSwitchNetwork}>
+               <Button variant="primary" onClick={handleSwitchNetwork}>
                  Switch to ZetaChain
-               </SubmitButton>
+               </Button>
              </ButtonContainer>
            </ErrorMessage>
          </FormContainer>
@@ -946,33 +931,48 @@ const LaunchPage = ({ embedded = false }) => {
 
       case DEPLOYMENT_STATUS.FAILED_PAYMENT:
       case DEPLOYMENT_STATUS.FAILED_DEPLOYMENT:
-         return (
-           <FormContainer>
-             <div style={{ textAlign: 'center', padding: '20px' }}>
-               <ErrorMessage>
-                 {errors.submission || 'An unexpected error occurred during deployment.'}
-               </ErrorMessage>
-               {createdTokenId && (
-                  <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '10px' }}>Token ID: {createdTokenId}</p>
-               )}
-               {showRetryButton && deploymentStatus === DEPLOYMENT_STATUS.FAILED_PAYMENT && (
-                 <div style={{ marginTop: '20px' }}>
-                   <p>Fee payment failed. Would you like to try again?</p>
-                   <ButtonContainer>
-                     <SubmitButton onClick={handleSubmit}>
-                       Try Again
-                     </SubmitButton>
-                   </ButtonContainer>
-                 </div>
-               )}
-                <ButtonContainer>
-                 <SubmitButton onClick={resetForm} style={{backgroundColor: 'var(--secondary-button-bg)', color: 'var(--text-primary)'}}>
+        return (
+          <FormContainer>
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <SectionTitle>
+                {deploymentStatus === DEPLOYMENT_STATUS.FAILED_PAYMENT ? 'Payment Failed' : 'Deployment Failed'}
+              </SectionTitle>
+              <ErrorMessage>
+                {errors.submission || 'An unexpected error occurred.'}
+              </ErrorMessage>
+              {createdTokenId && (
+                 <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '10px' }}>Token ID: {createdTokenId}</p>
+              )}
+              {transactionHash && deploymentStatus === DEPLOYMENT_STATUS.FAILED_PAYMENT && (
+                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '10px', wordBreak: 'break-all' }}>
+                   Failed Tx: <a href={`https://explorer.athens.zetachain.com/tx/${transactionHash}`} target="_blank" rel="noopener noreferrer">{transactionHash}</a>
+                 </p>
+              )}
+
+              {/* Buttons */} 
+              <ButtonContainer style={{ marginTop: '24px', gap: '16px' }}>
+                {showRetryButton && deploymentStatus === DEPLOYMENT_STATUS.FAILED_PAYMENT && (
+                  <Button 
+                    variant="primary" 
+                    type="button"
+                    onClick={handleSubmit} 
+                    disabled={isSubmitting || !walletReady}
+                  >
+                    {isSubmitting ? 'Retrying...' : 'Retry Payment'}
+                  </Button>
+                )}
+                <Button 
+                  variant="secondary" 
+                  type="button"
+                  onClick={resetForm} 
+                  disabled={isSubmitting}
+                 >
                    Start Over
-                 </SubmitButton>
-                </ButtonContainer>
-             </div>
-           </FormContainer>
-         );
+                 </Button>
+               </ButtonContainer>
+            </div>
+          </FormContainer>
+        );
 
       case DEPLOYMENT_STATUS.COMPLETED:
         return (
@@ -1178,12 +1178,19 @@ const LaunchPage = ({ embedded = false }) => {
               )}
               
               <ButtonContainer>
-                <SubmitButton 
-                  type="submit" 
-                  disabled={isSubmitting || !isZetaChainNetwork}
-                >
-                  {isSubmitting ? 'Processing...' : 'Launch Token'}
-                </SubmitButton>
+                {!isConnected ? (
+                  <Button variant="primary" type="button" disabled>Connect Wallet First</Button>
+                ) : !isZetaChainNetwork ? (
+                  <Button variant="secondary" type="button" onClick={handleSwitchNetwork}>Switch to ZetaChain</Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    type="submit" 
+                    disabled={isSubmitting || !walletReady}
+                  >
+                    {isSubmitting ? 'Processing...' : (walletReady ? 'Launch Universal Token' : 'Wallet Not Ready')}
+                  </Button>
+                )}
               </ButtonContainer>
             </FormContainer>
           </form>

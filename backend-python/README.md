@@ -106,26 +106,49 @@ The following fixes were implemented to address startup issues and module import
    - Enhanced error handling and logging for verification requests
    - Created diagnostic utility `test_blockscout_api_verification.py` for troubleshooting verification issues
 
+6. **Token Deployment Workflow Enhancements (April 2025)**:
+   - The `/api/deploy` endpoint now orchestrates the full Universal Token setup process.
+   - **Service Account:** Uses the `DEPLOYER_PRIVATE_KEY` from the `.env` file to perform all deployment and setup transactions.
+   - **Deployment:** Deploys `ZetaChainUniversalToken` to ZetaChain and `EVMUniversalToken` to selected EVM chains using the constructors defined in their respective ABIs (`smart-contracts/artifacts`).
+     - *Note:* The current `EVMUniversalToken.json` artifact uses a 6-argument constructor, not the standard UUPS initializer pattern.
+   - **Connection:** Calls `setConnectedContract` on the ZetaChain contract and `setZetaChainContract` on each deployed EVM contract to link them.
+     - *Note:* This relies on these specific function names existing in the ABIs.
+   - **Allocations:** Distributes the initial supply by calling `transfer` on the ZetaChain contract *from* the service account *to* the addresses specified in the API request's `allocations` field.
+   - **Ownership Transfer:** Transfers ownership of both the ZetaChain contract and all successfully deployed/connected EVM contracts from the service account to the `deployer_address` specified in the API request.
+   - **Status Tracking:** Updated database models and API responses to track the status of connection and setup steps.
+
 ## For Future Developers
 
 If you're working on this codebase, please note these important points:
 
 1. **Strict Python Version Requirement**: This project **only** works with Python 3.11, not 3.13 or any other version. Always use the virtual environment.
 
-2. **Model Export Pattern**: When adding new model classes, make sure to export them in `app/models/__init__.py`. The codebase follows a pattern of defining models in module files and re-exporting them through `__init__.py`.
+2. **Service Deployer Account**: All blockchain transactions (deployment, setup, initial transfers, ownership transfer) are performed by the account associated with the `DEPLOYER_PRIVATE_KEY` in the `.env` file. Ensure this account is funded with native gas tokens (ZETA on ZetaChain Testnet, Sepolia ETH, etc.) on all chains you intend to deploy to.
 
-3. **Configuration Access**: The application uses a centralized `Config` class in `app/config.py`. Access configuration values through this class rather than creating new environment variable lookups.
+3. **EVM Contract Constructor**: The current EVM deployment uses the 6-argument constructor found in the `EVMUniversalToken.json` ABI. If you update the smart contracts to use a standard UUPS initializer pattern, you will need to refactor the EVM deployment logic in `app/services/deployment.py` to deploy with no arguments and then call the `initialize` function separately.
 
-4. **Virtual Environment**: Always use the dedicated virtual environment to ensure proper dependency versions:
+4. **Contract Connection Functions**: The connection logic relies on the `setConnectedContract` function existing on the ZetaChain contract and `setZetaChainContract` existing on the EVM contract. If these function names change in future contract versions, update the `method_name` arguments in the `call_contract_method` invocations within `app/services/deployment.py`.
+
+5. **Chain Configuration (`rpc_config.json`)**: 
+   - This file MUST contain accurate RPC URLs and chain IDs.
+   - For EVM deployments, the `gateway_address` field MUST be populated with the correct ZetaChain Gateway contract address for that specific EVM network. Deployments will fail for chains missing this configuration.
+
+6. **ZRC-20 Addresses (`web3_helper.py`)**: The `get_zrc20_address` function currently uses a hardcoded dictionary for testnet ZRC-20 gas token addresses on ZetaChain. This needs to be updated or replaced with a dynamic lookup mechanism for mainnet support or additional testnets.
+
+7. **Model Export Pattern**: When adding new model classes, make sure to export them in `app/models/__init__.py`. The codebase follows a pattern of defining models in module files and re-exporting them through `__init__.py`.
+
+8. **Configuration Access**: The application uses a centralized `Config` class in `app/config.py`. Access configuration values through this class rather than creating new environment variable lookups.
+
+9. **Virtual Environment**: Always use the dedicated virtual environment to ensure proper dependency versions:
    ```bash
    source venv_311/bin/activate
    ```
 
-5. **Testing Changes**: After making modifications, run the test scripts to ensure everything still works:
-   ```bash
-   python test_rpc_config.py
-   python test_deployment.py --testnet-only --max-chains 1
-   ```
+10. **Testing Changes**: After making modifications, run the test scripts to ensure everything still works:
+    ```bash
+    python test_rpc_config.py
+    python test_deployment.py --testnet-only --max-chains 1 
+    ```
 
 ## Getting Started
 
@@ -162,7 +185,7 @@ cp .env.example .env
 
 5. Edit the `.env` file with your configuration settings, especially:
    - Database connection details
-   - Deployer private key (used for contract deployment - make sure it has 0x prefix)
+   - `DEPLOYER_PRIVATE_KEY` (used for all contract deployment and interaction - requires 0x prefix and funding on relevant chains)
    - Explorer API keys (used for contract verification)
    - Custom RPC URLs for less reliable networks (see Chain Configuration section below)
 
@@ -235,7 +258,7 @@ The API provides several endpoints for managing token deployments:
 
 ### Token Deployment
 
-The token deployment endpoint (`POST /api/deploy`) requires a specific JSON payload with the following structure:
+The token deployment endpoint (`POST /api/deploy`) handles the entire deployment and setup process. It requires a specific JSON payload:
 
 ```json
 {
@@ -520,7 +543,8 @@ Each chain in the configuration includes an `enabled` flag that determines wheth
     "blockscout_url": null,
     "currency_symbol": "ETH",
     "testnet": true,
-    "enabled": true
+    "enabled": true,
+    "gateway_address": "0xE936919eA925B050c4fe42319b77F00738F8C74A"
   }
 }
 ```
@@ -538,7 +562,7 @@ To add support for a new blockchain network:
 
 1. **Update the Chain Configuration**
 
-   Edit the `app/rpc_config.json` file to add the new chain. Use the chain ID as the key and provide the required configuration information:
+   Edit the `app/rpc_config.json` file to add the new chain. Use the chain ID as the key and provide the required configuration information, **including the `gateway_address` for EVM chains**:
 
    ```json
    {
@@ -548,7 +572,8 @@ To add support for a new blockchain network:
        "explorer_url": "https://explorer.example.com",
        "blockscout_url": null,
        "currency_symbol": "TOKEN",
-       "testnet": false
+       "testnet": false,
+       "gateway_address": "0x..."
      }
    }
    ```
@@ -560,6 +585,7 @@ To add support for a new blockchain network:
    - `blockscout_url`: URL of the Blockscout explorer (null if not available)
    - `currency_symbol`: The native currency symbol
    - `testnet`: Boolean indicating if this is a testnet
+   - `gateway_address`: URL of the ZetaChain Gateway contract on this chain (null if not EVM)
 
 2. **Configure Custom RPC URLs (Optional)**
 
