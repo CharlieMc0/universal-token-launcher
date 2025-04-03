@@ -51,9 +51,16 @@ const ActionCard = styled(Link)`
   align-items: center;
   justify-content: center;
   
+  ${props => props.disabled && `
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+    position: relative;
+  `}
+  
   &:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    transform: ${props => props.disabled ? 'none' : 'translateY(-4px)'};
+    box-shadow: ${props => props.disabled ? 'none' : '0 8px 16px rgba(0, 0, 0, 0.2)'};
     background-color: ${props => props.primary ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.05)'};
   }
 `;
@@ -72,6 +79,17 @@ const ActionTitle = styled.h3`
 const ActionDescription = styled.p`
   font-size: 14px;
   color: ${props => props.primary ? 'rgba(255, 255, 255, 0.8)' : 'var(--text-secondary)'};
+`;
+
+const ComingSoonBadge = styled.div`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
 `;
 
 const FeaturesSection = styled.section`
@@ -125,26 +143,27 @@ const HomePage = () => {
     <>
       <HeroSection>
         <HeroTitle>
-          Deploy Universal Tokens & NFTs across <Highlight>Multiple Chains</Highlight>
+          Manage Universal Tokens & NFTs across <Highlight>Multiple Chains</Highlight>
         </HeroTitle>
         <HeroSubtitle>
           The Universal Launcher allows you to configure and deploy tokens and NFTs on multiple chains with a single transaction, powered by ZetaChain's cross-chain technology.
         </HeroSubtitle>
         
         <ActionGrid>
-          <ActionCard to="/create">
+          <ActionCard to="/make">
             <ActionIcon>🚀</ActionIcon>
-            <ActionTitle>Create</ActionTitle>
+            <ActionTitle>Make</ActionTitle>
             <ActionDescription>Launch tokens or NFT collections that work seamlessly across multiple blockchains</ActionDescription>
           </ActionCard>
           
-          <ActionCard to="/transfer">
+          <ActionCard to="/move">
             <ActionIcon>⛓️</ActionIcon>
-            <ActionTitle>Transfer</ActionTitle>
+            <ActionTitle>Move</ActionTitle>
             <ActionDescription>Move your tokens and NFTs between any supported blockchain networks</ActionDescription>
           </ActionCard>
           
-          <ActionCard to="/buy">
+          <ActionCard to="/buy" disabled>
+            <ComingSoonBadge>Coming Soon</ComingSoonBadge>
             <ActionIcon>💰</ActionIcon>
             <ActionTitle>Buy</ActionTitle>
             <ActionDescription>Purchase NFTs using cross-chain assets and see your upcoming token marketplace</ActionDescription>

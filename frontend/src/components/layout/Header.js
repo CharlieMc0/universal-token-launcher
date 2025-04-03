@@ -33,36 +33,33 @@ const LogoHighlight = styled.span`
   margin-left: 8px;
 `;
 
-const Navigation = styled.nav`
+const MainNav = styled.nav`
   display: flex;
-  gap: 40px;
   align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto;
+  padding: 8px;
+  background: rgba(18, 18, 26, 0.7);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  border: 1px solid var(--border);
 `;
 
-const NavLink = styled(Link)`
+const NavAction = styled(Link)`
+  background: ${props => props.active ? 'var(--card-bg)' : 'transparent'};
   color: ${props => props.active ? 'var(--text-primary)' : 'var(--text-secondary)'};
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
   text-decoration: none;
-  font-weight: ${props => props.active ? '600' : '500'};
-  font-size: 16px;
-  position: relative;
-  
-  &:after {
-    content: '';
-    position: absolute;
-    width: ${props => props.active ? '100%' : '0'};
-    height: 2px;
-    bottom: -4px;
-    left: 0;
-    background-color: var(--accent-primary);
-    transition: all 0.3s ease;
-  }
   
   &:hover {
-    color: var(--text-primary);
-    
-    &:after {
-      width: 100%;
-    }
+    background: ${props => props.active ? 'var(--card-bg)' : 'rgba(255, 255, 255, 0.05)'};
+    transform: translateY(-1px);
   }
 `;
 
@@ -73,6 +70,8 @@ const ActionsContainer = styled.div`
 
 const Header = () => {
   const location = useLocation();
+  const isMakePage = location.pathname === '/make';
+  const isMovePage = location.pathname === '/move';
   
   return (
     <HeaderContainer>
@@ -80,20 +79,14 @@ const Header = () => {
         <Logo>Universal <LogoHighlight>Launcher</LogoHighlight></Logo>
       </LogoContainer>
       
-      <Navigation>
-        <NavLink to="/" active={location.pathname === '/' ? 1 : 0}>
-          Home
-        </NavLink>
-        <NavLink to="/create" active={location.pathname === '/create' ? 1 : 0}>
-          Create
-        </NavLink>
-        <NavLink to="/transfer" active={location.pathname === '/transfer' ? 1 : 0}>
-          Transfer
-        </NavLink>
-        <NavLink to="/buy" active={location.pathname === '/buy' ? 1 : 0}>
-          Buy
-        </NavLink>
-      </Navigation>
+      <MainNav>
+        <NavAction to="/make" active={isMakePage ? 1 : 0}>
+          Make
+        </NavAction>
+        <NavAction to="/move" active={isMovePage ? 1 : 0}>
+          Move
+        </NavAction>
+      </MainNav>
       
       <ActionsContainer>
         <ConnectButton />

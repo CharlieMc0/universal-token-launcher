@@ -1,16 +1,33 @@
 # Universal Token Launcher Frontend
 
-This project is the frontend for the Universal Token Launcher, which allows users to deploy and transfer tokens and NFTs across multiple blockchains using ZetaChain's cross-chain technology.
+This project is the frontend for the Universal Token Launcher, which allows users to deploy and move tokens and NFTs across multiple blockchains using ZetaChain's cross-chain technology.
 
 ## ✨ UI/UX Enhancement Initiative (In Progress)
 
-To elevate the user experience and visual polish, we are implementing several enhancements based on the updated `documentation/design.md`:
+We've implemented several design and UX enhancements to create a premium, intuitive experience:
 
-- **Enhanced Visual Feedback:** Implementing subtle micro-interactions (hover/active states, transitions) on buttons, inputs, and tiles.
-- **Improved Loading States:** Replacing basic text indicators with skeleton loaders and spinners for a more engaging feel during data fetching and transactions.
-- **Component Refinement:** Polishing input field states (focus, error, disabled), card/container internal structure, and toggle component visuals.
-- **Workflow Clarity:** Introducing visual process steppers for multi-step actions like deployment and improving the interaction flow of contextual elements like the transfer panel.
-- **Typography & Readability:** Refining type hierarchy and improving the display of data like addresses and transaction hashes (monospace font, copy functionality).
+### Rebranding & Navigation
+- **Simplified Navigation**: Reduced to just two primary actions ("Make" and "Move") for a cleaner, more focused experience
+- **Action-Oriented Language**: Changed terminology from "Create/Transfer" to "Make/Move" for more intuitive user interaction
+- **Minimalist Header**: Streamlined header with just logo, navigation, and wallet connection
+
+### Visual Refinements
+- **Premium Dark Theme**: Implemented a darker color scheme (#080810) with vibrant accent colors for better visual hierarchy
+- **Subtle Animations**: Added smooth transitions (250-300ms easing) for all interactive elements
+- **Monospace Typography**: Using JetBrains Mono font for addresses, transaction hashes, and amounts
+- **8px Grid System**: Applied a consistent 8px spacing system throughout the app
+- **Gradient Accents**: Added gradient backgrounds to primary action buttons
+- **Refined Separators**: Using thin dividers (1px) with low opacity for subtle visual separation
+
+### Enhanced Component Design
+- **Visual Cards**: Replaced toggle buttons with visual cards for token/NFT type selection
+- **Improved Form Elements**: Better focus states, validation feedback, and interactive elements
+- **Consistent Patterns**: Standardized layouts, spacing, and interactive behaviors
+
+### Interaction Improvements
+- **Reduced Friction**: Combined or eliminated unnecessary steps in main workflows
+- **Better Feedback**: Enhanced loading states, success/error feedback, and transaction status visibility
+- **Progressive Disclosure**: Show advanced options only when needed
 
 ## Backend Integration
 
@@ -380,16 +397,16 @@ The token API endpoint returns data structured like this:
 }
 ```
 
-## Cross-Chain Transfers and Contract Interactions
+## Cross-Chain Moves and Contract Interactions
 
-The application includes robust cross-chain token transfer functionality through direct contract interactions with Universal Tokens.
+The application includes robust cross-chain token movement functionality through direct contract interactions with Universal Tokens.
 
-### Cross-Chain Transfer Features
+### Cross-Chain Move Features
 
-- **Network Verification**: Ensures the user is on the correct blockchain network (ZetaChain) before initiating transfers
-- **Auto Network Switching**: Automatically prompts to switch networks when needed and verifies the switch was successful
-- **Balance Verification**: Checks token balance before attempting transfers to prevent failed transactions
-- **Contract Setup Verification**: **NEW:** Before attempting a transfer, the app now checks if the necessary cross-chain contract addresses (`connectedContracts` on ZetaChain, `zetaChainContract` on EVM chains) are properly set up by the owner. This prevents transactions that would inevitably fail due to incomplete token configuration.
+- **Network Verification**: Ensures the user is on the correct blockchain network (ZetaChain) before initiating moves
+- **Gas Estimation**: Accurate gas estimation for cross-chain transactions
+- **Balance Verification**: Checks token balance before attempting moves to prevent failed transactions
+- **Contract Setup Verification**: **NEW:** Before attempting a move, the app now checks if the necessary cross-chain contract addresses (`connectedContracts` on ZetaChain, `zetaChainContract` on EVM chains) are properly set up by the owner. This prevents moves from failing due to incomplete setup.
 - **Fallback ABI Mechanism**: Uses fallback ABI if standard one fails, improving compatibility with different contract versions
 - **Dynamic Gas Estimation**: Estimates gas directly from the contract with a 30% buffer for safety
 - **Transaction Retries**: Automatically retries failed transactions with increased gas (50% more) when appropriate
@@ -399,11 +416,11 @@ The application includes robust cross-chain token transfer functionality through
 
 ### Minting Functionality (NEW)
 
-- **Conditional Minting**: The UI now displays a "Mint" tab alongside "Transfer" if the connected wallet:
+- **Conditional Minting**: The UI now displays a "Mint" tab alongside "Move" if the connected wallet:
   - Is the original deployer/owner of the selected token contract.
   - OR has a balance greater than 0 for the selected token on the chosen source chain.
 - **Mint Form**: Allows the deployer/owner (or eligible user) to specify the amount to mint and an optional recipient address (defaults to their own address).
-- **Mint Transaction**: Uses the `mintTokens` function with robust gas estimation, fallback logic, and error handling similar to the transfer function.
+- **Mint Transaction**: Uses the `mintTokens` function with robust gas estimation, fallback logic, and error handling similar to the move function.
 - **Permissions Check**: Ensures only the authorized owner can execute the mint transaction on-chain.
 
 ### Contract Interaction Improvements
@@ -415,7 +432,7 @@ The application includes robust cross-chain token transfer functionality through
 - **Wait Time Optimization**: Uses appropriate wait periods between network switching and transactions
 - **Safe Contract Method Access**: Checks interface and method availability with proper null/undefined handling
 - **Contract Verification**: Validates contracts by testing basic methods before attempting complex operations
-- **Mint Gas Handling**: **NEW:** Implemented robust gas estimation and retry logic for the `mint` function, similar to the `crossChainTransfer` function, resolving previous gas-related errors.
+- **Mint Gas Handling**: **NEW:** Implemented robust gas estimation and retry logic for the `mint` function, similar to the `crossChainMove` function, resolving previous gas-related errors.
 
 ### Error Handling and Recovery
 
@@ -426,9 +443,9 @@ The application includes robust cross-chain token transfer functionality through
 - **Wallet Connection Issues**: Checks for wallet availability and connectivity before transactions
 - **Parameters Validation**: Validates and properly formats all transaction parameters before sending
 - **Console Diagnostics**: Provides detailed logging for troubleshooting in the browser console
-- **Incomplete Setup Errors**: **NEW:** Clearly informs the user if a transfer fails because the token's cross-chain setup (linking contracts) hasn't been completed by the owner.
+- **Incomplete Setup Errors**: **NEW:** Clearly informs the user if a move fails because the token's cross-chain setup (linking contracts) hasn't been completed by the owner.
 
-### Common Cross-Chain Transfer Issues
+### Common Cross-Chain Move Issues
 
 1.  **"Token setup incomplete..." Errors**
     - **NEW:** This error indicates the contract owner hasn't finished setting up the cross-chain links (`connectedContracts` or `zetaChainContract`). The owner must call the appropriate setup function (`setConnectedContract` or `setZetaChainContract`) on the deployed contracts.
@@ -439,7 +456,7 @@ The application includes robust cross-chain token transfer functionality through
     - Enable console logging to see where the null object is occurring
 3.  **Transaction Revert Errors**
     - Look for specific revert messages in the error details
-    - Check token balance to ensure sufficient tokens for the transfer
+    - Check token balance to ensure sufficient tokens for the move
     - Verify that the recipient address is correctly formatted
     - Ensure the destination chain ID is supported by the contract
 4.  **Network Switching Issues**
@@ -455,57 +472,14 @@ The application includes robust cross-chain token transfer functionality through
     - **NEW:** Ensure the mint amount and recipient address are valid.
     - Gas errors during minting should be less common now due to improved estimation and retries.
 
-### API Response Structure
-
-The token API endpoint returns data structured like this:
-
-```json
-{
-  "success": true,
-  "token": {
-    "id": 1,
-    "token_name": "Test Token",
-    "token_symbol": "TST",
-    "decimals": 18,
-    "total_supply": "1000000000000000000000000",
-    "deployment_status": "completed",
-    "error_message": null,
-    "deployer_address": "0x4f1684A28E33F42cdf50AB96e29a709e17249E63",
-    "zc_contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
-    "connected_chains_json": {
-      "11155111": {
-        "status": "completed",
-        "contract_address": "0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB",
-        "transaction_hash": "0x...",
-        "verification_status": "pending",
-        "chain_id": "11155111",
-        "chain_name": "Sepolia Testnet",
-        "explorer_url": "https://sepolia.etherscan.io",
-        "blockscout_url": null,
-        "contract_url": "https://sepolia.etherscan.io/address/0x8Da98E1ea986331D68ee5CD83b1E49665B4587fB"
-      }
-    },
-    "zeta_chain_info": {
-      "chain_id": "7001",
-      "contract_address": "0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b",
-      "status": "completed",
-      "explorer_url": "https://explorer.athens.zetachain.com",
-      "blockscout_url": "https://zetachain-testnet.blockscout.com/",
-      "verification_status": "unknown",
-      "contract_url": "https://zetachain-testnet.blockscout.com//address/0x7c9037d10c4BC877268cb4fe900490Ff98b5D52b"
-    }
-  }
-}
-```
-
 ## Latest Enhancements
 
-- **Enhanced Transfer Page**:
-  - Redesigned Transfer page with a compact token card layout and an improved user interface.
-  - New components introduced: `EnhancedTokenCard`, `TokenSectionContainer`, `TokenFilterControls`, and `EnhancedTransferPanel` to streamline token transfers.
-  - Updated filter tabs to display "Tokens You Deployed" and "Tokens You Hold".
+- **Enhanced Move Page**:
+  - Redesigned Move page with a compact token card layout and an improved user interface.
+  - New components introduced: `EnhancedTokenCard`, `TokenSectionContainer`, `TokenFilterControls`, and `EnhancedMovePanel` to streamline token moves.
+  - Updated filter tabs to display "Tokens You Made" and "Tokens You Hold".
   - Automatic Source Chain Selection: When a user has tokens on only one chain with a non-zero balance, that chain is auto-selected, reducing manual input and enhancing usability.
-  - Fixed bug where the Transfer/Mint window would disappear when switching between tabs.
+  - Fixed bug where the Move/Mint window would disappear when switching between tabs.
 
 - **API Update**:
   - Modified the `getUserTokens` function to include a `created_at` field, improving sorting and filtering of tokens.
@@ -620,29 +594,29 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 
 ## NFT Deployment Enhancements
 
-The NFT deployment functionality has been enhanced with several important updates:
+The NFT deployment functionality has been improved with several important updates:
 
-### EIP-55 Address Checksum Fix
-- Fixed an issue where the backend was rejecting NFT deployments due to invalid EIP-55 address checksum format
-- Implemented proper address formatting using `ethers.getAddress()` to ensure all addresses are correctly checksummed before being sent to the API
-- Added proper validation in both the UI form and test scripts to prevent address format errors
+### Backend Integration Fixes
 
-### Enhanced Error Handling
-- Improved backend error handling to provide more descriptive error messages to users
-- Added special handling for "Deployment failed" errors with "Unknown error" to provide more context about potential backend issues
-- Implemented console logging of API requests and responses for easier debugging
-- Enhanced the error display in the UI to show specific backend error details when available
+- **Fixed Chain Loading**: Resolved issue where "Loading supported chains..." would remain indefinitely by enhancing chain data filtering, adding proper error handling, and implementing better state management.
+- **Proper API Integration**: Updated the NFT deployment flow to correctly integrate with the backend API endpoint (`/api/nft/deploy`), removing the unnecessary frontend-initiated fee payment transaction and confirmation steps.
+- **Streamlined Deployment Process**: Simplified the deployment flow to:
+  1. Send NFT collection data directly to the backend API in one call
+  2. Poll for deployment status until completion
+  3. Display deployment details upon successful completion
 
-### Debugging and Testing Improvements
-- Updated test scripts to correctly format wallet addresses with proper EIP-55 checksums
-- Added more detailed logging throughout the NFT deployment process
-- Implemented a debug mode that shows additional deployment information
-- Added better validation of form inputs and API responses
+### User Experience Improvements
 
-### API Integration Robustness
-- Enhanced error handling for API connection issues, with fallback options when the backend is unavailable
-- Improved validation of required fields before sending API requests
-- Added proper type validation for numeric fields like `max_supply`
-- Implemented better error formatting from backend validation errors
+- **Image Validation**: Made image upload optional for form submission since the image isn't actually sent to the backend API.
+- **Better Error Handling**: Improved validation error messages and feedback to provide clearer guidance to users.
+- **Deployment Status Feedback**: Enhanced the polling mechanism to provide real-time updates on deployment progress.
+- **Robust Chain Selection**: Implemented fallback chains and better filtering for testnet-only chains to ensure users can always access ZetaChain.
 
-These changes significantly improve the reliability and user experience of the NFT deployment functionality, ensuring that users receive clear feedback about any issues encountered during the deployment process.
+### Code Quality Enhancements
+
+- **Dependency Management**: Corrected the useEffect dependency array to prevent unnecessary chain re-fetching.
+- **Better Logging**: Added comprehensive logging throughout the deployment process to aid debugging.
+- **Input Validation**: Improved validation for input fields including checksummed Ethereum addresses.
+- **Clean State Management**: Added proper cleanup of state variables between deployment attempts.
+
+These improvements ensure that the NFT deployment functionality works reliably with the backend API, providing users with a seamless experience for deploying NFT collections across multiple chains.

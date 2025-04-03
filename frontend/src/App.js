@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { configureChains, createConfig, WagmiConfig, useAccount } from 'wagmi';
 import { mainnet, sepolia, bscTestnet, baseSepolia } from 'wagmi/chains';
 import { publicProvider } from 'wagmi/providers/public';
@@ -17,9 +17,8 @@ import './App.css';
 
 // Import pages
 import HomePage from './pages/Home';
-import CreatePage from './pages/Create';
-import TransferPage from './pages/Transfer';
-import BuyPage from './pages/Buy';
+import MakePage from './pages/Make';
+import MovePage from './pages/Move';
 // Import Layout
 import Layout from './components/layout/Layout';
 // Import API Service
@@ -90,7 +89,7 @@ function App() {
     <WagmiConfig config={wagmiConfig}>
       <RainbowKitProvider
         theme={darkTheme({
-          accentColor: '#3C9DF2',
+          accentColor: '#4A9FFF',
           accentColorForeground: 'white',
           borderRadius: 'medium',
           fontStack: 'system',
@@ -101,10 +100,15 @@ function App() {
           <Router>
             <Routes>
               <Route path="/" element={<Layout><HomePage /></Layout>} />
-              <Route path="/create" element={<Layout><CreatePage /></Layout>} />
-              <Route path="/transfer" element={<Layout><TransferPage /></Layout>} />
-              <Route path="/buy" element={<Layout><BuyPage /></Layout>} />
-              {/* Add more routes as needed */}
+              <Route path="/make" element={<Layout><MakePage /></Layout>} />
+              <Route path="/move" element={<Layout><MovePage /></Layout>} />
+              
+              {/* Legacy routes with redirects */}
+              <Route path="/create" element={<Navigate to="/make" replace />} />
+              <Route path="/transfer" element={<Navigate to="/move" replace />} />
+              
+              {/* Catch-all route */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Router>
         </WalletConnector>

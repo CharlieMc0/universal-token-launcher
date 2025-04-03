@@ -1,6 +1,6 @@
 # Universal Token Launcher
 
-Universal Token Launcher is a web application that allows users to deploy Universal Tokens across multiple EVM chains with simple, single-signed transactions. Leveraging ZetaChain's interoperability, the app minimizes the creator's manual steps while automating cross-chain contract deployments and asset distributions.
+Universal Token Launcher is a web application that allows users to manage Universal Tokens across multiple EVM chains with simple, single-signed transactions. Leveraging ZetaChain's interoperability, the app minimizes the creator's manual steps while automating cross-chain contract deployments and asset distributions.
 
 ## Features
 
@@ -11,7 +11,7 @@ Universal Token Launcher is a web application that allows users to deploy Univer
 - **ZetaChain Integration**: Leverage ZetaChain's interoperability for seamless cross-chain operations
 - **Pagination and Sorting**: Browse through tokens with pagination and multiple sorting options
 - **Detailed Token Information**: View token balances across different chains with proper formatting
-- **Floating Transfer Interface**: Contextual transfer panel that appears when selecting a token
+- **Floating Transfer Interface**: Contextual move panel that appears when selecting a token
 
 ## Documentation
 
@@ -92,34 +92,34 @@ npm run run-demo
 
 ## Frontend Features
 
-### Token Transfer Page
+### Token Move Page
 
-The Token Transfer page allows users to easily transfer their tokens between different chains:
+The Token Move page allows users to easily move their tokens between different chains:
 
 - **Paged Token Display**: View up to 10 tokens per page with simple navigation controls
 - **Token Count**: Clearly see the total number of tokens you own
 - **Sorting Options**: Sort tokens by balance (high/low), name (A-Z/Z-A), or symbol (A-Z/Z-A)
 - **Detailed Chain Information**: View token balances across different chains with proper formatting
-- **Floating Transfer Interface**: A contextual panel appears when selecting a token, making transfers more immediate
+- **Floating Move Interface**: A contextual panel appears when selecting a token, making moves more immediate
 - **Compact Chain Selection**: Grid-based destination chain selection for intuitive experience
 - **API Integration**: Proper integration with the `/api/users/{address}` endpoint for fetching user tokens
 
 #### User Experience Improvements
 
-The Token Transfer page implements several UX improvements aligned with our design system:
+The Token Move page implements several UX improvements aligned with our design system:
 
-- **Contextual Interface**: The transfer interface appears right after token selection without requiring scrolling
+- **Contextual Interface**: The move interface appears right after token selection without requiring scrolling
 - **Responsive Design**: The floating panel adapts to screen size, becoming full-width on mobile
-- **Visual Hierarchy**: Clear distinction between source chain, destination options, and transfer details
-- **Progressive Disclosure**: Only showing relevant options as the user progresses through the transfer flow
-- **Error Handling**: Properly formatted error and status messages within the transfer interface
+- **Visual Hierarchy**: Clear distinction between source chain, destination options, and move details
+- **Progressive Disclosure**: Only showing relevant options as the user progresses through the move flow
+- **Error Handling**: Properly formatted error and status messages within the move interface
 
 ### API Integration
 
 The frontend integrates with the backend API to:
 - Fetch token information from `/api/users/{address}`
 - Display token balances and chain information
-- Prepare and submit cross-chain transfers
+- Prepare and submit cross-chain moves
 
 ## License
 
@@ -255,6 +255,7 @@ The frontend implements a consistent design system with these components:
 - **FloatingTransferBox**: Contextual panel for transfer operations
 - **FormInput**: Standardized input fields with labels and help text
 - **PaginationControls**: Navigation for paged content
+- **FloatingMoveBox**: Contextual panel for move operations
 
 ## User Token API Response
 

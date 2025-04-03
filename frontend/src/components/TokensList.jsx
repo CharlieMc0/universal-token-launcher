@@ -76,7 +76,7 @@ const TokensList = ({ walletAddress }) => {
       <div className="tokens-empty">
         <h2>No Universal Tokens Found</h2>
         <p>You don't have any Universal Tokens yet.</p>
-        <button onClick={() => navigate('/create')}>
+        <button onClick={() => navigate('/make')}>
           Create a New Token
         </button>
       </div>

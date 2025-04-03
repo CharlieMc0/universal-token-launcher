@@ -1,11 +1,11 @@
 ---
 description: 
-globs: backend-python/**
+globs: backend/**
 alwaysApply: false
 ---
 # Python Guidelines and Rules for Backend
 
-backend-python/** @guide 
+backend/** @guide 
 
 These guidelines establish coding standards and best practices for Python code used in the backend of the Universal Token Launcher project. **Python 3.11** is required for all development.
 
