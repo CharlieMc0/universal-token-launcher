@@ -551,6 +551,8 @@ export const verifyContract = async (verificationData) => {
  */
 export const deployNFTCollection = async (collectionData) => {
   try {
+    console.log('deployNFTCollection called with:', collectionData);
+    
     // Make sure we're using the exact field names and types expected by the API
     const apiData = {
       collection_name: collectionData.collection_name,
@@ -614,10 +616,15 @@ export const deployNFTCollection = async (collectionData) => {
     
     // Send the request to the NFT deploy endpoint
     try {
+      console.log(`About to send POST request to ${API_BASE_URL}/nft/deploy`);
       const response = await api.post('/nft/deploy', apiData);
       console.log('NFT deploy endpoint response:', response.data);
       return response.data;
     } catch (error) {
+      console.error('API ERROR:', error);
+      console.error('Error response data:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      
       if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
         console.error('Backend connection error:', error.message);
         return {

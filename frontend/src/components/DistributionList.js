@@ -85,13 +85,13 @@ const DistributionList = ({ distributions = [], maxDisplay = 5 }) => {
         <tbody>
           {displayDistributions.map((dist, index) => (
             <tr key={index}>
-              <AddressCell title={dist.recipient_address}>
-                {formatAddress(dist.recipient_address)}
+              <AddressCell title={dist.address || dist.recipient_address}>
+                {formatAddress(dist.address || dist.recipient_address)}
               </AddressCell>
               <TableCell>
                 {dist.chain_id === '7001' ? 'ZetaChain Athens' : `Chain ${dist.chain_id}`}
               </TableCell>
-              <AmountCell>{dist.token_amount}</AmountCell>
+              <AmountCell>{dist.amount || dist.token_amount}</AmountCell>
             </tr>
           ))}
           {hasMore && (

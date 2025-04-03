@@ -7,6 +7,7 @@ import ImageUpload from '../../components/ImageUpload';
 import DistributionInput from '../../components/DistributionInput';
 import ChainSelector from '../../components/ChainSelector';
 import apiService from '../../services/apiService';
+import { ethers } from 'ethers';
 
 // Styled Components
 const PageContainer = styled.div`
@@ -144,7 +145,7 @@ const LaunchNFTPage = ({ embedded = false }) => {
   
   const [errors, setErrors] = useState({});
   const [nftImage, setNftImage] = useState(null);
-  const [selectedChains, setSelectedChains] = useState([]);
+  const [selectedChains, setSelectedChains] = useState(['7001']); // Initialize with ZetaChain
   const [distributions, setDistributions] = useState([]);
   const [deploymentStatus, setDeploymentStatus] = useState(null);
   const [deploymentDetails, setDeploymentDetails] = useState(null);
@@ -177,7 +178,30 @@ const LaunchNFTPage = ({ embedded = false }) => {
   const handleChainSelection = (e) => {
     const value = e.target.value;
     console.log('Chain selection changed:', value);
-    setSelectedChains(value);
+    console.log('Event object:', e);
+    console.log('Selection event target:', e.target);
+    
+    // Make sure we're getting an array of chain IDs
+    if (Array.isArray(value)) {
+      setSelectedChains(value);
+    } else {
+      console.error('Expected an array for chain selection, but got:', typeof value, value);
+      // Try to handle string values
+      if (typeof value === 'string') {
+        try {
+          // See if it's a JSON string
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            setSelectedChains(parsed);
+          } else {
+            setSelectedChains([value]); // Use as single value
+          }
+        } catch (e) {
+          // Not JSON, use as single value
+          setSelectedChains([value]);
+        }
+      }
+    }
     
     // Clear any chain selection errors
     if (errors.chains) {
@@ -192,83 +216,109 @@ const LaunchNFTPage = ({ embedded = false }) => {
   const validateForm = () => {
     const newErrors = {};
     
+    console.log('Validating form with data:', formData);
+    console.log('Selected chains:', selectedChains);
+    
     // Network validation
     if (!isZetaChainNetwork) {
       newErrors.network = 'Please switch to ZetaChain network';
-      return false;
+      console.log('Validation failed: Not on ZetaChain network');
     }
 
     // Balance validation
     if (balanceData && parseFloat(balanceData.formatted) < ZETA_FEE) {
       newErrors.balance = `Insufficient ZETA balance. You need at least ${ZETA_FEE} ZETA. Current balance: ${parseFloat(balanceData.formatted).toFixed(2)} ZETA`;
-      return false;
+      console.log('Validation failed: Insufficient balance');
     }
     
     // Name validation
     if (!formData.name.trim()) {
       newErrors.name = 'Collection name is required';
+      console.log('Validation failed: Missing collection name');
     }
     
     // Symbol validation
     if (!formData.symbol.trim()) {
       newErrors.symbol = 'Symbol is required';
+      console.log('Validation failed: Missing symbol');
     }
     
     // Base URI validation
     if (!formData.baseUri.trim()) {
       newErrors.baseUri = 'Base URI is required';
+      console.log('Validation failed: Missing base URI');
     }
     
     // Max Supply validation
     if (!formData.maxSupply || parseInt(formData.maxSupply) <= 0) {
       newErrors.maxSupply = 'Max Supply must be a positive number';
+      console.log('Validation failed: Invalid max supply');
     }
     
     // Image validation
     if (!nftImage) {
       newErrors.image = 'Please upload an image for your NFT collection';
+      console.log('Validation failed: Missing image');
     }
     
     // Selected chains validation
     if (selectedChains.length === 0) {
       newErrors.chains = 'Please select at least one chain';
+      console.log('Validation failed: No chains selected');
     }
     
     setErrors(newErrors);
+    console.log('Validation errors:', newErrors);
+    console.log('Validation passed:', Object.keys(newErrors).length === 0);
     return Object.keys(newErrors).length === 0;
   };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('Submit button clicked');
     
     if (!validateForm()) {
+      console.log('Form validation failed');
       return;
     }
+    
+    console.log('Form validation passed, proceeding with deployment');
     
     try {
       setDeploymentStatus('creating');
       setProcessingStep('Creating NFT collection configuration...');
       
-      // Prepare data for the backend API in the required format
+      // Get the correctly checksummed address using ethers
+      const checksummedAddress = ethers.getAddress(address);
+      console.log('Using checksummed address:', checksummedAddress);
+      
+      // Prepare data for the backend API
       const apiData = {
         collection_name: formData.name,
         collection_symbol: formData.symbol,
         base_uri: formData.baseUri,
         max_supply: parseInt(formData.maxSupply),
-        selected_chains: selectedChains.map(id => id.toString()),
-        deployer_address: address
+        selected_chains: selectedChains,
+        deployer_address: checksummedAddress // Use the correctly checksummed address
       };
       
       console.log('Sending NFT collection data to API:', apiData);
       
       // Step 1: Create collection configuration
       try {
+        console.log('Calling apiService.deployNFTCollection with:', apiData);
         const createResponse = await apiService.deployNFTCollection(apiData);
         console.log('NFT collection creation response:', createResponse);
         
         if (!createResponse.success) {
           const errorMsg = createResponse.message || 
                           (createResponse.errors && createResponse.errors.length > 0 ? createResponse.errors.join('; ') : 'Unknown error');
+          
+          // If the error is "Deployment failed" with "Unknown error", provide more context
+          if (errorMsg === "Deployment failed" && createResponse.errors && createResponse.errors.includes("Unknown error")) {
+            throw new Error(`Backend error: The NFT deployment service is experiencing issues. Please check the backend logs for more details.`);
+          }
+          
           throw new Error(`Failed to create NFT collection: ${errorMsg}`);
         }
         
@@ -776,6 +826,41 @@ const LaunchNFTPage = ({ embedded = false }) => {
               >
                 Deploy NFT Collection
               </DeployButton>
+              
+              {/* Debug button */}
+              <button 
+                type="button" 
+                onClick={async () => {
+                  console.log('Debug button clicked');
+                  const testData = {
+                    collection_name: "Test Collection",
+                    collection_symbol: "TEST",
+                    base_uri: "https://example.com/metadata/",
+                    max_supply: 1000,
+                    selected_chains: ["7001"],
+                    deployer_address: address
+                  };
+                  
+                  console.log('Testing API call with data:', testData);
+                  try {
+                    const response = await apiService.deployNFTCollection(testData);
+                    console.log('API response:', response);
+                  } catch (error) {
+                    console.error('API call error:', error);
+                  }
+                }}
+                style={{ 
+                  marginLeft: '10px',
+                  padding: '14px 32px',
+                  background: '#666',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+              >
+                Test API Call
+              </button>
             </ButtonContainer>
             
             {errors.network && <ErrorMessage>{errors.network}</ErrorMessage>}

@@ -4,6 +4,7 @@
  */
 
 const axios = require('axios');
+const { ethers } = require('ethers');
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -12,6 +13,10 @@ async function testNftDeployment() {
   try {
     console.log('Testing NFT API integration...');
     
+    // Use a properly formatted address (without any checksum validation)
+    const checksummedAddress = "0xa48c0FC87BF398d258A75391Bc5Fe6BC5f8F9b3B";
+    console.log('Using address:', checksummedAddress);
+    
     // Test data for NFT collection creation
     const testData = {
       collection_name: "Test NFT Collection",
@@ -19,7 +24,7 @@ async function testNftDeployment() {
       base_uri: "https://example.com/metadata/",
       max_supply: 10000,
       selected_chains: ["7001", "11155111"], // ZetaChain and Sepolia
-      deployer_address: "0xa48c0fC87BF398d258A75391Bc5Fe6BC5f8F9b3B"
+      deployer_address: checksummedAddress
     };
     
     console.log('1. Creating NFT collection configuration...');

@@ -617,3 +617,32 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+## NFT Deployment Enhancements
+
+The NFT deployment functionality has been enhanced with several important updates:
+
+### EIP-55 Address Checksum Fix
+- Fixed an issue where the backend was rejecting NFT deployments due to invalid EIP-55 address checksum format
+- Implemented proper address formatting using `ethers.getAddress()` to ensure all addresses are correctly checksummed before being sent to the API
+- Added proper validation in both the UI form and test scripts to prevent address format errors
+
+### Enhanced Error Handling
+- Improved backend error handling to provide more descriptive error messages to users
+- Added special handling for "Deployment failed" errors with "Unknown error" to provide more context about potential backend issues
+- Implemented console logging of API requests and responses for easier debugging
+- Enhanced the error display in the UI to show specific backend error details when available
+
+### Debugging and Testing Improvements
+- Updated test scripts to correctly format wallet addresses with proper EIP-55 checksums
+- Added more detailed logging throughout the NFT deployment process
+- Implemented a debug mode that shows additional deployment information
+- Added better validation of form inputs and API responses
+
+### API Integration Robustness
+- Enhanced error handling for API connection issues, with fallback options when the backend is unavailable
+- Improved validation of required fields before sending API requests
+- Added proper type validation for numeric fields like `max_supply`
+- Implemented better error formatting from backend validation errors
+
+These changes significantly improve the reliability and user experience of the NFT deployment functionality, ensuring that users receive clear feedback about any issues encountered during the deployment process.
