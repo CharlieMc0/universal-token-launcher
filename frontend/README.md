@@ -498,6 +498,18 @@ The token API endpoint returns data structured like this:
 }
 ```
 
+## Latest Enhancements
+
+- **Enhanced Transfer Page**:
+  - Redesigned Transfer page with a compact token card layout and an improved user interface.
+  - New components introduced: `EnhancedTokenCard`, `TokenSectionContainer`, `TokenFilterControls`, and `EnhancedTransferPanel` to streamline token transfers.
+  - Updated filter tabs to display "Tokens You Deployed" and "Tokens You Hold".
+  - Automatic Source Chain Selection: When a user has tokens on only one chain with a non-zero balance, that chain is auto-selected, reducing manual input and enhancing usability.
+  - Fixed bug where the Transfer/Mint window would disappear when switching between tabs.
+
+- **API Update**:
+  - Modified the `getUserTokens` function to include a `created_at` field, improving sorting and filtering of tokens.
+
 ## Available Scripts
 
 In the project directory, you can run:

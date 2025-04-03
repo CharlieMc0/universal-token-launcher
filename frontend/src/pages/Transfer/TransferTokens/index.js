@@ -10,6 +10,12 @@ import { CHAIN_IDS } from '../../../utils/contracts';
 import { formatTokenBalance } from '../../../utils/tokenUtils';
 import { ethers } from 'ethers';
 
+// Import our new enhanced components
+import EnhancedTokenCard from '../../../components/EnhancedTokenCard';
+import TokenSectionContainer from '../../../components/TokenSectionContainer';
+import TokenFilterControls from '../../../components/TokenFilterControls';
+import EnhancedTransferPanel from '../../../components/EnhancedTransferPanel';
+
 const PageContainer = styled.div`
   max-width: ${props => props.embedded ? '100%' : '800px'};
   margin: 0 auto;
@@ -416,6 +422,50 @@ const MintButton = styled(TransferButton)`
   }
 `;
 
+// Fix the duplicate CloseButton by renaming to ResultCloseButton
+const ResultsBox = styled.div`
+  position: fixed;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 500px;
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border: 2px solid ${props => props.success ? 'var(--accent-secondary)' : 'var(--error)'};
+  z-index: 1000;
+  text-align: center;
+`;
+
+const TxLink = styled.a`
+  display: inline-block;
+  color: var(--accent-primary);
+  margin-top: 12px;
+  text-decoration: none;
+  
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
+const ResultCloseButton = styled.button`
+  background-color: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  margin-top: 16px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 14px;
+  
+  &:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+  }
+`;
+
 const TransferTokens = ({ embedded = false }) => {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -463,6 +513,12 @@ const TransferTokens = ({ embedded = false }) => {
     mintAmount: '',
     mintRecipient: ''
   });
+
+  // Add new state for enhanced filtering and searching
+  const [filter, setFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredTokens, setFilteredTokens] = useState([]);
+  const [transferStep, setTransferStep] = useState('source');
 
   // Handle network switch
   const handleSwitchToZetaChain = async () => {
@@ -744,18 +800,51 @@ const TransferTokens = ({ embedded = false }) => {
           a.symbol.toLowerCase() < b.symbol.toLowerCase() ? 1 : -1
         );
         
+      case 'createdAtDesc':
+        // Sort by newest creation date first
+        return sortedTokens.sort((a, b) => {
+          const aDate = a.created_at ? new Date(a.created_at) : new Date(0);
+          const bDate = b.created_at ? new Date(b.created_at) : new Date(0);
+          return bDate - aDate;
+        });
+        
+      case 'createdAtAsc':
+        // Sort by oldest creation date first
+        return sortedTokens.sort((a, b) => {
+          const aDate = a.created_at ? new Date(a.created_at) : new Date(0);
+          const bDate = b.created_at ? new Date(b.created_at) : new Date(0);
+          return aDate - bDate;
+        });
+        
       default:
         return sortedTokens;
     }
   };
   
   // Handle sort option change
-  const handleSortChange = (e) => {
-    const option = e.target.value;
+  const handleSortChange = (option) => {
     setSortOption(option);
     const sorted = sortTokens(userTokens, option);
     setUserTokens(sorted);
-    updateDisplayedTokens(sorted, currentPage, tokensPerPage);
+    
+    // Re-apply current filters
+    let filtered = [...sorted];
+    if (filter === 'owned') {
+      filtered = filtered.filter(token => token.isDeployer);
+    } else if (filter === 'holdings') {
+      filtered = filtered.filter(token => !token.isDeployer);
+    }
+    
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(token => 
+        token.name.toLowerCase().includes(query) || 
+        token.symbol.toLowerCase().includes(query)
+      );
+    }
+    
+    setFilteredTokens(filtered);
+    updateDisplayedTokens(filtered, currentPage, tokensPerPage);
   };
 
   // Fetch user's tokens - only if connected, regardless of network
@@ -826,14 +915,7 @@ const TransferTokens = ({ embedded = false }) => {
   // Close the transfer box
   const handleCloseTransferBox = () => {
     setShowTransferBox(false);
-    // Reset the form data
-    setFormData({
-      tokenId: '',
-      sourceChain: '',
-      destinationChain: '',
-      transferAmount: '',
-      recipientAddress: ''
-    });
+    // Don't reset activeTab here, so we remember which tab was active
   };
 
   // Check if user is the token deployer when token is selected
@@ -884,6 +966,8 @@ const TransferTokens = ({ embedded = false }) => {
   // Handle mint tab selection
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+    // Keep the transfer box open when switching tabs
+    setShowTransferBox(true);
   };
   
   // Handler for mint submission
@@ -1005,6 +1089,129 @@ const TransferTokens = ({ embedded = false }) => {
     }
   };
 
+  // Add a new effect to handle filtering and searching
+  useEffect(() => {
+    if (!userTokens || userTokens.length === 0) {
+      setFilteredTokens([]);
+      return;
+    }
+    
+    // First apply ownership filter
+    let filtered = [...userTokens];
+    if (filter === 'owned') {
+      filtered = filtered.filter(token => token.isDeployer);
+    } else if (filter === 'holdings') {
+      filtered = filtered.filter(token => !token.isDeployer);
+    }
+    
+    // Then apply search query filter if there's a query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(token => 
+        token.name.toLowerCase().includes(query) || 
+        token.symbol.toLowerCase().includes(query)
+      );
+    }
+    
+    setFilteredTokens(filtered);
+    
+    // Update displayed tokens based on pagination
+    const startIndex = (currentPage - 1) * tokensPerPage;
+    const endIndex = startIndex + tokensPerPage;
+    setDisplayedTokens(filtered.slice(startIndex, endIndex));
+    
+    // Update total count for pagination
+    setTotalTokenCount(filtered.length);
+  }, [userTokens, filter, searchQuery, currentPage, tokensPerPage]);
+
+  // Handle filter change
+  const handleFilterChange = (newFilter) => {
+    setFilter(newFilter);
+    setCurrentPage(1); // Reset to first page when filter changes
+  };
+  
+  // Handle search query change
+  const handleSearchChange = (newQuery) => {
+    setSearchQuery(newQuery);
+    setCurrentPage(1); // Reset to first page when search changes
+  };
+  
+  // Handle token transfer button click
+  const handleTokenTransfer = (token) => {
+    // Set the selected token in formData
+    // (Don't auto-select the source chain)
+    setFormData({
+      ...formData,
+      tokenId: token.id,
+      // We're not setting sourceChain here as we want the user to select it
+    });
+    
+    // Display the source chain selection step
+    setActiveTab('transfer');
+    setShowTransferBox(true);
+    setTransferStep('source');
+  };
+  
+  // Handle token mint button click (for token owners)
+  const handleTokenMint = (token) => {
+    // Set the selected token for minting
+    setFormData({
+      ...formData,
+      tokenId: token.id
+    });
+    
+    // Switch to mint tab
+    setActiveTab('mint');
+    setShowTransferBox(true);
+  };
+  
+  // Handle quick amount selection
+  const handleQuickAmount = (percentage) => {
+    if (!selectedToken || !formData.sourceChain) return;
+    
+    // Get the source chain balance
+    const chainInfo = selectedToken.chainInfo.find(info => info.chain_id === formData.sourceChain);
+    if (!chainInfo) return;
+    
+    const balance = chainInfo.balance || '0';
+    const sourceBalance = formatTokenBalance(balance, selectedToken.decimals);
+    
+    // Calculate the quick amount based on percentage
+    try {
+      const numericBalance = Number(sourceBalance.replace(/,/g, ''));
+      const amount = (numericBalance * percentage).toFixed(6);
+      
+      // Remove trailing zeros
+      const formattedAmount = amount.replace(/\.?0+$/, '');
+      
+      setFormData({
+        ...formData,
+        transferAmount: formattedAmount
+      });
+    } catch (error) {
+      console.error('Error calculating quick amount:', error);
+    }
+  };
+  
+  // Handle transfer panel step navigation
+  const handleTransferStepSubmit = (action) => {
+    if (action === 'next') {
+      if (transferStep === 'source') {
+        setTransferStep('amount');
+      } else if (transferStep === 'amount') {
+        setTransferStep('destination');
+      }
+    } else if (action === 'submit') {
+      // Create a synthetic event to pass to handleSubmit
+      const syntheticEvent = { preventDefault: () => {} };
+      handleSubmit(syntheticEvent);
+    }
+  };
+
+  // Separate tokens into owned and held categories
+  const ownedTokens = displayedTokens.filter(token => token.isDeployer);
+  const heldTokens = displayedTokens.filter(token => !token.isDeployer);
+
   return (
     <PageContainer embedded={embedded.toString()}>
       <PageTitle embedded={embedded.toString()}>Transfer Your Universal Tokens</PageTitle>
@@ -1039,53 +1246,47 @@ const TransferTokens = ({ embedded = false }) => {
                 {totalTokenCount} token{totalTokenCount !== 1 ? 's' : ''} found
               </TokenCountText>
               
-              {/* Sorting controls */}
-              <SortControls>
-                <SortSelect 
-                  value={sortOption}
-                  onChange={handleSortChange}
-                >
-                  <option value="balanceDesc">Highest Balance</option>
-                  <option value="balanceAsc">Lowest Balance</option>
-                  <option value="nameAsc">Name (A-Z)</option>
-                  <option value="nameDesc">Name (Z-A)</option>
-                  <option value="symbolAsc">Symbol (A-Z)</option>
-                  <option value="symbolDesc">Symbol (Z-A)</option>
-                </SortSelect>
-              </SortControls>
+              {/* Enhanced Filter Controls */}
+              <TokenFilterControls 
+                filter={filter}
+                onFilterChange={handleFilterChange}
+                searchQuery={searchQuery}
+                onSearchChange={handleSearchChange}
+                sortOption={sortOption}
+                onSortChange={handleSortChange}
+              />
               
-              {/* Show all tokens grouped by name */}
-              {displayedTokens.map(token => (
-                <TokenSection key={token.id}>
-                  <TokenHeader>
-                    <TokenIcon 
-                      src={token.iconUrl || '/chain-logos/zetachain.svg'} 
-                      alt={`${token.symbol} icon`}
+              {/* Token lists using the enhanced design */}
+              {filter !== 'holdings' && ownedTokens.length > 0 && (
+                <TokenSectionContainer title="Tokens You Deployed" isOwner>
+                  {ownedTokens.map(token => (
+                    <EnhancedTokenCard
+                      key={token.id}
+                      token={token}
+                      isOwner={true}
+                      onTransfer={handleTokenTransfer}
+                      onMint={handleTokenMint}
                     />
-                    <TokenTitle>
-                      {token.name}
-                      <TokenSymbol>{token.symbol}</TokenSymbol>
-                    </TokenTitle>
-                  </TokenHeader>
-                  <TokenGrid>
-                    {token.deployedChains && token.deployedChains.map(chainId => {
-                      const chainInfo = token.chainInfo.find(info => info.chain_id === chainId);
-                      const balance = chainInfo ? chainInfo.balance : '0';
-                      
-                      return (
-                        <TokenTile
-                          key={`${token.id}-${chainId}`}
-                          token={token}
-                          chainId={chainId}
-                          balance={balance}
-                          selected={formData.tokenId === token.id && formData.sourceChain === chainId}
-                          onClick={handleTokenSelect}
-                        />
-                      );
-                    })}
-                  </TokenGrid>
-                </TokenSection>
-              ))}
+                  ))}
+                </TokenSectionContainer>
+              )}
+              
+              {filter !== 'owned' && heldTokens.length > 0 && (
+                <TokenSectionContainer title="Tokens You Hold">
+                  {heldTokens.map(token => (
+                    <EnhancedTokenCard
+                      key={token.id}
+                      token={token}
+                      isOwner={false}
+                      onTransfer={handleTokenTransfer}
+                    />
+                  ))}
+                </TokenSectionContainer>
+              )}
+              
+              {displayedTokens.length === 0 && !loading && (
+                <p>No tokens match your current filters. Try adjusting your search or filters.</p>
+              )}
               
               {/* Pagination controls */}
               {totalPages > 1 && (
@@ -1110,243 +1311,155 @@ const TransferTokens = ({ embedded = false }) => {
                 </PaginationContainer>
               )}
             </FormContainer>
-
-            {/* Floating Transfer Box */}
-            {showTransferBox && formData.tokenId && selectedToken && (
-              <FloatingTransferBox>
-                <CloseButton onClick={handleCloseTransferBox}>×</CloseButton>
-                <TransferBoxTitle>
-                  {isDeployer ? 'Transfer or Mint ' : 'Transfer '} 
-                  {selectedToken.name}
-                </TransferBoxTitle>
+            
+            {/* Enhanced Transfer Panel */}
+            {selectedToken && (
+              <>
+                {/* Show only when activeTab is 'transfer' */}
+                <EnhancedTransferPanel
+                  show={showTransferBox && activeTab === 'transfer'}
+                  token={selectedToken}
+                  activeStep={transferStep}
+                  formData={{
+                    ...formData,
+                    sourceBalance: selectedToken && formData.sourceChain 
+                      ? formatTokenBalance(
+                          selectedToken.chainInfo.find(i => i.chain_id === formData.sourceChain)?.balance || '0',
+                          selectedToken.decimals
+                        )
+                      : '0'
+                  }}
+                  onClose={handleCloseTransferBox}
+                  onAmountChange={(amount) => setFormData({...formData, transferAmount: amount})}
+                  onQuickAmount={handleQuickAmount}
+                  onChainSelect={(chainId, type = 'destination') => {
+                    if (type === 'source') {
+                      setFormData({...formData, sourceChain: chainId});
+                    } else {
+                      setFormData({...formData, destinationChain: chainId});
+                    }
+                  }}
+                  onRecipientChange={(recipient) => setFormData({...formData, recipientAddress: recipient})}
+                  onSubmit={handleTransferStepSubmit}
+                  availableChains={
+                    selectedToken
+                      ? selectedToken.deployedChains
+                          .filter(chainId => chainId !== formData.sourceChain)
+                          .map(chainId => ({
+                            chainId,
+                            name: chainNames[chainId] || `Chain ${chainId}`,
+                            logo: chainLogos[chainId]
+                          }))
+                      : []
+                  }
+                  isTransferring={transferring}
+                />
                 
-                {/* Network Status */}
-                {isConnected && !isZetaChainNetwork && (
-                  <StatusMessage type="error">
-                    ZetaChain network is required for cross-chain operations
-                    <NetworkButton 
-                      onClick={handleSwitchToZetaChain}
-                      disabled={switchingNetwork}
-                    >
-                      {switchingNetwork ? 'Switching...' : 'Switch to ZetaChain'}
-                    </NetworkButton>
-                  </StatusMessage>
-                )}
-                
-                {/* Source Chain Display */}
-                <TokenSelectionDisplay>
-                  <ChainLogo 
-                    src={chainLogos[formData.sourceChain]} 
-                    alt={`${chainNames[formData.sourceChain]} logo`}
-                  />
-                  <div>
-                    <strong>{chainNames[formData.sourceChain]}</strong>
-                    <div>
-                      {formatTokenBalance(
-                        selectedToken.chainInfo.find(c => c.chain_id === formData.sourceChain)?.balance || '0', 
-                        selectedToken.decimals
-                      )} {selectedToken.symbol}
-                    </div>
-                  </div>
-                </TokenSelectionDisplay>
-                
-                {/* Show tabs if user is deployer or has balance > 0 */}
-                {(isDeployer || 
-                  Number(selectedToken.chainInfo.find(c => 
-                    c.chain_id === formData.sourceChain)?.balance || '0') > 0) && (
-                  <TabContainer>
-                    <Tab 
-                      active={activeTab === 'transfer'} 
-                      onClick={() => handleTabChange('transfer')}
-                    >
-                      Transfer
-                    </Tab>
-                    <Tab 
-                      active={activeTab === 'mint'} 
-                      onClick={() => handleTabChange('mint')}
-                    >
-                      Mint
-                    </Tab>
-                  </TabContainer>
-                )}
-                
-                {/* Transfer UI */}
-                {activeTab === 'transfer' && (
-                  <>
-                    {/* Destination Chain Selection */}
-                    <ChainSelectionHeader>Select destination:</ChainSelectionHeader>
-                    <DestinationChainGrid>
-                      {getAvailableDestinationChains().map(chain => (
-                        <DestinationChainTile
-                          key={chain.id}
-                          selected={formData.destinationChain === chain.id}
-                          disabled={chain.disabled}
-                          onClick={() => !chain.disabled && handleDestinationSelect(chain.id)}
-                        >
-                          <ChainLogo 
-                            src={chain.logo} 
-                            alt={`${chain.name} logo`}
-                          />
-                          <ChainName>{chain.name}</ChainName>
-                        </DestinationChainTile>
-                      ))}
-                    </DestinationChainGrid>
+                {/* Add the Mint tab content that's shown conditionally */}
+                {activeTab === 'mint' && showTransferBox && (
+                  <FloatingTransferBox>
+                    <CloseButton onClick={handleCloseTransferBox}>×</CloseButton>
+                    <TransferBoxTitle>
+                      Mint {selectedToken?.name}
+                    </TransferBoxTitle>
                     
-                    {/* Transfer Amount & Recipient */}
-                    {formData.destinationChain && (
-                      <>
-                        <FormInput
-                          id="transferAmount"
-                          label={`Amount to Transfer (${selectedToken.symbol})`}
-                          name="transferAmount"
-                          type="number"
-                          value={formData.transferAmount}
-                          onChange={handleChange}
-                          helperText={`Available: ${formatTokenBalance(
-                            selectedToken.chainInfo.find(c => c.chain_id === formData.sourceChain)?.balance || '0', 
-                            selectedToken.decimals
-                          )} ${selectedToken.symbol}`}
-                        />
-                        
-                        <FormInput
-                          id="recipientAddress"
-                          label="Recipient Address (Optional)"
-                          name="recipientAddress"
-                          value={formData.recipientAddress}
-                          onChange={handleChange}
-                          helperText="Leave empty to send to your own address"
-                        />
-                        
-                        {/* Processing Status and Error Display */}
-                        {transferring && (
-                          <StatusMessage type="info">
-                            {processingStatus || 'Processing transfer...'}
-                          </StatusMessage>
-                        )}
-                        
-                        {error && (
-                          <StatusMessage type="error">
-                            {error}
-                          </StatusMessage>
-                        )}
-                        
-                        {transferResult && (
-                          <StatusMessage type="success">
-                            Transfer successful! Transaction hash: {transferResult.transactionHash.slice(0, 10)}...
-                          </StatusMessage>
-                        )}
-                        
-                        <ButtonContainer>
-                          <TransferButton 
-                            type="button" 
-                            disabled={!formData.transferAmount || transferring}
-                            onClick={handleSubmit}
-                          >
-                            {transferring ? 'Processing...' : 'Transfer Token'}
-                          </TransferButton>
-                        </ButtonContainer>
-                      </>
-                    )}
-                  </>
-                )}
-                
-                {/* Mint UI */}
-                {activeTab === 'mint' && (
-                  <>
-                    <ChainSelectionHeader>Mint new tokens:</ChainSelectionHeader>
+                    {/* Tabs for switching between transfer and mint */}
+                    <TabContainer>
+                      <Tab 
+                        active={activeTab === 'transfer'} 
+                        onClick={() => handleTabChange('transfer')}
+                      >
+                        Transfer
+                      </Tab>
+                      <Tab 
+                        active={activeTab === 'mint'} 
+                        onClick={() => handleTabChange('mint')}
+                      >
+                        Mint
+                      </Tab>
+                    </TabContainer>
                     
-                    {!isDeployer && Number(selectedToken.chainInfo.find(c => 
-                      c.chain_id === formData.sourceChain)?.balance || '0') === 0 && (
-                      <StatusMessage type="error">
-                        You must be the token deployer or have a positive balance to mint tokens.
+                    {/* Mint UI */}
+                    <FormInput
+                      id="mintAmount"
+                      label={`Amount to Mint (${selectedToken?.symbol})`}
+                      name="mintAmount"
+                      type="number"
+                      value={mintFormData.mintAmount}
+                      onChange={handleMintChange}
+                    />
+                    
+                    <FormInput
+                      id="mintRecipient"
+                      label="Recipient Address (Optional)"
+                      name="mintRecipient"
+                      value={mintFormData.mintRecipient}
+                      onChange={handleMintChange}
+                      helperText="Leave empty to mint to your own address"
+                    />
+                    
+                    {/* Processing Status and Error Display */}
+                    {minting && (
+                      <StatusMessage type="info">
+                        {mintStatus || 'Processing mint...'}
                       </StatusMessage>
                     )}
                     
-                    {(isDeployer || Number(selectedToken.chainInfo.find(c => 
-                      c.chain_id === formData.sourceChain)?.balance || '0') > 0) && (
-                      <>
-                        <FormInput
-                          id="mintAmount"
-                          label={`Amount to Mint (${selectedToken.symbol})`}
-                          name="mintAmount"
-                          type="number"
-                          value={mintFormData.mintAmount}
-                          onChange={handleMintChange}
-                        />
-                        
-                        <FormInput
-                          id="mintRecipient"
-                          label="Recipient Address (Optional)"
-                          name="mintRecipient"
-                          value={mintFormData.mintRecipient}
-                          onChange={handleMintChange}
-                          helperText="Leave empty to mint to your own address"
-                        />
-                        
-                        {/* Processing Status and Error Display */}
-                        {minting && (
-                          <StatusMessage type="info">
-                            {mintStatus || 'Processing mint...'}
-                          </StatusMessage>
-                        )}
-                        
-                        {error && (
-                          <StatusMessage type="error">
-                            {error}
-                          </StatusMessage>
-                        )}
-                        
-                        {mintResult && (
-                          <StatusMessage type="success">
-                            Mint successful! Transaction hash: {mintResult.transactionHash.slice(0, 10)}...
-                          </StatusMessage>
-                        )}
-                        
-                        <ButtonContainer>
-                          <MintButton 
-                            type="button" 
-                            disabled={!mintFormData.mintAmount || minting || (!isDeployer && 
-                              Number(selectedToken.chainInfo.find(c => 
-                                c.chain_id === formData.sourceChain)?.balance || '0') === 0)}
-                            onClick={handleMintSubmit}
-                          >
-                            {minting ? 'Processing...' : 'Mint Token'}
-                          </MintButton>
-                        </ButtonContainer>
-                      </>
+                    {error && (
+                      <StatusMessage type="error">
+                        {error}
+                      </StatusMessage>
                     )}
-                  </>
+                    
+                    <ButtonContainer>
+                      <MintButton 
+                        type="button" 
+                        disabled={!mintFormData.mintAmount || minting}
+                        onClick={handleMintSubmit}
+                      >
+                        {minting ? 'Processing...' : 'Mint Token'}
+                      </MintButton>
+                    </ButtonContainer>
+                  </FloatingTransferBox>
                 )}
-              </FloatingTransferBox>
+              </>
             )}
           </form>
-          
-          {transferResult && (
-            <FormContainer>
-              <TransferResultCard>
-                <ResultTitle>Transfer Initiated Successfully!</ResultTitle>
-                <p>
-                  Transferring {transferResult.amount} tokens from {
-                    selectedToken.name
-                  } on {
-                    chainNames[transferResult.sourceChain] || transferResult.sourceChain
-                  } to {
-                    chainNames[transferResult.destinationChains?.[0]] || transferResult.destinationChain
-                  }
-                </p>
-                <p>Transaction hash: 
-                  <TransactionHash 
-                    href={`https://explorer.zetachain.com/tx/${transferResult.transactionHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {transferResult.transactionHash}
-                  </TransactionHash>
-                </p>
-              </TransferResultCard>
-            </FormContainer>
-          )}
         </>
+      )}
+      
+      {transferResult && (
+        <ResultsBox success={!transferResult.error}>
+          <h3>{transferResult.error ? 'Transfer Failed' : 'Transfer Complete'}</h3>
+          <p>{transferResult.message}</p>
+          {transferResult.txHash && (
+            <TxLink 
+              href={`https://explorer.athens.zetachain.com/tx/${transferResult.txHash}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
+              View Transaction
+            </TxLink>
+          )}
+          <ResultCloseButton onClick={() => setTransferResult(null)}>Close</ResultCloseButton>
+        </ResultsBox>
+      )}
+      
+      {mintResult && (
+        <ResultsBox success={!mintResult.error}>
+          <h3>{mintResult.error ? 'Mint Failed' : 'Mint Complete'}</h3>
+          <p>{mintResult.message}</p>
+          {mintResult.txHash && (
+            <TxLink 
+              href={`https://explorer.athens.zetachain.com/tx/${mintResult.txHash}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
+              View Transaction
+            </TxLink>
+          )}
+          <ResultCloseButton onClick={() => setMintResult(null)}>Close</ResultCloseButton>
+        </ResultsBox>
       )}
     </PageContainer>
   );

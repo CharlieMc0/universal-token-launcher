@@ -141,7 +141,7 @@ export const getUserTokens = async (walletAddress) => {
           blockscoutUrl: balance.blockscout_url
         }));
         
-        // Return formatted token object
+        // Return formatted token object with created_at field added
         return {
           id: token.zc_contract_address || `token-${index}`, // Use ZetaChain contract address as ID
           name: token.token_name,
@@ -151,7 +151,8 @@ export const getUserTokens = async (walletAddress) => {
           zcContractAddress: token.zc_contract_address,
           deployedChains,
           balances: balancesObj,
-          chainInfo
+          chainInfo,
+          created_at: token.created_at || new Date().toISOString() // Add the created_at field
         };
       });
     }

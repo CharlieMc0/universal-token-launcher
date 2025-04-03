@@ -52,8 +52,8 @@
   "7001": {
     "name": "ZetaChain Testnet",
     "rpc_url": "https://zetachain-athens.g.allthatnode.com/archive/evm",
-    "explorer_url": "https://explorer.athens.zetachain.com",
-    "blockscout_url": "https://zetachain-testnet.blockscout.com/",
+    "explorer_url": "https://zetachain-testnet.blockscout.com",
+    "blockscout_url": "https://zetachain-testnet.blockscout.com",
     "currency_symbol": "ZETA",
     "testnet": true,
     "enabled": true,

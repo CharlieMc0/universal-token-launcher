@@ -62,12 +62,25 @@ This document outlines the recommended technologies for building the Universal T
     *Rationale:* A reliable, ACID-compliant relational database for storing token configurations, deployment logs, and transaction data.
 
 - **ORM:**
-  - **Sequelize**
-    *Rationale:* Provides a Node.js interface for database operations with support for PostgreSQL.
+
+  - **SQLAlchemy** (Python Backend)
+    *Rationale:* The industry standard ORM for Python, offering both high-level and low-level database access patterns.
 
 - **Migration Tool:**
-  - **Sequelize CLI**
-    *Rationale:* Manages database schema changes and version control alongside Sequelize.
+  - **Alembic** (Python Backend)
+    *Rationale:* Tightly integrated with SQLAlchemy for robust database migrations.
+
+- **Database Persistence Best Practices:**
+  - **Immediate Commits for Critical Data:**
+    *Rationale:* Contract addresses and deployment state must be saved immediately after generation to prevent data loss.
+  - **Multiple Persistence Points:**
+    *Rationale:* Saving state changes at multiple points during complex operations ensures partial data is preserved even if later steps fail.
+  - **Fresh Record Retrieval Before Updates:**
+    *Rationale:* Query the database for fresh records before updating to avoid stale data issues.
+  - **Explicit Field Setting:**
+    *Rationale:* Always explicitly set all fields that need updating rather than relying on object references.
+  - **Detailed Operation Logging:**
+    *Rationale:* Log all database operations with clear success/failure indicators for easier troubleshooting.
 
 ---
 

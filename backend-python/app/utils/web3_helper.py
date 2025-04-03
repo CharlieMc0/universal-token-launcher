@@ -459,12 +459,26 @@ def deploy_contract(web3: Web3, account, contract_abi: List, contract_bytecode: 
             if receipt.status == 1:
                 contract_address = receipt.contractAddress
                 logger.info(f"Contract deployed at: {contract_address}")
+                
+                # Convert receipt to a serializable dictionary with primitive Python types
+                receipt_dict = {}
+                try:
+                    # Extract only the essential receipt data
+                    receipt_dict = {
+                        "blockHash": web3.to_hex(receipt.blockHash) if receipt.blockHash else None,
+                        "blockNumber": receipt.blockNumber,
+                        "gasUsed": receipt.gasUsed,
+                        "status": receipt.status
+                    }
+                except Exception as e:
+                    logger.warning(f"Could not fully convert receipt to dict: {str(e)}")
+                
                 return {
                     "success": True, 
                     "error": False,
                     "contract_address": contract_address,
                     "transaction_hash": hex_tx_hash,
-                    "receipt": dict(receipt)
+                    "receipt": receipt_dict
                 }
             else:
                 logger.error(f"Contract deployment failed (reverted). Tx: {hex_tx_hash}")
@@ -472,8 +486,7 @@ def deploy_contract(web3: Web3, account, contract_abi: List, contract_bytecode: 
                     "success": False, 
                     "error": True,
                     "transaction_hash": hex_tx_hash, 
-                    "message": "Deployment transaction reverted",
-                    "receipt": dict(receipt)
+                    "message": "Deployment transaction reverted"
                 }
         except Exception as e: # Catch timeout errors etc.
             logger.error(f"Error waiting for deployment receipt for {hex_tx_hash}: {e}", exc_info=True)
@@ -536,17 +549,18 @@ def verify_contract_submission(
     is_zetachain: bool = False
 ) -> Dict[str, Any]:
     """
-    Submit contract for verification on block explorer.
+    Submit a contract verification request to a block explorer.
     
     Args:
-        chain_id: Chain ID
-        contract_address: Deployed contract address
-        contract_name: Name of the contract (for API reference)
-        is_zetachain: Whether the contract is on ZetaChain
+        chain_id: The chain ID where the contract is deployed
+        contract_address: The contract address to verify
+        contract_name: Name of the contract (e.g., ZetaChainUniversalToken)
+        is_zetachain: Whether this is a ZetaChain contract
         
     Returns:
-        Dict with verification results
+        Dict with verification result status
     """
+    # Get chain configuration
     chain_config = get_chain_config(chain_id)
     if not chain_config:
         return {
@@ -555,23 +569,26 @@ def verify_contract_submission(
             "status": "failed"
         }
     
-    # Determine the appropriate explorer URL based on chain type
-    is_blockscout = is_zetachain or chain_config.get("blockscout_url")
-    explorer_url = (
-        chain_config.get("blockscout_url") 
-        if is_blockscout 
-        else chain_config.get("explorer_url")
-    )
-    
-    if not explorer_url:
-        return {
-            "success": False,
-            "message": f"No explorer URL found for chain ID {chain_id}",
-            "status": "failed"
-        }
+    # Get explorer URL - use blockscout_url for ZetaChain contracts
+    if is_zetachain and chain_config.get("blockscout_url"):
+        explorer_url = chain_config.get("blockscout_url")
+    else:
+        explorer_url = chain_config.get("explorer_url")
+        if not explorer_url:
+            # Try blockscout URL as fallback for other chains
+            explorer_url = chain_config.get("blockscout_url")
+            if not explorer_url:
+                return {
+                    "success": False,
+                    "message": f"No explorer URL configured for chain {chain_id}",
+                    "status": "failed"
+                }
     
     # Make sure explorer_url doesn't end with a slash
     explorer_url = explorer_url.rstrip('/')
+    
+    # Determine if this is a Blockscout or Etherscan-type explorer
+    is_blockscout = "blockscout" in explorer_url.lower() or is_zetachain
     
     try:
         # Get appropriate API key
@@ -602,6 +619,10 @@ def verify_contract_submission(
             f"on {chain_config.get('name')} using "
             f"{'Blockscout' if is_blockscout else 'Etherscan'} API"
         )
+
+        # Determine contract type (NFT or Token)
+        is_nft_contract = "NFT" in contract_name
+        contract_type = "NFT" if is_nft_contract else "Token"
         
         # For Blockscout (ZetaChain), use direct API call
         if is_blockscout:
@@ -611,6 +632,8 @@ def verify_contract_submission(
                 "contracts",
                 f"{contract_name}.sol"
             )
+            
+            logger.info(f"Looking for contract source at: {contract_path}")
             
             if not os.path.exists(contract_path):
                 return {
@@ -651,43 +674,40 @@ def verify_contract_submission(
                 "codeformat": "solidity-single-file"
             }
             
-            # Save verification data to a file for debugging
-            debug_filename = f"{contract_name}_verification_data.json"
-            try:
-                # Check if source code is included
-                source_code_length = len(verification_data.get("sourceCode", ""))
-                logger.info(f"Saving verification data with source code (length: {source_code_length} chars)")
-                
-                with open(debug_filename, "w") as f:
-                    json.dump(verification_data, f, indent=2)
-                logger.info(f"Saved verification data to {debug_filename}")
-            except Exception as e:
-                logger.error(f"Failed to save verification data: {str(e)}")
-            
-            # Make API request
-            headers = {
-                "Content-Type": "application/x-www-form-urlencoded"
+            # Save verification data to a file (without source code for size)
+            verification_data_filename = f"{contract_name}_verification_data.json"
+            verification_data_nocode = {
+                k: v for k, v in verification_data.items()
+                if k != "sourceCode"
             }
-            
-            logger.info(f"Submitting verification request to {verification_url}")
-            
-            response = requests.post(
-                verification_url, 
-                data=verification_data,
-                headers=headers
-            )
-            
-            logger.info(f"Blockscout verification API response: {response.status_code}")
-            
-            # Save response for debugging
-            response_filename = f"{contract_name}_verification_response.json"
             try:
-                response_data = response.json() if response.text else {}
-                with open(response_filename, "w") as f:
-                    json.dump(response_data, f, indent=2)
-                logger.info(f"Saved verification response to {response_filename}")
+                with open(verification_data_filename, 'w') as f:
+                    json.dump(verification_data_nocode, f, indent=2)
+                logger.info(f"Verification data saved to: {verification_data_filename}")
             except Exception as e:
-                logger.error(f"Failed to save verification response: {str(e)}")
+                logger.warning(f"Could not save verification data: {str(e)}")
+            
+            # Make API request to verify contract
+            try:
+                headers = {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                }
+                
+                logger.info(f"Submitting verification to: {verification_url}")
+                response = requests.post(
+                    verification_url,
+                    data=verification_data,
+                    headers=headers,
+                    timeout=60
+                )
+                
+                logger.info(f"Response status code: {response.status_code}")
+            except requests.RequestException as e:
+                return {
+                    "success": False,
+                    "message": f"Request to BlockScout API failed: {str(e)}",
+                    "status": "failed"
+                }
             
             if response.status_code in (200, 201, 202):
                 try:

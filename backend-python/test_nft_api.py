@@ -73,6 +73,92 @@ def test_nft_deployment_api():
     return None
 
 
+def test_nft_verification_api(contract_address=None, chain_id="7001"):
+    """Test the NFT contract verification API."""
+    
+    print("\n===== Testing NFT Contract Verification API =====")
+    
+    if not contract_address:
+        print("No contract address provided, skipping verification test")
+        return None
+    
+    try:
+        # Prepare verification data
+        verification_data = {
+            "contract_address": contract_address,
+            "chain_id": chain_id,
+            "contract_type": "zetachain" if chain_id in ["7000", "7001"] else "evm"
+        }
+        
+        print("Verification data:")
+        print(json.dumps(verification_data, indent=2))
+        
+        # Make API request
+        response = requests.post(
+            f"{API_URL}/api/nft/verify",
+            json=verification_data,
+            timeout=30
+        )
+        
+        # Print response
+        print("\nVerification Response:")
+        print(f"Status Code: {response.status_code}")
+        
+        # Pretty print JSON response
+        try:
+            response_json = response.json()
+            print(json.dumps(response_json, indent=2))
+            
+            if response_json.get("success"):
+                print(f"✅ Verification initiated successfully")
+                print(f"Verification Status: {response_json.get('verification_status', 'unknown')}")
+                return True
+            else:
+                print(f"❌ Verification failed: {response_json.get('message', 'Unknown error')}")
+                if response_json.get("errors"):
+                    print(f"Errors: {response_json.get('errors')}")
+                return False
+            
+        except json.JSONDecodeError:
+            print("Error decoding JSON response")
+            print(response.text)
+            return False
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return False
+
+
+def main():
+    """Main entry point for the test script."""
+    
+    # Test NFT collection deployment API
+    deployment_id = test_nft_deployment_api()
+    
+    if deployment_id:
+        # Wait a bit longer and check status again
+        print("\nWaiting 30 seconds for deployment to progress...")
+        time.sleep(30)
+        
+        # Check deployment status
+        collection_data = check_deployment_status(deployment_id)
+        
+        # Extract contract address from collection data for verification
+        if collection_data and collection_data.get("success"):
+            collection = collection_data.get("collection", {})
+            zc_contract_address = collection.get("zc_contract_address")
+            
+            if zc_contract_address:
+                print(f"\nFound ZetaChain contract address: {zc_contract_address}")
+                
+                # Wait a bit more before verification to ensure contract is available on explorer
+                print("\nWaiting 30 seconds before attempting verification...")
+                time.sleep(30)
+                
+                # Test verification
+                test_nft_verification_api(zc_contract_address, "7001")
+
+
 def check_deployment_status(deployment_id):
     """Check the status of an NFT collection deployment."""
     
@@ -116,26 +202,17 @@ def check_deployment_status(deployment_id):
             else:
                 # Full response if no collection data
                 print(json.dumps(response_json, indent=2))
+            
+            return response_json
                 
         except json.JSONDecodeError:
             print("Error decoding JSON response")
             print(response.text)
+            return None
         
     except Exception as e:
         print(f"Error: {str(e)}")
-
-
-def main():
-    """Main entry point for the test script."""
-    
-    # Test NFT collection deployment API
-    deployment_id = test_nft_deployment_api()
-    
-    if deployment_id:
-        # Wait a bit longer and check status again
-        print("\nWaiting 30 seconds for deployment to progress...")
-        time.sleep(30)
-        check_deployment_status(deployment_id)
+        return None
 
 
 if __name__ == "__main__":

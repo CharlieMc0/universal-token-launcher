@@ -120,6 +120,7 @@ async def get_user_tokens(
                     decimals=db_token.decimals,
                     is_deployer=(db_token.deployer_address.lower() == address.lower()),
                     zc_contract_address=db_token.zc_contract_address,
+                    created_at=token_info.get("created_at"),
                     balances=balances
                 )
                 

@@ -74,8 +74,10 @@ class NFTDeploymentService:
         # Initialize result structure
         deployment_result = {
             "deploymentId": deployment.id,
-            "zetaChain": {},
-            "evmChains": {}
+            "result": {
+                "zetaChain": {},
+                "evmChains": {}
+            }
         }
         
         # First deploy to ZetaChain (required for cross-chain functionality)
@@ -118,22 +120,33 @@ class NFTDeploymentService:
                     constructor_args=constructor_args
                 )
                 
-                deployment_result["zetaChain"] = zc_result
+                # Ensure receipt is properly JSON-serializable 
+                if "receipt" in zc_result:
+                    # Either remove receipt or convert to a serializable format
+                    zc_result.pop("receipt", None)
+                
+                deployment_result["result"]["zetaChain"] = zc_result
                 
                 if zc_result["success"]:
-                    # Update deployment record
+                    # Update deployment record - save immediately to avoid loss
                     deployment.zc_contract_address = zc_result["contract_address"]
+                    db.add(deployment)
+                    db.commit()
                 else:
                     error_msg = zc_result.get('message', 'Unknown error')
                     deployment.error_message = f"ZetaChain deployment failed: {error_msg}"
+                    db.add(deployment)
+                    db.commit()
             except Exception as e:
                 logger.error(f"ZetaChain deployment failed: {str(e)}")
-                deployment_result["zetaChain"] = {
+                deployment_result["result"]["zetaChain"] = {
                     "success": False,
                     "error": True,
                     "message": str(e)
                 }
                 deployment.error_message = f"ZetaChain deployment failed: {str(e)}"
+                db.add(deployment)
+                db.commit()
         
         # Deploy to other EVM chains
         for chain_id in selected_chains:
@@ -148,7 +161,7 @@ class NFTDeploymentService:
             # Connect to chain
             web3 = get_web3(numeric_chain_id)
             if not web3:
-                deployment_result["evmChains"][chain_id] = {
+                deployment_result["result"]["evmChains"][chain_id] = {
                     "success": False,
                     "error": True,
                     "message": f"Failed to connect to chain {chain_id}",
@@ -189,9 +202,14 @@ class NFTDeploymentService:
                     constructor_args=constructor_args
                 )
                 
+                # Ensure receipt is properly JSON-serializable
+                if "receipt" in evm_result:
+                    # Either remove receipt or convert to a serializable format
+                    evm_result.pop("receipt", None)
+                
                 # Add status to the result
                 evm_result["status"] = "completed" if evm_result["success"] else "failed"
-                deployment_result["evmChains"][chain_id] = evm_result
+                deployment_result["result"]["evmChains"][chain_id] = evm_result
                 
                 if evm_result["success"]:
                     # Update deployment record with connected chain
@@ -213,9 +231,13 @@ class NFTDeploymentService:
                         "status": "failed",
                         "error_message": error_msg
                     }
+                
+                # Save after each chain deployment to avoid data loss
+                db.add(deployment)
+                db.commit()
             except Exception as e:
                 logger.error(f"EVM chain {chain_id} deployment failed: {str(e)}")
-                deployment_result["evmChains"][chain_id] = {
+                deployment_result["result"]["evmChains"][chain_id] = {
                     "success": False,
                     "error": True,
                     "message": str(e),
@@ -230,13 +252,20 @@ class NFTDeploymentService:
                     "status": "failed",
                     "error_message": str(e)
                 }
+                
+                # Save after failure
+                db.add(deployment)
+                db.commit()
         
         # Update final deployment status
-        has_errors = any(
-            chain.get("status") == "failed"
-            for chains in [deployment.connected_chains_json.values()]
-            for chain in chains
-        )
+        has_errors = False
+        
+        # Check if any connected chains failed
+        if deployment.connected_chains_json:
+            for chain_data in deployment.connected_chains_json.values():
+                if chain_data.get("status") == "failed":
+                    has_errors = True
+                    break
         
         if not deployment.zc_contract_address:
             deployment.deployment_status = "failed"
@@ -247,12 +276,12 @@ class NFTDeploymentService:
         else:
             deployment.deployment_status = "completed"
         
+        # Final save
         db.add(deployment)
         db.commit()
         
-        # Return the result
-        return {
-            "deploymentId": deployment.id,
-            "status": deployment.deployment_status,
-            "result": deployment_result
-        } 
+        # Add status to the final response
+        deployment_result["status"] = deployment.deployment_status
+        deployment_result["error"] = (deployment.deployment_status == "failed")
+        
+        return deployment_result 

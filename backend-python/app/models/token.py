@@ -178,6 +178,7 @@ class UserTokenInfo(BaseModel):
     decimals: int
     is_deployer: bool
     zc_contract_address: Optional[str] = None
+    created_at: Optional[str] = None
     balances: List[TokenBalanceInfo]
 
 class UserTokenResponse(BaseModel):

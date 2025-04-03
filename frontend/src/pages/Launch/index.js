@@ -35,6 +35,21 @@ const DEPLOYMENT_STATUS = {
   FAILED_DEPLOYMENT: 'failed_deployment', // Backend indicated deployment failure
 };
 
+const EnhancedCreatePanel = styled.div`
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 24px auto;
+  max-width: 800px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease;
+  
+  &:hover {
+    transform: scale(1.01);
+  }
+`;
+
 const PageContainer = styled.div`
   max-width: ${props => props.embedded ? '100%' : '800px'};
   margin: 0 auto;
@@ -987,213 +1002,215 @@ const LaunchPage = ({ embedded = false }) => {
       default:
         const isSubmitting = deploymentStatus !== DEPLOYMENT_STATUS.IDLE; // Simplified check
         return (
-          <form onSubmit={handleSubmit}>
-            <FormContainer>
-              <SectionTitle>Token Information</SectionTitle>
-              
-              <FormRow>
-                <FormGroup>
-                  <FormInput
-                    label="Token Name"
-                    id="name"
-                    name="name"
-                    placeholder="e.g. Universal Token"
-                    value={formData.name}
-                    onChange={handleChange}
-                    error={errors.name}
-                  />
-                </FormGroup>
+          <EnhancedCreatePanel>
+            <form onSubmit={handleSubmit}>
+              <FormContainer>
+                <SectionTitle>Token Information</SectionTitle>
                 
-                <FormGroup>
-                  <FormInput
-                    label="Token Symbol"
-                    id="symbol"
-                    name="symbol"
-                    placeholder="e.g. UTK"
-                    value={formData.symbol}
-                    onChange={handleChange}
-                    error={errors.symbol}
-                  />
-                </FormGroup>
-              </FormRow>
-              
-              <FormRow>
-                <FormGroup>
-                  <FormInput
-                    label="Decimals"
-                    id="decimals"
-                    name="decimals"
-                    type="number"
-                    placeholder="18"
-                    value={formData.decimals}
-                    onChange={handleChange}
-                    error={errors.decimals}
-                    min="0"
-                    max="18"
-                  />
-                </FormGroup>
-                
-                <FormGroup>
-                  <FormInput
-                    label="Total Supply"
-                    id="totalSupply"
-                    name="totalSupply"
-                    type="number"
-                    placeholder="1000000"
-                    value={formData.totalSupply}
-                    onChange={handleChange}
-                    error={errors.totalSupply}
-                    min="1"
-                  />
-                </FormGroup>
-              </FormRow>
-              
-              <FormRow>
-                <FormGroup>
-                  {errors.chainOptions ? (
-                    <div style={{
-                      padding: '16px',
-                      backgroundColor: 'rgba(255, 180, 0, 0.1)',
-                      border: '1px solid #ffb400',
-                      borderRadius: '8px',
-                      textAlign: 'center',
-                      marginBottom: '16px'
-                    }}>
-                      <p style={{margin: 0, fontWeight: '500'}}>{errors.chainOptions}</p>
-                    </div>
-                  ) : null}
-                  <ChainSelector
-                    label="Target Chains"
-                    options={chainOptions}
-                    value={formData.selectedChains}
-                    onChange={handleChange}
-                    helperText="Select chains for deployment. ZetaChain is required."
-                    error={errors.selectedChains}
-                    name="selectedChains"
-                  />
-                </FormGroup>
-              </FormRow>
-              
-              <FormRow>
-                <FormGroup>
-                  <ImageUpload
-                    label="Token Icon (Optional)"
-                    id="tokenIcon"
-                    onChange={handleIconChange}
-                    onRemove={() => setTokenIcon(null)}
-                    helperText="Recommended size: 512x512px, PNG or JPG"
-                    error={errors.icon}
-                  />
-                </FormGroup>
-              </FormRow>
-            </FormContainer>
-            
-            <FormContainer>
-              <SectionTitle>Initial Distribution (Optional)</SectionTitle>
-              
-              <DistributionToggle>
-                <ToggleButton
-                  type="button"
-                  $active={distributionMethod === 'manual'}
-                  onClick={() => {
-                    setDistributionMethod('manual');
-                    setCsvFile(null);
-                    setCsvParseResult(null);
-                  }}
-                >
-                  Manual Entry
-                </ToggleButton>
-                <ToggleButton
-                  type="button"
-                  $active={distributionMethod === 'csv'}
-                  onClick={() => {
-                    setDistributionMethod('csv');
-                    setDistributions([]);
-                  }}
-                >
-                  Upload CSV
-                </ToggleButton>
-              </DistributionToggle>
-
-              <FormRow>
-                <FormGroup>
-                  {distributionMethod === 'manual' ? (
-                    <DistributionInput
-                      onDistributionsChange={setDistributions}
-                      chainId={currentChainId.toString()} // Pass current chain for context
-                      error={errors.distributions}
-                      helperText="Enter wallet addresses (one per line) and the amount"
-                    />
-                  ) : (
-                    <FileUpload
-                      label="CSV Distribution List"
-                      id="csvFile"
-                      accept=".csv"
-                      onChange={handleCsvChange}
-                      onRemove={() => {
-                        setCsvFile(null);
-                        setDistributions([]);
-                        setCsvParseResult(null);
-                      }}
-                      helperText={
-                        csvParseResult 
-                          ? `${csvParseResult.validEntries} valid entries of ${csvParseResult.totalEntries} total` 
-                          : "CSV format: address,amount (max 100 entries)"
-                      }
-                      error={errors.csv}
-                    />
-                  )}
-                </FormGroup>
-              </FormRow>
-
-              {distributions.length > 0 && (
                 <FormRow>
                   <FormGroup>
-                    <DistributionList distributions={distributions} />
+                    <FormInput
+                      label="Token Name"
+                      id="name"
+                      name="name"
+                      placeholder="e.g. Universal Token"
+                      value={formData.name}
+                      onChange={handleChange}
+                      error={errors.name}
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <FormInput
+                      label="Token Symbol"
+                      id="symbol"
+                      name="symbol"
+                      placeholder="e.g. UTK"
+                      value={formData.symbol}
+                      onChange={handleChange}
+                      error={errors.symbol}
+                    />
                   </FormGroup>
                 </FormRow>
-              )}
-            </FormContainer>
-            
-            <FormContainer>
-              <SectionTitle>Fee Information</SectionTitle>
-              <FeeSection>
-                <FeeRow>
-                  <FeeName>Deployment Fee</FeeName>
-                  <FeeAmount>{ZETA_FEE} ZETA</FeeAmount>
-                </FeeRow>
-                <FeeRow>
-                  <FeeName>Your ZETA Balance</FeeName>
-                  <FeeAmount>
-                    {balanceData 
-                      ? `${parseFloat(balanceData.formatted).toFixed(2)} ZETA` 
-                      : 'Loading...'}
-                  </FeeAmount>
-                </FeeRow>
-                {errors.balance && <ErrorMessage>{errors.balance}</ErrorMessage>}
-              </FeeSection>
+                
+                <FormRow>
+                  <FormGroup>
+                    <FormInput
+                      label="Decimals"
+                      id="decimals"
+                      name="decimals"
+                      type="number"
+                      placeholder="18"
+                      value={formData.decimals}
+                      onChange={handleChange}
+                      error={errors.decimals}
+                      min="0"
+                      max="18"
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <FormInput
+                      label="Total Supply"
+                      id="totalSupply"
+                      name="totalSupply"
+                      type="number"
+                      placeholder="1000000"
+                      value={formData.totalSupply}
+                      onChange={handleChange}
+                      error={errors.totalSupply}
+                      min="1"
+                    />
+                  </FormGroup>
+                </FormRow>
+                
+                <FormRow>
+                  <FormGroup>
+                    {errors.chainOptions ? (
+                      <div style={{
+                        padding: '16px',
+                        backgroundColor: 'rgba(255, 180, 0, 0.1)',
+                        border: '1px solid #ffb400',
+                        borderRadius: '8px',
+                        textAlign: 'center',
+                        marginBottom: '16px'
+                      }}>
+                        <p style={{margin: 0, fontWeight: '500'}}>{errors.chainOptions}</p>
+                      </div>
+                    ) : null}
+                    <ChainSelector
+                      label="Target Chains"
+                      options={chainOptions}
+                      value={formData.selectedChains}
+                      onChange={handleChange}
+                      helperText="Select chains for deployment. ZetaChain is required."
+                      error={errors.selectedChains}
+                      name="selectedChains"
+                    />
+                  </FormGroup>
+                </FormRow>
+                
+                <FormRow>
+                  <FormGroup>
+                    <ImageUpload
+                      label="Token Icon (Optional)"
+                      id="tokenIcon"
+                      onChange={handleIconChange}
+                      onRemove={() => setTokenIcon(null)}
+                      helperText="Recommended size: 512x512px, PNG or JPG"
+                      error={errors.icon}
+                    />
+                  </FormGroup>
+                </FormRow>
+              </FormContainer>
               
-              {errors.submission && (
-                <ErrorMessage>{errors.submission}</ErrorMessage>
-              )}
-              
-              <ButtonContainer>
-                {!isConnected ? (
-                  <Button variant="primary" type="button" disabled>Connect Wallet First</Button>
-                ) : !isZetaChainNetwork ? (
-                  <Button variant="secondary" type="button" onClick={handleSwitchNetwork}>Switch to ZetaChain</Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    type="submit" 
-                    disabled={isSubmitting || !walletReady}
+              <FormContainer>
+                <SectionTitle>Initial Distribution (Optional)</SectionTitle>
+                
+                <DistributionToggle>
+                  <ToggleButton
+                    type="button"
+                    $active={distributionMethod === 'manual'}
+                    onClick={() => {
+                      setDistributionMethod('manual');
+                      setCsvFile(null);
+                      setCsvParseResult(null);
+                    }}
                   >
-                    {isSubmitting ? 'Processing...' : (walletReady ? 'Launch Universal Token' : 'Wallet Not Ready')}
-                  </Button>
+                    Manual Entry
+                  </ToggleButton>
+                  <ToggleButton
+                    type="button"
+                    $active={distributionMethod === 'csv'}
+                    onClick={() => {
+                      setDistributionMethod('csv');
+                      setDistributions([]);
+                    }}
+                  >
+                    Upload CSV
+                  </ToggleButton>
+                </DistributionToggle>
+
+                <FormRow>
+                  <FormGroup>
+                    {distributionMethod === 'manual' ? (
+                      <DistributionInput
+                        onDistributionsChange={setDistributions}
+                        chainId={currentChainId.toString()} // Pass current chain for context
+                        error={errors.distributions}
+                        helperText="Enter wallet addresses (one per line) and the amount"
+                      />
+                    ) : (
+                      <FileUpload
+                        label="CSV Distribution List"
+                        id="csvFile"
+                        accept=".csv"
+                        onChange={handleCsvChange}
+                        onRemove={() => {
+                          setCsvFile(null);
+                          setDistributions([]);
+                          setCsvParseResult(null);
+                        }}
+                        helperText={
+                          csvParseResult 
+                            ? `${csvParseResult.validEntries} valid entries of ${csvParseResult.totalEntries} total` 
+                            : "CSV format: address,amount (max 100 entries)"
+                        }
+                        error={errors.csv}
+                      />
+                    )}
+                  </FormGroup>
+                </FormRow>
+
+                {distributions.length > 0 && (
+                  <FormRow>
+                    <FormGroup>
+                      <DistributionList distributions={distributions} />
+                    </FormGroup>
+                  </FormRow>
                 )}
-              </ButtonContainer>
-            </FormContainer>
-          </form>
+              </FormContainer>
+              
+              <FormContainer>
+                <SectionTitle>Fee Information</SectionTitle>
+                <FeeSection>
+                  <FeeRow>
+                    <FeeName>Deployment Fee</FeeName>
+                    <FeeAmount>{ZETA_FEE} ZETA</FeeAmount>
+                  </FeeRow>
+                  <FeeRow>
+                    <FeeName>Your ZETA Balance</FeeName>
+                    <FeeAmount>
+                      {balanceData 
+                        ? `${parseFloat(balanceData.formatted).toFixed(2)} ZETA` 
+                        : 'Loading...'}
+                    </FeeAmount>
+                  </FeeRow>
+                  {errors.balance && <ErrorMessage>{errors.balance}</ErrorMessage>}
+                </FeeSection>
+                
+                {errors.submission && (
+                  <ErrorMessage>{errors.submission}</ErrorMessage>
+                )}
+                
+                <ButtonContainer>
+                  {!isConnected ? (
+                    <Button variant="primary" type="button" disabled>Connect Wallet First</Button>
+                  ) : !isZetaChainNetwork ? (
+                    <Button variant="secondary" type="button" onClick={handleSwitchNetwork}>Switch to ZetaChain</Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      type="submit" 
+                      disabled={isSubmitting || !walletReady}
+                    >
+                      {isSubmitting ? 'Processing...' : (walletReady ? 'Launch Universal Token' : 'Wallet Not Ready')}
+                    </Button>
+                  )}
+                </ButtonContainer>
+              </FormContainer>
+            </form>
+          </EnhancedCreatePanel>
         );
     }
   };

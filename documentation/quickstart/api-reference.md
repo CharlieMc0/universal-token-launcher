@@ -202,6 +202,34 @@ curl -X GET http://localhost:8000/api/tokens?creator=0x4f1684a28e33f42cdf50ab96e
 }
 ```
 
+## Database Persistence & Reliability
+
+The backend system ensures reliable storage of token deployment information with the following features:
+
+1. **Immediate Database Commits**:
+   - Critical data like ZetaChain contract addresses are committed to the database immediately after generation
+   - EVM contract addresses are saved as soon as they are deployed
+   - Database transactions are properly managed to prevent data loss
+
+2. **Multi-stage Persistence**:
+   - Initial creation stores basic token configuration
+   - Deployment updates store contract addresses as they are generated
+   - Connection status updates track cross-chain linking
+   - Final state updates ensure complete deployment information
+
+3. **Reliability Features**:
+   - Explicit database state validation before proceeding to next deployment steps
+   - Multiple commit points throughout the deployment process
+   - Detailed logging of database operations
+   - Error recovery mechanisms with partial success tracking
+
+4. **Database Schema**:
+   - The `token_deployments` table includes key fields:
+     - `zc_contract_address` for the primary ZetaChain contract
+     - `connected_chains_json` for deployment data across all chains
+     - `deployment_status` tracking overall process state
+     - `error_message` for detailed error tracking
+
 ## Error Responses
 
 All API endpoints return standardized error responses:
@@ -246,4 +274,3 @@ The `chainInfo` array in token responses contains detailed information about eac
 | `verificationStatus` | string | Verification status (pending, processing, verified, failed) |
 | `verificationError` | string | Error message if verification failed |
 | `verifiedUrl` | string | Direct URL to verified contract source code |
-```

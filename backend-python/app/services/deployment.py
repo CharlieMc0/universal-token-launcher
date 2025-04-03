@@ -147,6 +147,13 @@ class DeploymentService:
                     deployment.zc_contract_address = zc_contract_address
                     deployment_result["zetaChain"]["status"] = "deployed"
                     logger.info(f"ZetaChain contract deployed at: {zc_contract_address}")
+                    
+                    # Immediately commit to ensure zc_contract_address is saved
+                    db.add(deployment)
+                    db.commit()
+                    logger.info(
+                        f"Saved ZetaChain contract address to database: {zc_contract_address}"
+                    )
                 else:
                     error_msg = zc_result.get('message', 'Unknown ZetaChain deployment error')
                     deployment.error_message = f"ZetaChain deployment failed: {error_msg}"
@@ -243,6 +250,14 @@ class DeploymentService:
                         "verification_status": "pending",
                         "setup_status": "pending" # Needs setUniversal etc.
                     }
+                    
+                    # Immediately commit to ensure connected_chains_json is saved
+                    db.add(deployment)
+                    db.commit()
+                    logger.info(
+                        f"Saved EVM contract for chain {chain_id_str} to database: "
+                        f"{evm_contract_address}"
+                    )
                 else:
                     # Deployment failed
                     error_msg = f"EVM contract deployment failed: {deploy_result.get('message', 'Unknown error')}"
@@ -656,11 +671,22 @@ class DeploymentService:
             logger.error(f"Deployment {deployment.id} failed. Check logs for details.")
 
 
-        # Persist final connected_chains_json state
-        # Ensure the updated dict is saved
-        deployment.connected_chains_json = deployment.connected_chains_json
-        db.add(deployment)
-        db.commit()
+        # Persist final connected_chains_json state and ensure zc_contract_address is saved
+        # Make sure all updated fields are explicitly set before committing
+        # This will ensure these critical fields are saved to the database
+        db_deployment = db.query(TokenModel).filter(TokenModel.id == deployment.id).first()
+        if db_deployment:
+            # Explicitly set the fields that need to be updated
+            db_deployment.zc_contract_address = deployment.zc_contract_address
+            db_deployment.connected_chains_json = deployment.connected_chains_json
+            db_deployment.deployment_status = deployment.deployment_status
+            db_deployment.error_message = deployment.error_message
+            # Add to session and commit
+            db.add(db_deployment)
+            db.commit()
+            logger.info(f"Successfully saved deployment {deployment.id} with ZC address: {deployment.zc_contract_address}")
+        else:
+            logger.error(f"Failed to find deployment with ID {deployment.id} to update final state!")
         
         return deployment_result
 

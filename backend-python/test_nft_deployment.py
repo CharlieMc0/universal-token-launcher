@@ -73,8 +73,8 @@ async def test_deployment(chain_ids, max_chains=None, testnet_only=False):
         db=db
     )
     
-    # Check deployment result
-    if "error" in deployment_result and deployment_result["error"]:
+    # Check deployment result - updated to handle new result structure
+    if "error" in deployment_result and deployment_result.get("error", False):
         logger.error(f"Deployment failed: {deployment_result.get('message', 'Unknown error')}")
         return False
     
@@ -87,7 +87,7 @@ async def test_deployment(chain_ids, max_chains=None, testnet_only=False):
         logger.error(f"Deployment {deployment_id} not found in database")
         return False
     
-    # Print ZetaChain deployment result
+    # Print ZetaChain deployment result - updated for new result structure
     if "7001" in chain_ids or "zeta_testnet" in chain_ids:
         zeta_result = deployment_result.get("result", {}).get("zetaChain", {})
         logger.info("ZetaChain deployment:")
@@ -97,7 +97,7 @@ async def test_deployment(chain_ids, max_chains=None, testnet_only=False):
         else:
             logger.error(f"  Failed: {zeta_result.get('message', 'Unknown error')}")
     
-    # Print EVM chain deployment results
+    # Print EVM chain deployment results - updated for new result structure
     evm_results = deployment_result.get("result", {}).get("evmChains", {})
     for chain_id, result in evm_results.items():
         chain_config = get_chain_config(int(chain_id))
@@ -115,7 +115,8 @@ async def test_deployment(chain_ids, max_chains=None, testnet_only=False):
     if deployment.error_message:
         logger.error(f"Error message: {deployment.error_message}")
     
-    return True
+    # Return success based on deployment status
+    return deployment.deployment_status in ("completed", "partial")
 
 
 def main():
