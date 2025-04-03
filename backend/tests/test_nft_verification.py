@@ -7,6 +7,7 @@ import json
 import sys
 import os
 import time
+import pytest
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -16,6 +17,13 @@ from app.config import Config
 
 # API URL 
 API_URL = f"http://{Config.HOST}:{Config.PORT}"
+
+@pytest.fixture
+def contract_address():
+    """Fixture providing a test NFT contract address for verification."""
+    # This is a sample contract address - update with a real one if needed
+    return "0xB0f7cbd91290265079d1e15C0dC71b0450A7E2e5"
+
 
 def test_nft_verification_api(contract_address, chain_id="7001"):
     """Test the NFT contract verification API."""

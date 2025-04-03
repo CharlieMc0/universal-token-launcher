@@ -8,8 +8,22 @@ with contract verification on ZetaChain's explorer.
 import os
 import requests
 import json
+import pytest
 from app.utils.web3_helper import SMART_CONTRACTS_DIR, extract_compiler_version
 from app.utils.chain_config import get_chain_config
+
+
+@pytest.fixture
+def contract_address():
+    """Fixture providing a known contract address on ZetaChain testnet for verification testing."""
+    # This is a sample contract address - update with a real one if needed
+    return "0x9A8f92a830A5cB89a3816e3D267CB7791c16b04D"
+
+
+@pytest.fixture
+def chain_id():
+    """Fixture providing ZetaChain testnet chain ID."""
+    return "7001"
 
 
 def test_blockscout_api_verification(

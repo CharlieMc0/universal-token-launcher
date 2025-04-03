@@ -1,6 +1,7 @@
 """Test script to verify created_at field inclusion in API responses."""
 
 import asyncio
+import pytest
 from sqlalchemy.orm import Session  # Used for type hints only
 
 # Import required modules from the app
@@ -9,6 +10,7 @@ from app.services.token import token_service
 from app.db import get_db
 
 
+@pytest.mark.asyncio
 async def test_created_at_field():
     """Test that created_at is present in token and user token responses."""
     print("Testing created_at field inclusion in API responses...")

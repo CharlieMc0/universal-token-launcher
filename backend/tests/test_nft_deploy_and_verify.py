@@ -7,6 +7,7 @@ import json
 import sys
 import os
 import time
+import pytest
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -18,8 +19,27 @@ from app.config import Config
 API_URL = f"http://{Config.HOST}:{Config.PORT}"
 
 
+# Shared variable to store contract address between tests
+deployed_contract_address = None
+
+
+@pytest.fixture
+def contract_address():
+    """Fixture providing a test NFT contract address for verification.
+    
+    If test_nft_deployment_api has successfully deployed a contract,
+    use that address. Otherwise, use a fallback address.
+    """
+    if deployed_contract_address:
+        return deployed_contract_address
+    
+    # Fallback address if no contract was just deployed
+    return "0xB0f7cbd91290265079d1e15C0dC71b0450A7E2e5"
+
+
 def test_nft_deployment_api():
     """Test the NFT contract deployment API."""
+    global deployed_contract_address
     
     print("\n===== Testing NFT Contract Deployment API =====")
     
@@ -65,27 +85,28 @@ def test_nft_deployment_api():
                 zeta_chain_details = response_json.get("deployment", {}).get("details", {}).get("zetaChain", {})
                 if zeta_chain_details and zeta_chain_details.get("success"):
                     contract_address = zeta_chain_details.get("contract_address")
+                    deployed_contract_address = contract_address  # Store for fixture
                     chain_id = "7001"  # ZetaChain testnet
                     print(f"Contract Address: {contract_address}")
                     print(f"Chain ID: {chain_id}")
                     
-                    # Test verification of the deployed contract
-                    return test_nft_verification_api(contract_address, chain_id)
+                    # Don't verify here - let pytest run the verification test separately
+                    return contract_address
                 else:
                     print("❌ Contract address not found in response")
-                    return False
+                    return None
             else:
                 print("❌ Deployment failed")
-                return False
+                return None
             
         except json.JSONDecodeError:
             print("Error decoding JSON response")
             print(response.text)
-            return False
+            return None
         
     except Exception as e:
         print(f"Error: {str(e)}")
-        return False
+        return None
 
 
 def test_nft_verification_api(contract_address, chain_id="7001"):
@@ -128,24 +149,30 @@ def test_nft_verification_api(contract_address, chain_id="7001"):
             
             if response_json.get("success"):
                 print("✅ Verification initiated successfully")
+                assert True
                 return True
             else:
                 print("❌ Verification failed")
+                assert False, "Verification failed"
                 return False
             
         except json.JSONDecodeError:
             print("Error decoding JSON response")
             print(response.text)
+            assert False, "Error decoding JSON response"
             return False
         
     except Exception as e:
         print(f"Error: {str(e)}")
+        assert False, f"Exception during verification: {str(e)}"
         return False
 
 
 def main():
     """Main entry point for the test script."""
-    test_nft_deployment_api()
+    contract_address = test_nft_deployment_api()
+    if contract_address:
+        test_nft_verification_api(contract_address)
 
 
 if __name__ == "__main__":

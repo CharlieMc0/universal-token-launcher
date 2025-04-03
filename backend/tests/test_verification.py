@@ -5,6 +5,7 @@
 import asyncio
 import json
 import os
+import pytest  # Import pytest
 from app.services.verification import VerificationService
 from app.utils.web3_helper import (
     load_contract_data, 
@@ -13,9 +14,12 @@ from app.utils.web3_helper import (
 )
 
 
+@pytest.mark.asyncio  # Add the asyncio marker
 async def test_zetachain_verification():
     """Test verification service for ZetaChain contracts using BlockScout API."""
-    print("Testing ZetaChain contract verification via BlockScout API...")
+    print(
+        "Testing ZetaChain contract verification via BlockScout API..."
+    )
     
     # Load contract data
     load_contract_data()
@@ -49,7 +53,9 @@ async def test_zetachain_verification():
             with open(file_path, 'r') as f:
                 source = f.read()
                 compiler_version = extract_compiler_version(source)
-                print(f"  - Detected compiler version: {compiler_version}")
+                print(
+                    f"  - Detected compiler version: {compiler_version}"
+                )
         else:
             print(f"❌ Missing: {file_path}")
     
@@ -59,9 +65,15 @@ async def test_zetachain_verification():
     for chain_id in zetachain_chains:
         chain_config = get_chain_config(chain_id)
         if chain_config:
-            print(f"\nChain ID {chain_id} ({chain_config.get('name')}):")
+            print(
+                f"\nChain ID {chain_id} "
+                f"({chain_config.get('name')}):"
+            )
             print(f"  - RPC URL: {chain_config.get('rpc_url')}")
-            print(f"  - BlockScout URL: {chain_config.get('blockscout_url')}")
+            print(
+                f"  - BlockScout URL: "
+                f"{chain_config.get('blockscout_url')}"
+            )
             if chain_config.get('blockscout_url'):
                 api_url = f"{chain_config.get('blockscout_url').rstrip('/')}/api"
                 print(f"  - API URL: {api_url}")
@@ -101,9 +113,12 @@ async def test_zetachain_verification():
 if __name__ == "__main__":
     print("BlockScout API Verification Testing Utility")
     print("==========================================")
-    msg1 = "This script tests the contract verification on BlockScout using their API."
-    msg2 = "If verification works, you'll see a 'success: true' in the output."
-    msg3 = "For actual verification, replace the sample contract address with a real one."
+    msg1 = ("This script tests the contract verification on BlockScout "
+            "using their API.")
+    msg2 = ("If verification works, you'll see a 'success: true' in the "
+            "output.")
+    msg3 = ("For actual verification, replace the sample contract address "
+            "with a real one.")
     print(msg1)
     print(msg2)
     print(msg3)

@@ -8,6 +8,7 @@ import os
 import sys
 import json
 from typing import Dict, Any, List
+import pytest
 
 # Add the current directory to sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -93,6 +94,18 @@ def verify_rpc_endpoints():
             print(f"  - {enabled_chains[chain_id]['name']} (Chain ID: {chain_id})")
     
     return len(missing_rpc) == 0, "All enabled chains have RPC URLs"
+
+
+def test_chain_config():
+    """Test that the chain configuration loads correctly."""
+    success, message = verify_chain_config()
+    assert success, message
+
+
+def test_rpc_endpoints():
+    """Test that all enabled chains have RPC endpoints."""
+    success, message = verify_rpc_endpoints()
+    assert success, message
 
 
 if __name__ == "__main__":

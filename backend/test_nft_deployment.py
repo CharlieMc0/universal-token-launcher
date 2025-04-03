@@ -7,6 +7,7 @@ import json
 import asyncio
 import logging
 import os
+import pytest
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +23,14 @@ from app.utils.logger import logger
 Base.metadata.create_all(bind=engine)
 
 
+@pytest.fixture
+def chain_ids():
+    """Fixture that provides chain IDs for testing."""
+    enabled_chains = get_enabled_chains()
+    return [str(chain_id) for chain_id in enabled_chains.keys()][:1]  # Limit to first chain for testing
+
+
+@pytest.mark.asyncio
 async def test_deployment(chain_ids, max_chains=None, testnet_only=False):
     """Test NFT collection deployment on selected chains."""
     
@@ -76,7 +85,7 @@ async def test_deployment(chain_ids, max_chains=None, testnet_only=False):
     # Check deployment result - updated to handle new result structure
     if "error" in deployment_result and deployment_result.get("error", False):
         logger.error(f"Deployment failed: {deployment_result.get('message', 'Unknown error')}")
-        return False
+        assert False, f"Deployment failed: {deployment_result.get('message', 'Unknown error')}"
     
     deployment_id = deployment_result["deploymentId"]
     logger.info(f"Deployment ID: {deployment_id}")
@@ -85,7 +94,7 @@ async def test_deployment(chain_ids, max_chains=None, testnet_only=False):
     deployment = db.query(NFTCollectionModel).filter(NFTCollectionModel.id == deployment_id).first()
     if not deployment:
         logger.error(f"Deployment {deployment_id} not found in database")
-        return False
+        assert False, f"Deployment {deployment_id} not found in database"
     
     # Print ZetaChain deployment result - updated for new result structure
     if "7001" in chain_ids or "zeta_testnet" in chain_ids:
@@ -115,8 +124,14 @@ async def test_deployment(chain_ids, max_chains=None, testnet_only=False):
     if deployment.error_message:
         logger.error(f"Error message: {deployment.error_message}")
     
-    # Return success based on deployment status
-    return deployment.deployment_status in ("completed", "partial")
+    # Assert success based on deployment status
+    assert deployment.deployment_status in ("completed", "partial"), f"Deployment status is {deployment.deployment_status}"
+    
+    # Clean up
+    try:
+        db.close()
+    except:
+        pass
 
 
 def main():

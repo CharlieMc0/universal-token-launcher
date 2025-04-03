@@ -4,6 +4,7 @@ import sys
 import asyncio
 import httpx
 import json
+import pytest
 from pprint import pprint
 
 # Sample wallet addresses to test
@@ -13,6 +14,13 @@ TEST_ADDRESSES = [
     "0xb7d13b733e483dD492e57CcEd607916cBDd3d0F5"   # Another test wallet
 ]
 
+@pytest.fixture
+def address():
+    """Fixture providing a test wallet address."""
+    return TEST_ADDRESSES[0]  # Use the first test address
+
+
+@pytest.mark.asyncio
 async def test_get_user_tokens(address):
     """Test retrieving user tokens."""
     # Use local API URL
@@ -34,11 +42,16 @@ async def test_get_user_tokens(address):
                 # Pretty print the response data
                 if tokens_count > 0:
                     pprint(data)
+                
+                # Add assertion for pytest
+                assert response.status_code == 200, "API request failed"
             else:
                 print(f"Error: {response.text}")
+                assert False, f"API request failed with status {response.status_code}"
                 
         except Exception as e:
             print(f"Request failed: {str(e)}")
+            assert False, f"Request failed: {str(e)}"
 
 async def main():
     """Test all sample addresses."""
