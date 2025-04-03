@@ -2,6 +2,7 @@
 node_modules/
 venv/
 venv_*
+venv*
 .env/
 __pycache__/
 *.py[cod]
@@ -105,3 +106,6 @@ Thumbs.db
 standard-contracts/**
 
 backend/gcp-creds.json
+
+smart-contracts/artifacts
+smart-contracts/cache
