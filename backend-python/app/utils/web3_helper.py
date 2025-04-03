@@ -6,7 +6,6 @@ from eth_account import Account
 from eth_account.signers.local import LocalAccount
 import json
 import os
-import subprocess
 import requests
 import re
 import time
@@ -114,7 +113,7 @@ async def call_contract_method(
             'nonce': nonce,
             'value': value,
             'gasPrice': web3.eth.gas_price,  # Use current gas price
-            # 'gas': gas_limit  # Gas estimation can be tricky
+            # 'gas': gas_limit  # Gas estimation can be tricky, use build_transaction
         }
 
         logger.info(
@@ -126,28 +125,18 @@ async def call_contract_method(
         try:
             transaction = contract.functions[method_name](*args).build_transaction(tx_params)
         except Exception as build_err:
-             logger.error(f"Failed to build transaction for {method_name}: {build_err}")
-             # Try again with a fixed gas limit if estimation failed
-             logger.warning(f"Retrying build with fixed gas limit: {gas_limit}")
-             tx_params['gas'] = gas_limit
-             try:
-                 transaction = contract.functions[method_name](*args).build_transaction(tx_params)
-             except Exception as build_err_fixed:
-                 logger.error(f"Failed to build transaction with fixed gas: {build_err_fixed}")
-                 return {"success": False, "error": True, "message": f"Failed to build transaction: {build_err_fixed}"}
+            logger.error(f"Failed to build transaction for {method_name}: {build_err}")
+            # Try again with a fixed gas limit if estimation failed
+            logger.warning(f"Retrying build with fixed gas limit: {gas_limit}")
+            tx_params['gas'] = gas_limit
+            try:
+                transaction = contract.functions[method_name](*args).build_transaction(tx_params)
+            except Exception as build_err_fixed:
+                logger.error(f"Failed to build transaction with fixed gas: {build_err_fixed}")
+                return {"success": False, "error": True, "message": f"Failed to build transaction: {build_err_fixed}"}
 
         # Sign transaction
         signed_tx = web3.eth.account.sign_transaction(transaction, private_key=account.key)
-
-        # --- DEBUGGING LOG ---
-        logger.debug(f"Signed transaction object type: {type(signed_tx)}")
-        logger.debug(f"Signed transaction object dir: {dir(signed_tx)}")
-        if hasattr(signed_tx, 'raw_transaction'):
-            logger.debug(f"Signed transaction raw_transaction exists.")
-        else:
-            # This error log should hopefully not appear now
-            logger.error(f"Signed transaction raw_transaction DOES NOT exist. Object: {signed_tx}")
-        # --- END DEBUGGING LOG ---
 
         # Send transaction using the CORRECT attribute name
         tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
@@ -159,7 +148,7 @@ async def call_contract_method(
             try:
                 receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)  # Increased timeout
                 logger.info(f"Transaction {web3.to_hex(tx_hash)} confirmed in block {receipt.blockNumber}")
-                break # Success, exit retry loop
+                break  # Success, exit retry loop
             except TransactionNotFound:
                 logger.warning(
                     f"Tx {web3.to_hex(tx_hash)} not found, attempt {attempt + 1}/" 
@@ -167,20 +156,33 @@ async def call_contract_method(
                 )
                 time.sleep(retry_delay)
             except Exception as wait_err:  # Catch other potential wait errors
-                 logger.error(f"Error waiting for receipt for {web3.to_hex(tx_hash)}: {wait_err}")
-                 # Decide if this error is retryable or fatal
-                 if attempt == max_retries - 1:
-                     return {"success": False, "error": True, "transaction_hash": web3.to_hex(tx_hash), "message": f"Error waiting for receipt: {wait_err}"}
-                 time.sleep(retry_delay)
+                logger.error(f"Error waiting for receipt for {web3.to_hex(tx_hash)}: {wait_err}")
+                # Decide if this error is retryable or fatal
+                if attempt == max_retries - 1:
+                    return {"success": False, "error": True, "transaction_hash": web3.to_hex(tx_hash), "message": f"Error waiting for receipt: {wait_err}"}
+                time.sleep(retry_delay)
 
         if receipt:
             # Check transaction status
             if receipt.status == 1:
                 logger.info(f"Method '{method_name}' call successful. Tx: {web3.to_hex(tx_hash)}")
-                return {"success": True, "error": False, "transaction_hash": web3.to_hex(tx_hash), "receipt": dict(receipt)}
+                # Convert receipt to dict for JSON serialization
+                # Handle potential bytes that are not JSON serializable
+                receipt_dict = {}
+                try:
+                    receipt_dict = {
+                        k: (web3.to_hex(v) if isinstance(v, bytes) else v) 
+                        for k, v in receipt.items()
+                    }
+                except Exception as serial_err:
+                    logger.warning(f"Could not fully serialize receipt: {serial_err}")
+                    receipt_dict = {"blockNumber": receipt.blockNumber, "gasUsed": receipt.gasUsed, "status": receipt.status} # Fallback
+                
+                return {"success": True, "error": False, "transaction_hash": web3.to_hex(tx_hash), "receipt": receipt_dict}
             else:
                 logger.error(f"Method '{method_name}' call failed (reverted). Tx: {web3.to_hex(tx_hash)}")
-                return {"success": False, "error": True, "transaction_hash": web3.to_hex(tx_hash), "message": "Transaction reverted", "receipt": dict(receipt)}
+                receipt_dict = dict(receipt) # Attempt conversion, may fail if bytes exist
+                return {"success": False, "error": True, "transaction_hash": web3.to_hex(tx_hash), "message": "Transaction reverted", "receipt": receipt_dict}
         else:
             logger.error(f"Transaction {web3.to_hex(tx_hash)} timed out after {max_retries} attempts.")
             return {"success": False, "error": True, "transaction_hash": web3.to_hex(tx_hash), "message": "Transaction timed out or not found after retries"}
@@ -393,22 +395,22 @@ def get_web3(chain_id: int) -> Optional[Web3]:
 
 
 def get_account() -> Optional[LocalAccount]:
-    """Get the deployer account from private key."""
+    """Get the deployer account from the environment variable."""
+    private_key = Config.DEPLOYER_PRIVATE_KEY
+    if not private_key:
+        logger.error("DEPLOYER_PRIVATE_KEY not set in environment.")
+        return None
     try:
-        private_key = Config.DEPLOYER_PRIVATE_KEY
-        # Ensure private key has 0x prefix
-        if not private_key.startswith("0x"):
-            private_key = "0x" + private_key
-        
-        account = Account.from_key(private_key)
+        account: LocalAccount = Account.from_key(private_key)
+        logger.info(f"Loaded deployer account: {account.address}")
         return account
     except Exception as e:
-        logger.error(f"Failed to create account from private key: {str(e)}")
+        logger.error(f"Failed to load account from private key: {e}")
         return None
 
 
 def deploy_contract(web3: Web3, account, contract_abi: List, contract_bytecode: str, constructor_args: List = [], gas_limit_override: Optional[int] = None) -> Dict[str, Any]:
-    """Deploys a contract and waits for the receipt."""
+    """Deploy a contract to the blockchain."""
     try:
         Contract = web3.eth.contract(abi=contract_abi, bytecode=contract_bytecode)
         
@@ -503,43 +505,41 @@ def deploy_contract(web3: Web3, account, contract_abi: List, contract_bytecode: 
 
 
 def extract_compiler_version(source_code: str) -> str:
-    """
-    Extract the compiler version from Solidity source code.
+    """Extract Solidity compiler version from source code using regex."""
+    # Regex to find pragma solidity line (flexible for different spacings)
+    # Example: pragma solidity ^0.8.0; pragma solidity >=0.8.0 <0.9.0;
+    # We need the exact version, often found in artifacts or compiled output,
+    # but the pragma gives a clue. Blockscout requires a specific version format.
+    # Example: v0.8.19+commit.7dd6d404
     
-    Args:
-        source_code: The source code to parse
-        
-    Returns:
-        Compiler version in the format expected by verification APIs
-    """
-    # Find the pragma statement
-    pragma_match = re.search(r'pragma solidity\s+([^;]+);', source_code)
-    if not pragma_match:
-        # Default to a common version if not found
-        return "v0.8.19+commit.7dd6d404"
-    
-    # Extract the version constraint
-    version_constraint = pragma_match.group(1).strip()
-    
-    # Handle different version formats
-    # ^0.8.0 -> use 0.8.19
-    # >=0.8.0 <0.9.0 -> use 0.8.19
-    # 0.8.19 -> use 0.8.19
-    if '^0.8.' in version_constraint or '0.8.' in version_constraint:
-        # For 0.8.x versions, use 0.8.19
-        compiler_version = "v0.8.19+commit.7dd6d404"
-    elif '^0.7.' in version_constraint or '0.7.' in version_constraint:
-        # For 0.7.x versions, use 0.7.6
-        compiler_version = "v0.7.6+commit.7338295f"
-    elif '^0.6.' in version_constraint or '0.6.' in version_constraint:
-        # For 0.6.x versions, use 0.6.12
-        compiler_version = "v0.6.12+commit.27d51765"
-    else:
-        # Default to 0.8.19 for newer projects
-        compiler_version = "v0.8.19+commit.7dd6d404"
-    
-    logger.info(f"Extracted compiler version: {compiler_version} from pragma: {version_constraint}")
-    return compiler_version
+    match = re.search(r"pragma\s+solidity\s+([\^<>=]*\d+\.\d+\.\d+)", source_code)
+    if match:
+        version_pragma = match.group(1)
+        logger.info(f"Found pragma version: {version_pragma}")
+        # This is a simplification. Blockscout needs a specific version like
+        # v0.8.19+commit.7dd6d404. This usually comes from the compiler output,
+        # not just the pragma. We'll use a common recent version as a placeholder
+        # if the exact format isn't easily derived.
+        # TODO: Enhance this to use the exact compiler version used for deployment
+        # For now, try to format common versions
+        if version_pragma.startswith("^") or version_pragma.startswith(">="):
+            base_version = version_pragma[1:].split("<")[0].strip()
+            # Use a known recent commit for a common version - adjust as needed
+            if base_version == "0.8.19":
+                return "v0.8.19+commit.7dd6d404"
+            if base_version == "0.8.20":
+                 return "v0.8.20+commit.a1b79de6"
+            if base_version == "0.8.26":
+                 return "v0.8.26+commit.8a97fa7a"
+            # Fallback if specific commit isn't known
+            return f"v{base_version}" # Blockscout might accept this, needs testing
+            
+        # If it's an exact version (e.g., 0.8.19)
+        return f"v{version_pragma}+commit.7dd6d404" # Assume a common commit
+
+    logger.warning("Could not extract compiler version from source code.")
+    # Return a default version if not found - adjust as needed
+    return "v0.8.19+commit.7dd6d404"
 
 
 def verify_contract_submission(
@@ -549,314 +549,252 @@ def verify_contract_submission(
     is_zetachain: bool = False
 ) -> Dict[str, Any]:
     """
-    Submit a contract verification request to a block explorer.
-    
-    Args:
-        chain_id: The chain ID where the contract is deployed
-        contract_address: The contract address to verify
-        contract_name: Name of the contract (e.g., ZetaChainUniversalToken)
-        is_zetachain: Whether this is a ZetaChain contract
-        
-    Returns:
-        Dict with verification result status
+    Submit contract verification to the appropriate block explorer API.
+    Handles both Etherscan-like APIs and Blockscout.
     """
-    # Get chain configuration
     chain_config = get_chain_config(chain_id)
     if not chain_config:
-        return {
-            "success": False,
-            "message": f"Chain ID {chain_id} not supported",
-            "status": "failed"
-        }
-    
-    # Get explorer URL - use blockscout_url for ZetaChain contracts
-    if is_zetachain and chain_config.get("blockscout_url"):
-        explorer_url = chain_config.get("blockscout_url")
+        return {"success": False, "message": f"Chain ID {chain_id} not configured", "status": "failed"}
+
+    api_url = None
+    api_key = None
+    explorer_type = "etherscan" # Default
+
+    if is_zetachain:
+        if chain_config.get("blockscout_url"):
+            api_url = f"{chain_config['blockscout_url'].rstrip('/')}/api"
+            explorer_type = "blockscout"
+            logger.info(f"Using Blockscout API for ZetaChain: {api_url}")
+        else:
+            logger.error(f"Blockscout URL not configured for ZetaChain ID {chain_id}")
+            return {"success": False, "message": "Blockscout URL not configured for ZetaChain", "status": "failed"}
     else:
-        explorer_url = chain_config.get("explorer_url")
-        if not explorer_url:
-            # Try blockscout URL as fallback for other chains
-            explorer_url = chain_config.get("blockscout_url")
-            if not explorer_url:
-                return {
-                    "success": False,
-                    "message": f"No explorer URL configured for chain {chain_id}",
-                    "status": "failed"
-                }
-    
-    # Make sure explorer_url doesn't end with a slash
-    explorer_url = explorer_url.rstrip('/')
-    
-    # Determine if this is a Blockscout or Etherscan-type explorer
-    is_blockscout = "blockscout" in explorer_url.lower() or is_zetachain
-    
+        # For EVM chains, prioritize Blockscout if configured, else use Etherscan
+        if chain_config.get("blockscout_url"):
+            api_url = f"{chain_config['blockscout_url'].rstrip('/')}/api"
+            explorer_type = "blockscout"
+            logger.info(f"Using Blockscout API for EVM chain {chain_id}: {api_url}")
+        elif chain_config.get("api_url"):
+            api_url = chain_config["api_url"]
+            api_key = chain_config.get("api_key")
+            if not api_key:
+                 logger.warning(f"API key not found for Etherscan-like explorer on chain {chain_id}")
+                 # Allow proceeding without API key for some explorers, but log warning
+                 # return {"success": False, "message": f"API key not found for chain {chain_id}", "status": "failed"}
+            logger.info(f"Using Etherscan-like API for EVM chain {chain_id}: {api_url}")
+        else:
+             logger.error(f"No API URL configured for chain {chain_id}")
+             return {"success": False, "message": f"No API URL configured for chain {chain_id}", "status": "failed"}
+
+    if not api_url:
+        return {"success": False, "message": "Could not determine API URL", "status": "failed"}
+
+    # Determine contract source file path
+    contract_file = f"{contract_name}.sol"
+    contract_path = os.path.join(SMART_CONTRACTS_DIR, "contracts", contract_file)
+
+    if not os.path.exists(contract_path):
+        logger.error(f"Contract source file not found at {contract_path}")
+        # Check if the parent directory exists and list files for debugging
+        parent_dir = os.path.dirname(contract_path)
+        if not os.path.exists(parent_dir):
+            logger.error(f"Parent directory not found: {parent_dir}")
+        else:
+            logger.info(f"Parent directory exists: {parent_dir}. Files: {os.listdir(parent_dir)}")
+        return {"success": False, "message": f"Contract source file not found: {contract_file}", "status": "failed"}
+
+    logger.info(f"Reading contract source from {contract_path}")
+    with open(contract_path, 'r') as f:
+        source_code = f.read()
+
+    compiler_version = extract_compiler_version(source_code)
+    logger.info(f"Using compiler version for verification: {compiler_version}")
+
+    # --- Verification Payload and Request ---
+    payload = {}
+    headers = {}
+    request_method = "POST"
+
+    if explorer_type == "blockscout":
+        logger.info(f"Preparing Blockscout verification payload for {contract_name}")
+        payload = {
+            "module": "contract",
+            "action": "verifysourcecode",
+            "contractaddress": contract_address,
+            "contractname": contract_name,
+            "compilerversion": compiler_version,
+            "optimizationUsed": "1",  # Assuming optimization is always used (common practice)
+            "runs": "200",  # Standard optimization runs
+            "sourceCode": source_code,
+            "evmversion": "paris",  # Default or check based on compiler version if needed
+            "constructorArguments": "",  # Keep empty, let Blockscout handle if possible
+            "codeformat": "solidity-single-file"  # Key setting for Blockscout
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        # Blockscout uses POST with form data
+
+        # Save verification data locally for debugging
+        try:
+            # Ensure filename is safe
+            safe_contract_name = re.sub(r'[\\/*?"<>|]', "_", contract_name)
+            data_filename = f"{safe_contract_name}_verification_data.json"
+            with open(data_filename, 'w') as f:
+                json.dump(payload, f, indent=2)
+            logger.info(f"Saved Blockscout verification data to {data_filename}")
+        except Exception as e:
+            logger.warning(f"Could not save verification data: {e}")
+
+    elif explorer_type == "etherscan":
+        logger.info(f"Preparing Etherscan-like verification payload for {contract_name}")
+        payload = {
+            "apikey": api_key,
+            "module": "contract",
+            "action": "verifysourcecode",
+            "contractaddress": contract_address,
+            "sourceCode": source_code,
+            "contractname": contract_name,
+            "compilerversion": compiler_version,  # Ensure format matches (e.g., v0.8.19+commit...)
+            "optimizationUsed": 1,  # 1 for true, 0 for false
+            "runs": 200,  # Optimization runs
+            # Add other fields like constructor arguments if needed
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        # Etherscan also uses POST with form data
+
+    else:
+        return {"success": False, "message": f"Unsupported explorer type: {explorer_type}", "status": "failed"}
+
+    # Make the API request
     try:
-        # Get appropriate API key
-        api_key = None
-        
-        # For ZetaChain/Blockscout, we don't need an API key
-        if not is_blockscout:
-            # For other chains, get the appropriate API key based on chain ID
-            if chain_id == 1 or chain_id == 5 or chain_id == 11155111:  # Ethereum
-                api_key = Config.ETHERSCAN_API_KEY
-            elif chain_id == 137:  # Polygon
-                api_key = Config.POLYGONSCAN_API_KEY
-            elif chain_id == 56 or chain_id == 97:  # BSC
-                api_key = Config.BSCSCAN_API_KEY
-            elif chain_id == 8453 or chain_id == 84532:  # Base
-                api_key = Config.BASESCAN_API_KEY
-            elif chain_id == 42161 or chain_id == 421614:  # Arbitrum
-                api_key = Config.ARBISCAN_API_KEY
-            elif chain_id == 10 or chain_id == 11155420:  # Optimism
-                api_key = Config.OPTIMISM_API_KEY
-            else:
-                # For other chains, try to use Etherscan API key
-                api_key = Config.ETHERSCAN_API_KEY
-        
-        # Log information about verification attempt
-        logger.info(
-            f"Verifying contract {contract_address} "
-            f"on {chain_config.get('name')} using "
-            f"{'Blockscout' if is_blockscout else 'Etherscan'} API"
+        logger.info(f"Sending verification request to {api_url}")
+        # Log payload without source code for brevity
+        log_payload = {k: (v if k != 'sourceCode' else f'<source code {len(v)} chars>') for k, v in payload.items()}
+        logger.debug(f"Payload: {json.dumps(log_payload)}")
+
+        response = requests.request(
+            method=request_method,
+            url=api_url,
+            data=payload, # Use data for form-urlencoded
+            headers=headers,
+            timeout=60 # Increased timeout for verification
         )
 
-        # Determine contract type (NFT or Token)
-        is_nft_contract = "NFT" in contract_name
-        contract_type = "NFT" if is_nft_contract else "Token"
-        
-        # For Blockscout (ZetaChain), use direct API call
-        if is_blockscout:
-            # Read contract source
-            contract_path = os.path.join(
-                SMART_CONTRACTS_DIR,
-                "contracts",
-                f"{contract_name}.sol"
-            )
-            
-            logger.info(f"Looking for contract source at: {contract_path}")
-            
-            if not os.path.exists(contract_path):
-                return {
-                    "success": False,
-                    "message": f"Contract source not found at {contract_path}",
-                    "status": "failed"
-                }
-            
-            try:
-                with open(contract_path, 'r') as f:
-                    contract_source = f.read()
-            except Exception as e:
-                logger.error(f"Error reading contract source: {str(e)}")
-                return {
-                    "success": False,
-                    "message": f"Error reading contract source: {str(e)}",
-                    "status": "failed"
-                }
-                
-            # Extract compiler version from source code
-            compiler_version = extract_compiler_version(contract_source)
-            
-            # Construct API URL for Blockscout verification
-            verification_url = f"{explorer_url}/api"
-            
-            # Prepare verification data according to BlockScout API docs
-            verification_data = {
-                "module": "contract",
-                "action": "verifysourcecode",
-                "contractaddress": contract_address,
-                "contractname": contract_name,
-                "compilerversion": compiler_version,
-                "optimizationUsed": "1",  # 1 for true, 0 for false
-                "runs": "200",
-                "sourceCode": contract_source,
-                "evmversion": "paris",
-                "constructorArguments": "",  # Leave empty for autodetection
-                "codeformat": "solidity-single-file"
-            }
-            
-            # Save verification data to a file (without source code for size)
-            verification_data_filename = f"{contract_name}_verification_data.json"
-            verification_data_nocode = {
-                k: v for k, v in verification_data.items()
-                if k != "sourceCode"
-            }
-            try:
-                with open(verification_data_filename, 'w') as f:
-                    json.dump(verification_data_nocode, f, indent=2)
-                logger.info(f"Verification data saved to: {verification_data_filename}")
-            except Exception as e:
-                logger.warning(f"Could not save verification data: {str(e)}")
-            
-            # Make API request to verify contract
-            try:
-                headers = {
-                    "Content-Type": "application/x-www-form-urlencoded"
-                }
-                
-                logger.info(f"Submitting verification to: {verification_url}")
-                response = requests.post(
-                    verification_url,
-                    data=verification_data,
-                    headers=headers,
-                    timeout=60
-                )
-                
-                logger.info(f"Response status code: {response.status_code}")
-            except requests.RequestException as e:
-                return {
-                    "success": False,
-                    "message": f"Request to BlockScout API failed: {str(e)}",
-                    "status": "failed"
-                }
-            
-            if response.status_code in (200, 201, 202):
+        logger.info(f"Verification response status code: {response.status_code}")
+        logger.debug(f"Verification response text: {response.text[:500]}...") # Log beginning of response
+
+        # Save response locally for debugging
+        try:
+            response_filename = f"{contract_name}_verification_response.json"
+            with open(response_filename, 'w') as f:
                 try:
-                    response_data = response.json()
-                    logger.info(f"Verification response: {response_data}")
-                    
-                    if "result" in response_data and "status" in response_data:
-                        if response_data["status"] == "1":
-                            return {
-                                "success": True,
-                                "message": "Contract verification submitted successfully",
-                                "status": "pending",
-                                "explorer_url": f"{explorer_url}/address/{contract_address}",
-                                "response_data": response_data
-                            }
-                        else:
-                            # Error with validation
-                            error_message = response_data.get("result", "Unknown error")
-                            logger.error(f"Blockscout validation error: {error_message}")
-                            return {
-                                "success": False,
-                                "message": f"Contract verification failed: {error_message}",
-                                "status": "failed"
-                            }
-                    else:
-                        return {
-                            "success": True,
-                            "message": "Contract verification submitted successfully",
-                            "status": "pending",
-                            "explorer_url": f"{explorer_url}/address/{contract_address}",
-                            "response_data": response_data
-                        }
-                except Exception as json_err:
-                    logger.error(f"Error parsing JSON response: {str(json_err)}")
-                    # If we can't parse the response but got a success code, assume it worked
-                    return {
-                        "success": True,
-                        "message": "Contract verification submitted, but couldn't parse response",
-                        "status": "pending",
-                        "explorer_url": f"{explorer_url}/address/{contract_address}"
-                    }
-            else:
-                error_info = f"Status: {response.status_code}, Response: {response.text}"
-                logger.error(f"Blockscout API error: {error_info}")
-                return {
-                    "success": False,
-                    "message": f"Contract verification failed: {error_info}",
-                    "status": "failed"
-                }
-            
-        # For Etherscan-like explorers, use their API
-        else:
-            if not api_key:
-                return {
-                    "success": False,
-                    "message": f"No API key available for chain {chain_id}",
-                    "status": "failed"
-                }
-                
-            # Construct proper Etherscan verification API call
-            verification_url = f"{explorer_url}/api"
-            
+                    # Try saving as JSON if possible
+                    json.dump(response.json(), f, indent=2)
+                except json.JSONDecodeError:
+                    # Save as text if not JSON
+                    f.write(response.text)
+            logger.info(f"Saved verification response to {response_filename}")
+        except Exception as e:
+            logger.warning(f"Could not save verification response: {e}")
+
+
+        if response.status_code == 200:
             try:
-                # Read contract source
-                contract_path = os.path.join(
-                    SMART_CONTRACTS_DIR,
-                    "contracts",
-                    f"{contract_name}.sol"
-                )
-                
-                if not os.path.exists(contract_path):
-                    return {
-                        "success": False,
-                        "message": "Contract source not found",
-                        "status": "failed"
-                    }
-                
-                with open(contract_path, 'r') as f:
-                    contract_source = f.read()
-                
-                # Extract compiler version from source code
-                compiler_version = extract_compiler_version(contract_source)
-                
-                # Prepare verification data
-                verification_data = {
-                    "apikey": api_key,
-                    "module": "contract",
-                    "action": "verifysourcecode",
-                    "contractaddress": contract_address,
-                    "sourceCode": contract_source,
-                    "contractname": contract_name,
-                    "compilerversion": compiler_version,
-                    "optimizationUsed": 1,
-                    "runs": 200,
-                    "evmversion": "paris",
-                    "constructorArguments": "",  # Empty for auto-detection
-                    "codeformat": "solidity-single-file"  # Required format for Etherscan
-                }
-                
-                headers = {
-                    "Content-Type": "application/x-www-form-urlencoded"
-                }
-                
-                logger.info(f"Sending verification request to Etherscan API: {verification_url}")
-                
-                response = requests.post(
-                    verification_url, 
-                    data=verification_data,
-                    headers=headers
-                )
-                
-                if response.status_code == 200:
-                    response_data = response.json()
+                response_data = response.json()
+                # Check response format (varies between Etherscan and Blockscout)
+                if explorer_type == "blockscout":
+                    # Blockscout success: status="1", result=guid OR status="0", result=error message
                     if response_data.get("status") == "1":
-                        return {
-                            "success": True,
-                            "message": "Contract verification submitted via Etherscan API",
-                            "status": "pending",
-                            "explorer_url": f"{explorer_url}/address/{contract_address}",
-                            "guid": response_data.get("result")
-                        }
+                        logger.info(f"Blockscout verification submitted successfully. GUID: {response_data.get('result')}")
+                        # Blockscout submission doesn't mean instant verification
+                        return {"success": True, "message": f"Verification submitted: {response_data.get('result')}", "status": "pending"}
                     else:
-                        error_message = response_data.get("result", "Unknown error")
-                        return {
-                            "success": False,
-                            "message": f"Verification failed: {error_message}",
-                            "status": "failed"
-                        }
-                else:
-                    return {
-                        "success": False,
-                        "message": f"Verification failed: HTTP {response.status_code}",
-                        "status": "failed"
-                    }
-            except Exception as e:
-                logger.error(f"Error during Etherscan verification: {str(e)}")
-                return {
-                    "success": False,
-                    "message": f"Verification error: {str(e)}",
-                    "status": "failed"
-                }
-            
+                        error_message = response_data.get("result", "Unknown Blockscout error")
+                        logger.error(f"Blockscout verification submission failed: {error_message}")
+                        return {"success": False, "message": error_message, "status": "failed"}
+                
+                elif explorer_type == "etherscan":
+                    # Etherscan success: status="1", result=guid | status="0", result=error
+                    if response_data.get("status") == "1":
+                        guid = response_data.get("result")
+                        logger.info(f"Etherscan verification submitted successfully. GUID: {guid}")
+                        # Start checking status using the GUID
+                        # For simplicity now, return pending. A separate check status function is better.
+                        return {"success": True, "message": f"Verification submitted: {guid}", "status": "pending"}
+                    else:
+                        error_message = response_data.get("result", "Unknown Etherscan error")
+                        logger.error(f"Etherscan verification submission failed: {error_message}")
+                        return {"success": False, "message": error_message, "status": "failed"}
+
+            except json.JSONDecodeError:
+                logger.error("Failed to decode JSON response from explorer API")
+                return {"success": False, "message": "Invalid JSON response from API", "status": "failed"}
+        else:
+            logger.error(f"Explorer API request failed with status {response.status_code}")
+            return {"success": False, "message": f"API request failed with status {response.status_code}: {response.text[:200]}", "status": "failed"}
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error sending verification request: {e}", exc_info=True)
+        return {"success": False, "message": f"Network error during verification: {e}", "status": "failed"}
     except Exception as e:
-        logger.error(f"Error submitting contract verification: {str(e)}")
-        return {
-            "success": False,
-            "message": f"Verification submission failed: {str(e)}",
-            "status": "failed"
-        }
+        logger.error(f"Unexpected error during verification submission: {e}", exc_info=True)
+        return {"success": False, "message": f"Unexpected error: {e}", "status": "failed"}
+
+
+async def check_verification_status(chain_id: int, guid: str) -> Dict[str, Any]:
+    """Check the verification status using the GUID provided by the explorer API."""
+    chain_config = get_chain_config(chain_id)
+    if not chain_config:
+        return {"success": False, "message": f"Chain ID {chain_id} not configured"}
+
+    # Determine API URL and type (assuming Etherscan-like for status check for now)
+    # Blockscout might require different handling or may not have a separate
+    # status check API easily usable
+    api_url = chain_config.get("api_url")
+    api_key = chain_config.get("api_key")
+    is_blockscout = chain_config.get("blockscout_url") and not api_url
+    # Assume Blockscout if only blockscout_url exists
+
+    if is_blockscout:
+         logger.warning("Automatic status check for Blockscout GUID not implemented, returning pending.")
+         # Blockscout verification often happens quickly or might require manual check
+         # For now, assume it's still pending or succeeded if submission was ok.
+         # A more robust solution might involve polling the contract page or a
+         # specific API if available.
+         return {"success": True, "status": "pending", "message": "Blockscout status check not implemented"}
+
+
+    if not api_url:
+        return {"success": False, "message": f"API URL not configured for chain {chain_id}"}
+
+    params = {
+        "apikey": api_key,
+        "module": "contract",
+        "action": "checkverifystatus",
+        "guid": guid
+    }
+
+    try:
+        response = requests.get(api_url, params=params, timeout=30)
+        if response.status_code == 200:
+            data = response.json()
+            result_message = data.get("result", "")
+            
+            if data.get("status") == "1": # Etherscan success status
+                logger.info(f"Verification status for GUID {guid}: Success")
+                return {"success": True, "status": "success", "message": result_message}
+            elif data.get("status") == "0" and "Pending" in result_message:
+                logger.info(f"Verification status for GUID {guid}: Pending")
+                return {"success": True, "status": "pending", "message": result_message}
+            else:
+                 logger.error(f"Verification status check failed for GUID {guid}: {result_message}")
+                 return {"success": False, "status": "failed", "message": result_message}
+        else:
+             logger.error(f"API request for status check failed: {response.status_code}")
+             return {"success": False, "message": f"API Error: {response.status_code}"}
+
+    except Exception as e:
+        logger.error(f"Error checking verification status: {e}")
+        return {"success": False, "message": f"Error: {e}"}
 
 
 # Ensure contract data is loaded when module is imported

@@ -14,9 +14,11 @@ from app.utils.web3_helper import (
     ZC_UNIVERSAL_TOKEN_ABI, 
     ZC_UNIVERSAL_TOKEN_BYTECODE,
     call_contract_method,
-    get_zrc20_address
+    # get_zrc20_address # Currently unused in this service
 )
-from app.utils.chain_config import get_chain_config
+# from app.utils.chain_config import get_chain_config # Imported but unused
+from web3 import Web3 # Import Web3 directly for to_checksum_address
+from sqlalchemy.orm.attributes import flag_modified
 
 
 class DeploymentService:
@@ -31,49 +33,41 @@ class DeploymentService:
         db: Session
     ) -> Dict[str, Any]:
         """
-        Deploy a universal token across multiple chains, connect them,
-        handle initial allocations, and transfer ownership.
+        Deploy, connect, allocate, and transfer ownership for universal tokens.
         
         Args:
-            token_config: Token configuration information
-            selected_chains: List of chain IDs to deploy on
-            final_owner_address: Address that will receive final ownership
-            allocations: List of addresses and amounts for initial distribution
+            token_config: Token details (name, symbol, decimals, total_supply)
+            selected_chains: List of chain IDs to deploy on (strings)
+            final_owner_address: Address for final ownership
+            allocations: List of {address, amount} for initial distribution
             db: Database session
             
         Returns:
-            Dict with deployment results
+            Dict with deployment results and status.
         """
         logger.info(
-            f"Deploying token {token_config['token_name']} "
-            f"for owner {final_owner_address} on {len(selected_chains)} chains "
-            f"with {len(allocations)} allocations."
+            f"Deploying {token_config['token_name']} for {final_owner_address} "
+            f"on {len(selected_chains)} chains with {len(allocations)} allocations."
         )
         
         # Get service deployer account (used for transactions)
         service_account = get_account()
         if not service_account:
-            # Handle error: Cannot proceed without service deployer account
-            # (Existing error handling logic seems appropriate here)
-            
-            # Create deployment record with initial status
             deployment = TokenModel(
                 token_name=token_config["token_name"],
                 token_symbol=token_config["token_symbol"],
                 decimals=token_config["decimals"],
                 total_supply=token_config["total_supply"],
-                deployer_address=final_owner_address,  # Store final owner
+                deployer_address=final_owner_address,
                 deployment_status="failed",
                 connected_chains_json={},
                 error_message="Failed to load service deployer account"
             )
             db.add(deployment)
             db.commit()
-            return {
-                "deploymentId": deployment.id,  # Return ID on early failure
-                "error": True,
-                "message": "Failed to load service deployer account. Cannot deploy."
-            }
+            return {"deploymentId": deployment.id,
+                    "error": True,
+                    "message": "Failed to load service deployer account"}
 
         logger.info(f"Service deployer address: {service_account.address}")
 
@@ -84,58 +78,50 @@ class DeploymentService:
             decimals=token_config["decimals"],
             total_supply=token_config["total_supply"],
             deployer_address=final_owner_address,
-            # Store final owner
             deployment_status="in_progress",
             connected_chains_json={},
-            # TODO: Add allocations to model?
         )
-        
         db.add(deployment)
         db.commit()
         db.refresh(deployment)
 
-        # Initialize result structure
         deployment_result = {
             "deploymentId": deployment.id,
             "zetaChain": {"status": "pending"},
-            "evmChains": {chain_id: {"status": "pending"} for chain_id in selected_chains if chain_id != "7001"}
+            "evmChains": {cid: {"status": "pending"} for cid in selected_chains if cid != "7001"}
         }
         
         zc_contract_address = None
         zc_web3 = None
         
-        # --- Step 1: Deploy to ZetaChain ---
+        # --- Step 1: Deploy to ZetaChain (Hardcoded ID 7001) ---
         zeta_chain_id_str = "7001"
         zeta_chain_id_int = 7001
         if zeta_chain_id_str in selected_chains:
             logger.info("Deploying ZetaChain contract...")
             zc_web3 = get_web3(zeta_chain_id_int)
             if not zc_web3:
-                # (Existing error handling)
                 deployment.deployment_status = "failed"
-                deployment.error_message = "Failed to connect to ZetaChain"
+                err_msg = "Failed to connect to ZetaChain"
+                deployment.error_message = err_msg
                 db.add(deployment)
                 db.commit()
-                deployment_result["zetaChain"]["status"] = "failed"
-                deployment_result["zetaChain"]["message"] = "Failed to connect to ZetaChain"
-                # Note: Consider if returning immediately vs continuing EVM
-                return deployment_result # Early exit if ZC connection fails
+                deployment_result["zetaChain"] = {"status": "failed", "message": err_msg}
+                return deployment_result # Early exit
 
-            # Use SERVICE ACCOUNT for deployment and initial ownership
+            # ZC Constructor: name, symbol, decimals, initialSupply, initialOwner
             constructor_args = [
                 str(token_config["token_name"]),
                 str(token_config["token_symbol"]),
                 int(token_config["decimals"]),
-                int(token_config["total_supply"]),  # Initial supply minted to deployer
-                service_account.address  # SERVICE ACCOUNT is initial owner
+                int(token_config["total_supply"]), # Minted to service account
+                service_account.address # SERVICE ACCOUNT is initial owner
             ]
-            
             logger.info(f"ZetaChain constructor args: {constructor_args}")
             
             try:
                 zc_result = deploy_contract(
-                    web3=zc_web3,
-                    account=service_account,
+                    web3=zc_web3, account=service_account,
                     contract_abi=ZC_UNIVERSAL_TOKEN_ABI,
                     contract_bytecode=ZC_UNIVERSAL_TOKEN_BYTECODE,
                     constructor_args=constructor_args
@@ -146,549 +132,446 @@ class DeploymentService:
                     zc_contract_address = zc_result["contract_address"]
                     deployment.zc_contract_address = zc_contract_address
                     deployment_result["zetaChain"]["status"] = "deployed"
-                    logger.info(f"ZetaChain contract deployed at: {zc_contract_address}")
-                    
-                    # Immediately commit to ensure zc_contract_address is saved
+                    logger.info(f"ZetaChain contract deployed: {zc_contract_address}")
                     db.add(deployment)
-                    db.commit()
-                    logger.info(
-                        f"Saved ZetaChain contract address to database: {zc_contract_address}"
-                    )
+                    db.commit() # Commit zc_contract_address immediately
+                    logger.info("Saved ZetaChain contract address to database.")
                 else:
-                    error_msg = zc_result.get('message', 'Unknown ZetaChain deployment error')
-                    deployment.error_message = f"ZetaChain deployment failed: {error_msg}"
-                    deployment_result["zetaChain"]["status"] = "failed"
-                    deployment_result["zetaChain"]["message"] = error_msg
-                    # Consider if we should stop here if ZC deployment fails
+                    err_msg = zc_result.get('message', 'Unknown ZC deploy error')
+                    deployment.error_message = f"ZetaChain deployment failed: {err_msg}"
+                    deployment_result["zetaChain"] = {"status": "failed", "message": err_msg}
 
             except Exception as e:
-                logger.error(f"ZetaChain deployment exception: {str(e)}", exc_info=True)
-                error_msg = f"ZetaChain deployment exception: {str(e)}"
-                deployment_result["zetaChain"] = {
-                    "success": False, "error": True, "message": error_msg, "status": "failed"
-                }
-                deployment.error_message = error_msg
-                # Consider stopping if ZC fails
+                logger.error(f"ZetaChain deploy exception: {e}", exc_info=True)
+                err_msg = f"ZetaChain deployment exception: {e}"
+                deployment_result["zetaChain"] = {"success": False, "error": True,
+                                                "message": err_msg, "status": "failed"}
+                deployment.error_message = err_msg
 
-        # Check if ZetaChain deployment was successful before proceeding
-        if not zc_contract_address or deployment_result["zetaChain"]["status"] == "failed":
-             logger.error("ZetaChain contract deployment failed or skipped. Cannot proceed with EVM deployments or setup.")
-             deployment.deployment_status = "failed" # Mark overall status
-             db.add(deployment)
-             db.commit()
-             return deployment_result # Exit
+        # Check if ZetaChain deployment succeeded before proceeding
+        if not zc_contract_address or deployment_result["zetaChain"].get("status") == "failed":
+            logger.error("ZC deployment failed/skipped. Aborting further steps.")
+            deployment.deployment_status = "failed"
+            db.add(deployment)
+            db.commit()
+            return deployment_result # Exit
 
 
         # --- Step 2: Deploy to EVM Chains ---
-        deployed_evm_contracts = {} # Store {chain_id: address} for successful deployments
+        deployed_evm_contracts = {} # Store {chain_id_str: address}
         for chain_id_str in selected_chains:
             if chain_id_str == zeta_chain_id_str:
                 continue
             
             logger.info(f"Deploying contract to EVM chain {chain_id_str}...")
-            numeric_chain_id = int(chain_id_str)
-            evm_web3 = get_web3(numeric_chain_id)
+            try:
+                numeric_chain_id = int(chain_id_str)
+            except ValueError:
+                msg = f"Invalid numeric chain ID: {chain_id_str}"
+                deployment_result["evmChains"][chain_id_str] = {"status": "failed", "message": msg}
+                continue
 
+            evm_web3 = get_web3(numeric_chain_id)
             if not evm_web3:
-                # (Existing error handling for connection failure)
-                message = f"Failed to connect to EVM chain {chain_id_str}"
-                deployment_result["evmChains"][chain_id_str] = {
-                    "success": False, "error": True, "message": message, "status": "failed"
-                }
+                msg = f"Failed to connect to EVM chain {chain_id_str}"
+                deployment_result["evmChains"][chain_id_str] = {"status": "failed", "message": msg}
+                # Update DB record for this chain
                 if not deployment.connected_chains_json: deployment.connected_chains_json = {}
-                deployment.connected_chains_json[chain_id_str] = {"status": "failed", "error_message": message}
+                deployment.connected_chains_json[chain_id_str] = {"status": "failed", "error_message": msg}
+                flag_modified(deployment, "connected_chains_json")
                 continue # Try next chain
 
-            # Use SERVICE ACCOUNT for deployment
-            # Get chain config to find the gateway address
-            chain_config = get_chain_config(numeric_chain_id)
-            # gateway_address is NOT needed for this constructor based on ABI
-            # default_gas_for_cc is NOT needed for this constructor
-
-            # --- DEPLOY EVM CONTRACT (with constructor args) ---
-            # Constructor args based on EVMUniversalToken.json ABI:
-            # (name_, symbol_, decimals_, initialSupply, currentChainId, initialOwner)
+            # EVM Constructor: name, symbol, decimals, initialSupply, currentChainId, initialOwner
             constructor_args = [
                 str(token_config["token_name"]),
                 str(token_config["token_symbol"]),
                 int(token_config["decimals"]),
-                0,  # initialSupply - confirmed 0 is okay
-                numeric_chain_id,           # currentChainId
-                service_account.address   # initialOwner (service account)
+                0, # Initial supply for EVM contracts is 0
+                numeric_chain_id, # Current chain ID
+                service_account.address # SERVICE ACCOUNT is initial owner
             ]
             logger.info(f"EVM Chain {chain_id_str} constructor args: {constructor_args}")
 
             try:
-                # Deploy the contract with constructor args
                 deploy_result = deploy_contract(
-                    web3=evm_web3,
-                    account=service_account,
+                    web3=evm_web3, account=service_account,
                     contract_abi=UNIVERSAL_TOKEN_ABI,
                     contract_bytecode=UNIVERSAL_TOKEN_BYTECODE,
                     constructor_args=constructor_args
                 )
 
-                # Check deployment result
                 if deploy_result and deploy_result["success"]:
                     evm_contract_address = deploy_result["contract_address"]
                     deployed_evm_contracts[chain_id_str] = evm_contract_address
-                    logger.info(f"EVM contract deployed on chain {chain_id_str} at: {evm_contract_address}")
-
-                    # --- Record Success --- 
-                    deployment_result["evmChains"][chain_id_str] = {
-                        "success": True,
-                        "error": False,
-                        "contract_address": evm_contract_address,
-                        "transaction_hash": deploy_result.get("transaction_hash"),
-                        "status": "deployed", # Status after successful deployment
-                    }
-                    if not deployment.connected_chains_json: deployment.connected_chains_json = {}
-                    deployment.connected_chains_json[chain_id_str] = {
+                    logger.info(f"EVM contract deployed on {chain_id_str}: {evm_contract_address}")
+                    evm_status = {
                         "contract_address": evm_contract_address,
                         "transaction_hash": deploy_result.get("transaction_hash"), 
-                        "status": "deployed",
+                        "status": "deployed", # Deployed but not connected/setup yet
                         "verification_status": "pending",
-                        "setup_status": "pending" # Needs setUniversal etc.
                     }
-                    
-                    # Immediately commit to ensure connected_chains_json is saved
-                    db.add(deployment)
-                    db.commit()
-                    logger.info(
-                        f"Saved EVM contract for chain {chain_id_str} to database: "
-                        f"{evm_contract_address}"
-                    )
-                else:
-                    # Deployment failed
-                    error_msg = f"EVM contract deployment failed: {deploy_result.get('message', 'Unknown error')}"
-                    logger.error(error_msg)
-                    # Store failure information
+                    deployment_result["evmChains"][chain_id_str] = evm_status
+                    # Update DB immediately with deployment info
                     if not deployment.connected_chains_json: deployment.connected_chains_json = {}
-                    deployment.connected_chains_json[chain_id_str] = {
-                        "status": "failed",
-                        "error_message": error_msg
-                    }
-                    deployment_result["evmChains"][chain_id_str] = {
-                        "success": False,
-                        "error": True,
-                        "message": error_msg,
-                        "status": "failed"
-                    }
-                    continue # Continue to next chain
+                    deployment.connected_chains_json[chain_id_str] = evm_status
+                    flag_modified(deployment, "connected_chains_json")
+                else:
+                    err_msg = deploy_result.get('message', f'Unknown EVM deploy error on {chain_id_str}')
+                    deployment_result["evmChains"][chain_id_str] = {"status": "failed", "message": err_msg}
+                    if not deployment.connected_chains_json: deployment.connected_chains_json = {}
+                    deployment.connected_chains_json[chain_id_str] = {"status": "failed", "error_message": err_msg}
+                    flag_modified(deployment, "connected_chains_json")
 
             except Exception as e:
-                # Catch other exceptions during deployment attempt
-                logger.error(f"EVM Chain {chain_id_str} deployment exception: {str(e)}", exc_info=True)
-                error_msg = f"EVM Chain {chain_id_str} deployment exception: {str(e)}"
-                deployment_result["evmChains"][chain_id_str] = {
-                    "success": False, "error": True, "message": error_msg, "status": "deploy_failed"
-                }
+                logger.error(f"EVM deploy exception on {chain_id_str}: {e}", exc_info=True)
+                err_msg = f"EVM deploy exception: {e}"
+                deployment_result["evmChains"][chain_id_str] = {"status": "failed", "message": err_msg}
                 if not deployment.connected_chains_json: deployment.connected_chains_json = {}
-                deployment.connected_chains_json[chain_id_str] = {"status": "deploy_failed", "error_message": error_msg}
-                continue # Continue to next chain
+                deployment.connected_chains_json[chain_id_str] = {"status": "failed", "error_message": err_msg}
+                flag_modified(deployment, "connected_chains_json")
+        
+        # Commit intermediate EVM deployment statuses
+        db.add(deployment)
+        db.commit()
+        db.refresh(deployment) # Ensure we have the latest state
 
-        # --- Step 3 & 4: Connect Contracts (setConnected & setUniversal) ---
-        logger.info("Connecting deployed contracts...")
+        # --- Step 3: Connect EVM Contracts back to ZetaChain contract ---
+        logger.info("Connecting EVM contracts to ZetaChain contract...")
+        connection_success_count = 0
+        connection_failure_count = 0
+        
+        if not zc_web3 or not zc_contract_address:
+            logger.error("Cannot connect contracts: ZC web3/address unavailable.")
+            # Should have exited earlier, but double-check
+            deployment.deployment_status = "failed"
+            deployment.error_message = deployment.error_message or "ZC connection failed pre-connect step"
+            db.add(deployment)
+            db.commit()
+            return deployment_result
+
         for chain_id_str, evm_contract_address in deployed_evm_contracts.items():
-            numeric_chain_id = int(chain_id_str)
-            logger.info(f"Connecting ZetaChain contract to EVM contract on chain {chain_id_str} ({evm_contract_address})")
+            logger.info(f"Calling setConnectedContract for chain {chain_id_str} ({evm_contract_address})")
             
-            # --- 3a: Call setConnectedContract on ZetaChain contract ---
+            args = None # Initialize args
+            status_update = {} # Initialize status update dict
             try:
-                 # We don't need the ZRC-20 address for setConnectedContract
-                 # We need the target chainId and the deployed EVM contract address
+                # Validate arguments *before* the call
+                if not isinstance(evm_contract_address, str) or not evm_contract_address.startswith("0x"):
+                    raise ValueError(f"Invalid EVM address format: {evm_contract_address}")
+                
+                # Args: (uint256 _chainId, address _contractAddress)
+                args = (
+                    int(chain_id_str), 
+                    Web3.to_checksum_address(evm_contract_address)
+                )
+                logger.debug(f"Prepared args for setConnectedContract: {args}")
 
-                logger.info(f"Calling setConnectedContract on {zc_contract_address} with "
-                            f"Chain ID: {numeric_chain_id} and EVM addr: {evm_contract_address}")
-                tx_receipt_connected = await call_contract_method(
-                    web3=zc_web3,
+                connection_result = await call_contract_method(
+                    web3=zc_web3, # Call method on ZetaChain contract
                     account=service_account,
                     contract_address=zc_contract_address,
-                    contract_abi=ZC_UNIVERSAL_TOKEN_ABI, # Correct ABI
-                    method_name="setConnectedContract", # <<< ENSURE THIS IS CORRECT
-                    args=(numeric_chain_id, evm_contract_address) # Correct args
+                    contract_abi=ZC_UNIVERSAL_TOKEN_ABI, # Use ZetaChain ABI
+                    method_name="setConnectedContract",
+                    args=args
                 )
-                # Check tx_receipt_connected for success
-                if tx_receipt_connected and tx_receipt_connected.get('success') is True:
-                     logger.info(f"setConnectedContract successful for chain {chain_id_str}")
-                     deployment.connected_chains_json[chain_id_str]["setup_status"] = "setConnected_done" # Update status
+
+                if connection_result.get("success"):
+                    connection_success_count += 1
+                    logger.info(f"Successfully connected chain {chain_id_str}")
+                    status_update = {"connection_status": "connected"}
                 else:
-                    raise Exception(
-                        f"setConnectedContract transaction failed or reverted for chain {chain_id_str}. "
-                        f"Result: {tx_receipt_connected}"
-                    )
+                    connection_failure_count += 1
+                    error_msg = connection_result.get("message", "Unknown connection error")
+                    logger.error(f"Failed to connect chain {chain_id_str}: {error_msg}")
+                    status_update = {"connection_status": "failed", 
+                                       "connection_error": error_msg}
+
+            except ValueError as val_err: # Catch specific validation errors
+                connection_failure_count += 1
+                error_to_report = f"Arg validation failed: {val_err}"
+                logger.error(f"Failed preparing setConnectedContract for {chain_id_str}: {error_to_report}",
+                             exc_info=True)
+                status_update = {"connection_status": "failed", 
+                                   "connection_error": error_to_report}
+            except Exception as e: # Catch other unexpected errors
+                connection_failure_count += 1
+                error_to_report = f"Exception during connection: {type(e).__name__} - {e}"
+                logger.error(f"Exception connecting {chain_id_str}: {error_to_report}",
+                             exc_info=True)
+                status_update = {"connection_status": "failed", 
+                                   "connection_error": error_to_report}
+            
+            # Update status in deployment record (ensure key exists)
+            if chain_id_str not in deployment.connected_chains_json:
+                 logger.warning(f"Chain {chain_id_str} missing in JSON during connection update.")
+                 if not deployment.connected_chains_json: deployment.connected_chains_json = {}
+                 deployment.connected_chains_json[chain_id_str] = {} # Initialize
+            
+            deployment.connected_chains_json[chain_id_str].update(status_update)
+            flag_modified(deployment, "connected_chains_json") # Mark JSONB as modified
+
+        # Commit connection status updates after the loop
+        db.add(deployment)
+        db.commit() 
+        db.refresh(deployment) # Get latest state again
+
+        # --- Step 4: Connect ZetaChain contract back to EVM contracts ---
+        logger.info("Connecting ZetaChain contract back to EVM contracts...")
+        set_zeta_success_count = 0
+        set_zeta_failure_count = 0
+
+        for chain_id_str, evm_contract_address in deployed_evm_contracts.items():
+            # Only try if connection step didn't fail hard for this chain
+            current_status = deployment.connected_chains_json.get(chain_id_str, {})
+            if current_status.get("connection_status") != "connected":
+                logger.warning(f"Skipping setZetaChainContract for {chain_id_str}, connection failed.")
+                continue
+
+            logger.info(f"Calling setZetaChainContract on {chain_id_str} ({evm_contract_address})")
+            status_update = {} # Reset status update
+            try:
+                numeric_chain_id = int(chain_id_str)
+                evm_web3 = get_web3(numeric_chain_id)
+                if not evm_web3:
+                    raise ConnectionError(f"Failed to get web3 for chain {chain_id_str}")
+
+                # Args: (address _zetaChainContract)
+                args = (Web3.to_checksum_address(zc_contract_address),)
+
+                set_zeta_result = await call_contract_method(
+                    web3=evm_web3, # Call on the EVM chain
+                    account=service_account,
+                    contract_address=evm_contract_address,
+                    contract_abi=UNIVERSAL_TOKEN_ABI, # Use EVM ABI
+                    method_name="setZetaChainContract", # Assuming this is the method
+                    args=args
+                )
+
+                if set_zeta_result.get("success"):
+                    set_zeta_success_count += 1
+                    logger.info(f"Successfully set ZetaChainContract on chain {chain_id_str}")
+                    # Final setup status for this chain
+                    status_update = {"setup_status": "completed"} 
+                else:
+                    set_zeta_failure_count += 1
+                    error_msg = set_zeta_result.get("message", "Unknown error")
+                    logger.error(f"Failed setZetaChainContract on {chain_id_str}: {error_msg}")
+                    status_update = {"setup_status": "setZeta_failed", 
+                                       "setup_error": error_msg}
 
             except Exception as e:
-                logger.error(f"Failed to call setConnectedContract for chain {chain_id_str}: {str(e)}", exc_info=True)
-                deployment.connected_chains_json[chain_id_str]["setup_status"] = "setConnected_failed"
-                deployment.connected_chains_json[chain_id_str]["error_message"] = f"setConnectedContract failed: {str(e)}"
-
-            # --- 3b: Call setUniversal on EVM contract ---
-            # Check if the EVM contract has a method like setUniversal or setZetaChainContract
-            # Assuming the EVM artifact has setZetaChainContract based on ZC contract
-            # TODO: Verify EVMUniversalToken.json ABI for this method name!
-            evm_set_method_name = "setZetaChainContract" # Assuming based on ZC ABI pattern
-
-            # Only proceed if setConnectedContract was attempted and didn't fail hard
-            if deployment.connected_chains_json[chain_id_str].get("setup_status") == "setConnected_done":
-                try:
-                    evm_web3 = get_web3(numeric_chain_id)
-                    if not evm_web3:
-                         raise ConnectionError(f"Failed to reconnect to EVM chain {chain_id_str} for {evm_set_method_name}")
-
-                    logger.info(f"Calling {evm_set_method_name} on EVM contract {evm_contract_address} "
-                                f"(Chain {chain_id_str}) with ZC addr: {zc_contract_address}")
-                    tx_receipt_universal = await call_contract_method(
-                        web3=evm_web3,
-                        account=service_account,
-                        contract_address=evm_contract_address,
-                        contract_abi=UNIVERSAL_TOKEN_ABI, # Use EVM ABI
-                        method_name=evm_set_method_name, # Use assumed/verified method name
-                        args=(zc_contract_address,)
-                    )
-                    # Check tx_receipt_universal for success
-                    if tx_receipt_universal and tx_receipt_universal.get('success') is True:
-                        logger.info(f"{evm_set_method_name} successful for chain {chain_id_str}")
-                        deployment.connected_chains_json[chain_id_str]["setup_status"] = "connected" # Both steps done
-                    else:
-                         raise Exception(
-                            f"{evm_set_method_name} transaction failed or reverted for chain {chain_id_str}. "
-                            f"Result: {tx_receipt_universal}"
-                         )
-
-                except Exception as e:
-                    logger.error(f"Failed to call {evm_set_method_name} for chain {chain_id_str}: {str(e)}", exc_info=True)
-                    deployment.connected_chains_json[chain_id_str]["setup_status"] = "setUniversal_failed" # Keep generic failure status name?
-                    error_key = "error_message"
-                    existing_error = deployment.connected_chains_json[chain_id_str].get(error_key, "")
-                    new_error = f"{evm_set_method_name} failed: {str(e)}"
-                    deployment.connected_chains_json[chain_id_str][error_key] = (
-                        f"{existing_error}; {new_error}" if existing_error else new_error
-                    )
+                set_zeta_failure_count += 1
+                error_to_report = f"Exception setting ZetaContract: {type(e).__name__} - {e}"
+                logger.error(f"Exception setting ZC on {chain_id_str}: {error_to_report}",
+                             exc_info=True)
+                status_update = {"setup_status": "setZeta_failed", 
+                                   "setup_error": error_to_report}
+            
+            # Update status in deployment record
+            if chain_id_str in deployment.connected_chains_json:
+                deployment.connected_chains_json[chain_id_str].update(status_update)
             else:
-                 logger.warning(
-                    f"Skipping {evm_set_method_name} for chain {chain_id_str} because "
-                    f"setConnectedContract did not succeed."
-                 )
+                 logger.warning(f"Chain {chain_id_str} missing in JSON during setZeta update.")
+                 if not deployment.connected_chains_json: deployment.connected_chains_json = {}
+                 deployment.connected_chains_json[chain_id_str] = status_update # Initialize
 
+            flag_modified(deployment, "connected_chains_json")
+
+        # Commit setup status updates after the loop
+        db.add(deployment)
+        db.commit()
+        db.refresh(deployment)
 
         # --- Step 5: Handle Initial Allocations (on ZetaChain) ---
-        logger.info("Processing initial token allocations on ZetaChain...")
-        allocation_errors = False
-        if zc_contract_address and allocations:
-             # Ensure we have a valid web3 instance for ZetaChain
-             if not zc_web3: zc_web3 = get_web3(zeta_chain_id_int)
+        logger.info(f"Processing {len(allocations)} initial allocations...")
+        allocation_success_count = 0
+        allocation_failure_count = 0
 
-             if zc_web3:
-                for allocation in allocations:
-                    to_address = allocation.get("address")
-                    amount_str = allocation.get("amount")
-                    if (not to_address or not isinstance(to_address, str) or
-                            not to_address.startswith("0x") or amount_str is None):
-                        logger.warning(f"Skipping invalid allocation format: {allocation}")
-                        allocation_errors = True  # Mark potential issue
-                        continue
-                    
-                    try:
-                        # Validate address checksum
-                        try:
-                             to_address = zc_web3.to_checksum_address(to_address)
-                        except ValueError:
-                             logger.error(f"Invalid checksum address in allocation: {to_address}")
-                             allocation_errors = True
-                             continue
+        if not zc_web3 or not zc_contract_address:
+            logger.error("Cannot allocate: ZetaChain deployment failed.")
+            # Update overall status and return
+            deployment.deployment_status = "failed"
+            deployment.error_message = deployment.error_message or "ZC unavailable for alloc"
+            db.add(deployment)
+            db.commit()
+            return deployment_result
 
-                        amount_int = int(amount_str)
-                        if amount_int < 0:
-                             logger.error(
-                                 f"Invalid negative amount in allocation: {amount_int}"
-                             )
-                             allocation_errors = True
-                             continue
-                        
-                        if amount_int == 0:
-                             logger.info(f"Skipping zero amount allocation to {to_address}")
-                             continue
-
-
-                        logger.info(
-                            f"Transferring {amount_int} tokens to {to_address} "
-                            f"on ZetaChain ({zc_contract_address})"
-                        )
-                        
-                        # TODO: Need call_contract_method helper
-                        tx_receipt_transfer = await call_contract_method(
-                            web3=zc_web3,
-                            account=service_account, # Use service account (current owner)
-                            contract_address=zc_contract_address,
-                            contract_abi=ZC_UNIVERSAL_TOKEN_ABI, # ABI includes ERC20 transfer
-                            method_name="transfer",
-                            args=(to_address, amount_int)
-                        )
-                        # Check tx_receipt_transfer status CORRECTLY
-                        if tx_receipt_transfer and tx_receipt_transfer.get('success') is True:
-                            logger.info(f"Successfully transferred {amount_int} to {to_address}")
-                            # TODO: Optionally record allocation success/failure in DB?
-                        else:
-                             allocation_errors = True
-                             receipt_info = tx_receipt_transfer or {"message": "No receipt"}
-                             logger.error(
-                                 f"Initial transfer transaction failed for {to_address}. "
-                                 f"Result: {receipt_info}"
-                             )
-                             # Optionally store specific error per allocation?
-
-                    except ValueError:
-                         logger.error(
-                             f"Invalid non-integer amount in allocation: {allocation}"
-                         )
-                         allocation_errors = True
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to transfer initial allocation to {to_address}: {e}",
-                            exc_info=True
-                        )
-                        allocation_errors = True
-                        # TODO: Decide how to handle allocation failures.
+        for allocation in allocations:
+            to_address = allocation['address']
+            amount_str = allocation['amount']
+            logger.info(f"Allocating {amount_str} tokens to {to_address}")
+            
+            try:
+                amount_int = int(amount_str)
+                if amount_int <= 0: raise ValueError("Amount must be positive")
                 
-                if allocation_errors:
-                     deployment.error_message = (
-                         (deployment.error_message or "") +
-                         "; One or more allocation transfers failed"
-                     )
+                # Use transfer from SERVICE ACCOUNT (which owns initial supply)
+                # Args: (address recipient, uint256 amount)
+                args = (
+                    Web3.to_checksum_address(to_address),
+                    amount_int
+                )
 
-             else:
-                 logger.error("Cannot process allocations: ZetaChain connection lost.")
-                 deployment.error_message = (
-                     (deployment.error_message or "") +
-                     "; Could not connect to ZetaChain for allocations"
-                 )
-                 allocation_errors = True
+                transfer_result = await call_contract_method(
+                    web3=zc_web3, # On ZetaChain
+                    account=service_account,
+                    contract_address=zc_contract_address,
+                    contract_abi=ZC_UNIVERSAL_TOKEN_ABI,
+                    method_name="transfer",
+                    args=args
+                )
+
+                if transfer_result.get("success"):
+                    allocation_success_count += 1
+                    logger.info(f"Successfully transferred {amount_str} to {to_address}")
+                else:
+                    allocation_failure_count += 1
+                    error_msg = transfer_result.get("message", "Unknown transfer error")
+                    logger.error(f"Failed allocation to {to_address}: {error_msg}")
+                    # TODO: Record allocation failures? Add to error_message?
+
+            except ValueError as val_err:
+                allocation_failure_count += 1
+                logger.error(f"Invalid allocation data for {to_address}: {val_err}")
+            except Exception as e:
+                allocation_failure_count += 1
+                logger.error(f"Exception during allocation to {to_address}: {e}",
+                             exc_info=True)
+
+        logger.info(f"Allocation summary: {allocation_success_count} successful, {allocation_failure_count} failed")
+        if allocation_failure_count > 0:
+            # Append general error message if needed
+            alloc_err = "Some initial allocations failed."
+            deployment.error_message = f"{deployment.error_message or ''}; {alloc_err}".strip("; ")
 
 
         # --- Step 6: Transfer Ownership ---
         logger.info(f"Transferring ownership to final owner: {final_owner_address}")
-        ownership_transfer_failed = False
-        # Validate final owner address
+        ownership_success_count = 0
+        ownership_failure_count = 0
+        final_owner_checksum = Web3.to_checksum_address(final_owner_address)
+
+        # 6a: Transfer ZetaChain contract ownership
+        logger.info(f"Transferring ownership of ZetaChain contract {zc_contract_address}")
         try:
-            final_owner_address_checksum = zc_web3.to_checksum_address(
-                final_owner_address) if zc_web3 else final_owner_address
-        except ValueError:
-             logger.error(
-                 f"Invalid final_owner_address: {final_owner_address}. "
-                 f"Skipping ownership transfer."
-             )
-             ownership_transfer_failed = True
-             final_owner_address_checksum = None  # Prevent transfer attempts
-             deployment.error_message = (
-                 (deployment.error_message or "") +
-                 f"; Invalid final owner address ({final_owner_address})"
-             )
-
-        # Transfer ownership on ZetaChain
-        if zc_contract_address and zc_web3 and final_owner_address_checksum:
-            try:
-                logger.info(f"Transferring ownership of ZetaChain contract {zc_contract_address}...")
-                # TODO: Need call_contract_method helper
-                tx_receipt_own_zc = await call_contract_method(
-                    web3=zc_web3,
-                    account=service_account,
-                    contract_address=zc_contract_address,
-                    contract_abi=ZC_UNIVERSAL_TOKEN_ABI, # Use appropriate ABI (OwnableUpgradeable is inherited)
-                    method_name="transferOwnership",
-                    args=(final_owner_address_checksum,)
-                )
-                if tx_receipt_own_zc and tx_receipt_own_zc.get('status') == 1:
-                    logger.info(f"ZetaChain ownership transferred successfully.")
-                    deployment_result["zetaChain"]["ownership_status"] = "transferred"
-                else:
-                    raise Exception(
-                        f"ZetaChain transferOwnership transaction failed. "
-                        f"Receipt: {tx_receipt_own_zc}"
-                    )
-            except Exception as e:
-                logger.error(f"Failed to transfer ownership on ZetaChain: {e}",
-                             exc_info=True)
-                ownership_transfer_failed = True
-                deployment_result["zetaChain"]["ownership_status"] = "failed"
-                deployment.error_message = (
-                    (deployment.error_message or "") +
-                    "; ZetaChain ownership transfer failed"
-                )
-
-
-        # Transfer ownership on EVM chains
-        for chain_id_str, evm_contract_address in deployed_evm_contracts.items():
-             if not final_owner_address_checksum: continue # Skip if owner address invalid
-
-             # Check if the contract setup was successful enough to warrant ownership transfer
-             chain_info = deployment.connected_chains_json.get(chain_id_str, {})
-             setup_status = chain_info.get("setup_status")
-             deployment_status = chain_info.get("status")
-             
-             # Only attempt transfer if deployment succeeded and connection steps didn't fail hard
-             should_transfer_evm_ownership = (
-                 deployment_status == "deployed" and 
-                 setup_status not in ["setConnected_failed", "setUniversal_failed"] 
-             )
-
-             if not should_transfer_evm_ownership:
-                 logger.warning(
-                     f"Skipping ownership transfer on chain {chain_id_str} due to "
-                     f"prior deployment/setup status: {setup_status or deployment_status}."
-                 )
-                 deployment_result["evmChains"][chain_id_str]["ownership_status"] = "skipped"
-                 # Ensure setup status reflects completion or failure
-                 if setup_status == "connected":  # If connection was done
-                      chain_info["setup_status"] = "connected_ownership_skipped"
-                 continue
-
-             numeric_chain_id = int(chain_id_str)
-             evm_web3 = get_web3(numeric_chain_id)
-             if not evm_web3:
-                 logger.error(
-                     f"Cannot transfer ownership on chain {chain_id_str}: "
-                     f"connection failed."
-                 )
-                 ownership_transfer_failed = True
-                 deployment_result["evmChains"][chain_id_str]["ownership_status"] = \
-                     "failed_connection"
-                 chain_info["error_message"] = (
-                     chain_info.get("error_message","") +
-                     "; Connection failed for ownership transfer"
-                 )
-                 chain_info["setup_status"] = "ownership_failed_connection"
-                 continue
-
-             # Validate final owner address checksum for this specific chain
-             try:
-                  final_owner_address_checksum_evm = \
-                      evm_web3.to_checksum_address(final_owner_address)
-             except ValueError:
-                  logger.error(
-                      f"Invalid final_owner_address for EVM chain {chain_id_str}: "
-                      f"{final_owner_address}. Skipping transfer."
-                  )
-                  ownership_transfer_failed = True
-                  deployment_result["evmChains"][chain_id_str]["ownership_status"] = \
-                      "failed_invalid_address"
-                  chain_info["error_message"] = (
-                      chain_info.get("error_message","") +
-                      "; Invalid final owner address for this chain"
-                  )
-                  chain_info["setup_status"] = "ownership_failed_invalid_address"
-                  continue
-
-
-             try:
-                 logger.info(f"Transferring ownership of EVM contract {evm_contract_address} on chain {chain_id_str}...")
-                 # TODO: Need call_contract_method helper
-                 tx_receipt_own_evm = await call_contract_method(
-                     web3=evm_web3,
-                     account=service_account,
-                     contract_address=evm_contract_address,
-                     contract_abi=UNIVERSAL_TOKEN_ABI, # Use appropriate ABI
-                     method_name="transferOwnership",
-                     args=(final_owner_address_checksum_evm,)
-                 )
-                 if tx_receipt_own_evm and tx_receipt_own_evm.get('status') == 1:
-                     logger.info(f"EVM chain {chain_id_str} ownership transferred.")
-                     deployment_result["evmChains"][chain_id_str]["ownership_status"] = \
-                         "transferred"
-                     # Mark overall setup done including ownership
-                     chain_info["setup_status"] = "completed"
-                 else:
-                     raise Exception(
-                         f"EVM chain {chain_id_str} transferOwnership tx failed. "
-                         f"Receipt: {tx_receipt_own_evm}"
-                     )
-
-             except Exception as e:
-                 logger.error(
-                     f"Failed to transfer ownership on EVM chain {chain_id_str}: {e}",
-                     exc_info=True
-                 )
-                 ownership_transfer_failed = True
-                 deployment_result["evmChains"][chain_id_str]["ownership_status"] = \
-                     "failed"
-                 chain_info["error_message"] = (
-                     chain_info.get("error_message","") +
-                     f"; Ownership transfer failed: {str(e)}"
-                 )
-                 # Final status
-                 chain_info["setup_status"] = "ownership_failed"
-
-
-        # --- Step 7: Update Final Deployment Status ---
-        # Determine overall status based on deployment, connection, allocation, and ownership steps
-        all_steps_successful = True
-        partial_success = False
-        any_successful_deployment = False
-
-        # Check ZetaChain status
-        zc_status = deployment_result["zetaChain"].get("status")
-        zc_ownership = deployment_result["zetaChain"].get("ownership_status")
-        if zc_status != "deployed":
-             all_steps_successful = False
-             # If ZC deploy failed, it's a total failure unless EVMs worked
-        else:
-             any_successful_deployment = True
-             if zc_ownership != "transferred":
-                  all_steps_successful = False # Deployed but ownership failed/skipped
-
-        # Check EVM chains status
-        for chain_id_str in deployment_result["evmChains"]:
-            chain_info = deployment.connected_chains_json.get(chain_id_str, {})
-            if chain_info.get("status") == "deployed":
-                 any_successful_deployment = True
-                 partial_success = True # If at least one EVM deployed, it's at least partial
-                 if chain_info.get("setup_status") != "completed":
-                      all_steps_successful = False # If any EVM chain setup/ownership failed/skipped
+            # Args: (address newOwner)
+            args = (final_owner_checksum,)
+            transfer_zc_owner_result = await call_contract_method(
+                web3=zc_web3,
+                account=service_account, # Current owner
+                contract_address=zc_contract_address,
+                contract_abi=ZC_UNIVERSAL_TOKEN_ABI,
+                method_name="transferOwnership", # Standard Ownable method
+                args=args
+            )
+            if transfer_zc_owner_result.get("success"):
+                ownership_success_count += 1
+                logger.info(f"Successfully initiated ownership transfer on ZetaChain")
+                deployment_result["zetaChain"]["ownership_status"] = "transferred"
             else:
-                 # If an EVM chain failed deployment itself
-                 all_steps_successful = False
+                ownership_failure_count += 1
+                error_msg = transfer_zc_owner_result.get("message", "Unknown error")
+                logger.error(f"Failed ZC ownership transfer: {error_msg}")
+                deployment_result["zetaChain"]["ownership_status"] = "failed"
+                deployment_result["zetaChain"]["ownership_error"] = error_msg
+
+        except Exception as e:
+            ownership_failure_count += 1
+            error_to_report = f"Exception transferring ZC ownership: {type(e).__name__} - {e}"
+            logger.error(error_to_report, exc_info=True)
+            deployment_result["zetaChain"]["ownership_status"] = "failed"
+            deployment_result["zetaChain"]["ownership_error"] = error_to_report
 
 
-        # Check if any significant operational errors occurred
-        if allocation_errors or ownership_transfer_failed:
-             all_steps_successful = False
-             # If deployment happened but these failed, ensure partial status
-             if any_successful_deployment:
-                  partial_success = True
+        # 6b: Transfer EVM contracts ownership
+        for chain_id_str, evm_contract_address in deployed_evm_contracts.items():
+            # Only transfer ownership if deployment & connection were likely ok
+            # Check setup_status from Step 4
+            current_status = deployment.connected_chains_json.get(chain_id_str, {})
+            if current_status.get("setup_status") != "completed":
+                logger.warning(f"Skipping ownership transfer for {chain_id_str}, setup not completed.")
+                continue
+
+            logger.info(f"Transferring ownership of EVM contract on {chain_id_str} ({evm_contract_address})")
+            status_update = {}
+            try:
+                numeric_chain_id = int(chain_id_str)
+                evm_web3 = get_web3(numeric_chain_id)
+                if not evm_web3:
+                    raise ConnectionError(f"Failed to get web3 for chain {chain_id_str}")
+
+                # Args: (address newOwner)
+                args = (final_owner_checksum,)
+                transfer_evm_owner_result = await call_contract_method(
+                    web3=evm_web3,
+                    account=service_account, # Current owner
+                    contract_address=evm_contract_address,
+                    contract_abi=UNIVERSAL_TOKEN_ABI, # EVM ABI
+                    method_name="transferOwnership",
+                    args=args
+                )
+
+                if transfer_evm_owner_result.get("success"):
+                    ownership_success_count += 1
+                    logger.info(f"Successfully initiated ownership transfer on {chain_id_str}")
+                    status_update = {"ownership_status": "transferred"}
+                else:
+                    ownership_failure_count += 1
+                    error_msg = transfer_evm_owner_result.get("message", "Unknown error")
+                    logger.error(f"Failed EVM ownership transfer on {chain_id_str}: {error_msg}")
+                    status_update = {"ownership_status": "failed", 
+                                       "ownership_error": error_msg}
+
+            except Exception as e:
+                ownership_failure_count += 1
+                error_to_report = f"Exception transferring EVM ownership: {type(e).__name__} - {e}"
+                logger.error(f"Exception transferring EVM ownership on {chain_id_str}: {error_to_report}",
+                             exc_info=True)
+                status_update = {"ownership_status": "failed", 
+                                   "ownership_error": error_to_report}
+
+            # Update status in deployment record
+            if chain_id_str in deployment.connected_chains_json:
+                deployment.connected_chains_json[chain_id_str].update(status_update)
+            else:
+                 logger.warning(f"Chain {chain_id_str} missing in JSON during ownership update.")
+                 if not deployment.connected_chains_json: deployment.connected_chains_json = {}
+                 deployment.connected_chains_json[chain_id_str] = status_update # Initialize
+             
+            flag_modified(deployment, "connected_chains_json")
+
+        logger.info(f"Ownership transfer summary: {ownership_success_count} successful, {ownership_failure_count} failed")
+        if ownership_failure_count > 0:
+            owner_err = "Some ownership transfers failed."
+            deployment.error_message = f"{deployment.error_message or ''}; {owner_err}".strip("; ")
 
 
-        if all_steps_successful:
-            deployment.deployment_status = "completed"
-            logger.info(f"Deployment {deployment.id} completed successfully.")
-        elif partial_success:  # Deployed/partially setup but not perfect
-             deployment.deployment_status = "partial"
-             logger.warning(
-                 f"Deployment {deployment.id} completed with partial success or errors. "
-                 f"Check error messages and chain statuses."
-             )
-        else: # Complete failure
-            deployment.deployment_status = "failed"
-            logger.error(f"Deployment {deployment.id} failed. Check logs for details.")
-
-
-        # Persist final connected_chains_json state and ensure zc_contract_address is saved
-        # Make sure all updated fields are explicitly set before committing
-        # This will ensure these critical fields are saved to the database
-        db_deployment = db.query(TokenModel).filter(TokenModel.id == deployment.id).first()
-        if db_deployment:
-            # Explicitly set the fields that need to be updated
-            db_deployment.zc_contract_address = deployment.zc_contract_address
-            db_deployment.connected_chains_json = deployment.connected_chains_json
-            db_deployment.deployment_status = deployment.deployment_status
-            db_deployment.error_message = deployment.error_message
-            # Add to session and commit
-            db.add(db_deployment)
-            db.commit()
-            logger.info(f"Successfully saved deployment {deployment.id} with ZC address: {deployment.zc_contract_address}")
-        else:
-            logger.error(f"Failed to find deployment with ID {deployment.id} to update final state!")
+        # --- Step 7: Final Update and Return --- 
+        # Determine overall status based on critical steps (ZC deploy, connections, ownership)
+        final_status = "completed"
+        if deployment_result["zetaChain"].get("status") == "failed" or \
+           connection_failure_count > 0 or \
+           set_zeta_failure_count > 0 or \
+           ownership_failure_count > 0:
+            final_status = "completed_with_errors"
         
+        # If ZC deploy failed critically earlier, status might already be 'failed'
+        if deployment.deployment_status == "failed":
+            final_status = "failed"
+        else:
+            deployment.deployment_status = final_status  # Update status in DB
+
+        logger.info(f"Final deployment status: {deployment.deployment_status}")
+        
+        # Final commit
+        db.add(deployment)
+        db.commit()
+        
+        # Return the detailed results collected throughout the process
+        # Ensure the returned dict includes final statuses from the DB model if needed
+        deployment_result["final_status"] = deployment.deployment_status
+        deployment_result["error_message"] = deployment.error_message
         return deployment_result
 
-# Singleton instance
+# Instantiate service
 deployment_service = DeploymentService() 

@@ -6,6 +6,7 @@ from app.models.token import (
     TokenSchema, 
     TokenVerifySchema, 
     TokenResponse,
+    TokenAllocation,
     UserTokenResponse,
     UserTokenInfo,
     TokenBalanceInfo
@@ -19,6 +20,7 @@ __all__ = [
     'TokenSchema', 
     'TokenVerifySchema', 
     'TokenResponse',
+    'TokenAllocation',
     'UserTokenResponse',
     'UserTokenInfo',
     'TokenBalanceInfo',

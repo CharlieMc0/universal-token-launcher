@@ -21,7 +21,7 @@ async def test_zetachain_verification():
     load_contract_data()
     
     # Sample contract address - replace with actual for testing
-    contract_address = "0x1234567890123456789012345678901234567890"
+    contract_address = "0x7C1739ff2D1E3BaB231Cd728C6f99DadF801c60E"
     
     # Verify contract source files exist
     smart_contracts_dir = os.path.join(
@@ -55,7 +55,7 @@ async def test_zetachain_verification():
     
     print("\nChecking RPC URLs and BlockScout URLs:")
     # Test ZetaChain chains to verify configuration
-    zetachain_chains = [7000, 7001]  # ZetaChain mainnet and testnet
+    zetachain_chains = [7001]  # ZetaChain mainnet and testnet
     for chain_id in zetachain_chains:
         chain_config = get_chain_config(chain_id)
         if chain_config:

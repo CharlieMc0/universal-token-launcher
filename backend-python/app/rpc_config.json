@@ -63,7 +63,7 @@
     "name": "Sepolia Testnet",
     "rpc_url": "https://ethereum-sepolia.publicnode.com",
     "explorer_url": "https://sepolia.etherscan.io",
-    "blockscout_url": null,
+    "blockscout_url": "https://eth-sepolia.blockscout.com/",
     "currency_symbol": "ETH",
     "testnet": true,
     "enabled": true,

@@ -85,34 +85,41 @@ backend-python/
 
 The following fixes were implemented to address startup issues and module import errors:
 
-1. **Model Import Fixes**: Updated `app/models/__init__.py` to properly export all model classes:
+1. **Import Error Fixes**: Fixed missing imports and references:
+   - Added missing `TokenAllocation` to `app/models/__init__.py` exports
+   - Removed non-existent `ChainConfig` import from `app/routes/deployment.py`
+   - These changes resolve errors like: 
+     - `ImportError: cannot import name 'TokenAllocation' from 'app.models'`
+     - `ImportError: cannot import name 'ChainConfig' from 'app.utils.chain_config'`
+
+2. **Model Import Fixes**: Updated `app/models/__init__.py` to properly export all model classes:
    - Added missing exports for `TokenSchema`, `TokenVerifySchema`, and `TokenResponse`
    - Added missing exports for `UserTokenResponse`, `UserTokenInfo`, and `TokenBalanceInfo`
    - Fixed import formatting to comply with PEP8 line length requirements
 
-2. **Configuration Name Fix**: Fixed incorrect attribute name reference in `start_api.py`:
+3. **Configuration Name Fix**: Fixed incorrect attribute name reference in `start_api.py`:
    - Changed reference from non-existent `Config.ENV` to `Config.ENVIRONMENT` 
    - This resolves the error: `type object 'Config' has no attribute 'ENV'`
 
-3. **Python Version Enforcement**: Strengthened checks for Python 3.11:
+4. **Python Version Enforcement**: Strengthened checks for Python 3.11:
    - Added more visible warnings about Python 3.11 requirement throughout the code
    - Enhanced virtual environment activation instructions in documentation
 
-4. **BlockScout Verification Enhancement**: Improved contract verification for ZetaChain:
+5. **BlockScout Verification Enhancement**: Improved contract verification for ZetaChain:
    - Implemented direct contract verification using BlockScout's API endpoints
    - Added automatic compiler version detection from contract source code
    - Created fallback mechanisms to handle different BlockScout API versions and endpoints
    - Added detailed logging and diagnostic capabilities via `test_blockscout_api_verification.py`
    - Fixed verification payload formatting for BlockScout's specific requirements
 
-5. **BlockScout API Verification Fixes (April 2025)**:
+6. **BlockScout API Verification Fixes (April 2025)**:
    - Removed dependency on Forge/Foundry for contract verification
    - Implemented direct API calls to BlockScout's verification endpoints
    - Added support for both legacy and newer BlockScout API versions
    - Enhanced error handling and logging for verification requests
    - Created diagnostic utility `test_blockscout_api_verification.py` for troubleshooting verification issues
 
-6. **Token Deployment Workflow Enhancements (April 2025)**:
+7. **Token Deployment Workflow Enhancements (April 2025)**:
    - The `/api/deploy` endpoint now orchestrates the full Universal Token setup process.
    - **Service Account:** Uses the `DEPLOYER_PRIVATE_KEY` from the `.env` file to perform all deployment and setup transactions.
    - **Deployment:** Deploys `ZetaChainUniversalToken` to ZetaChain and `EVMUniversalToken` to selected EVM chains using the constructors defined in their respective ABIs (`smart-contracts/artifacts`).
@@ -123,7 +130,7 @@ The following fixes were implemented to address startup issues and module import
    - **Ownership Transfer:** Transfers ownership of both the ZetaChain contract and all successfully deployed/connected EVM contracts from the service account to the `deployer_address` specified in the API request.
    - **Status Tracking:** Updated database models and API responses to track the status of connection and setup steps.
 
-7. **Database Persistence Fixes (May 2025)**:
+8. **Database Persistence Fixes (May 2025)**:
    - **Critical Field Persistence:** Fixed issues where `zc_contract_address` and `connected_chains_json` weren't reliably saved to the database.
    - **Immediate Database Commits:** Added immediate database commits after critical operations:
      - ZetaChain contract address is saved as soon as deployment succeeds
@@ -134,7 +141,7 @@ The following fixes were implemented to address startup issues and module import
      - Detailed logging for database operations success/failure
    - **Multiple Persistence Points:** Added multiple database commit checkpoints throughout the deployment process to ensure no data is lost, even if later steps fail.
 
-8. **NFT Deployment Service Fixes (May 2025)**:
+9. **NFT Deployment Service Fixes (May 2025)**:
    - **Binary Data Handling:** Fixed critical issue with binary data in transaction receipts:
      - Added dedicated error handling for UnicodeDecodeError in the FastAPI middleware
      - Implemented proper serialization of Web3.py transaction receipts to JSON-compatible format
@@ -155,135 +162,135 @@ The following fixes were implemented to address startup issues and module import
      - Implemented API test script for end-to-end NFT deployment testing
      - Created documentation with troubleshooting tips for common deployment issues
 
-9. **NFT Deployment Service Troubleshooting**:
+10. **NFT Deployment Service Troubleshooting**:
 
-   The following section provides detailed information about the NFT deployment service fixes implemented to address binary data serialization issues.
+    The following section provides detailed information about the NFT deployment service fixes implemented to address binary data serialization issues.
 
-   ## Issue Overview
+    ## Issue Overview
 
-   The NFT deployment service was failing with the error:
+    The NFT deployment service was failing with the error:
 
-   ```
-   'utf-8' codec can't decode byte 0xcd in position 3: invalid utf-8
-   ```
+    ```
+    'utf-8' codec can't decode byte 0xcd in position 3: invalid utf-8
+    ```
 
-   This error occurred in the HTTP middleware of the FastAPI application when trying to process the response from a successful NFT contract deployment. The issue was that the Web3.py transaction receipt contained binary data that couldn't be properly serialized and decoded as UTF-8.
+    This error occurred in the HTTP middleware of the FastAPI application when trying to process the response from a successful NFT contract deployment. The issue was that the Web3.py transaction receipt contained binary data that couldn't be properly serialized and decoded as UTF-8.
 
-   ## Root Cause
+    ## Root Cause
 
-   1. **Binary Data in Transaction Receipts**: Web3.py transaction receipts contain binary data (like blockHash) that can't be directly JSON-serialized or UTF-8 decoded.
+    1. **Binary Data in Transaction Receipts**: Web3.py transaction receipts contain binary data (like blockHash) that can't be directly JSON-serialized or UTF-8 decoded.
 
-   2. **Missing Error Handling**: The FastAPI middleware didn't have specific error handling for Unicode decoding errors, causing the entire request to fail.
+    2. **Missing Error Handling**: The FastAPI middleware didn't have specific error handling for Unicode decoding errors, causing the entire request to fail.
 
-   3. **Incomplete Serialization**: The deployment response contained raw receipt objects that weren't properly converted to serializable types.
+    3. **Incomplete Serialization**: The deployment response contained raw receipt objects that weren't properly converted to serializable types.
 
-   ## Implemented Fixes
+    ## Implemented Fixes
 
-   ### 1. Enhanced FastAPI Error Handling
+    ### 1. Enhanced FastAPI Error Handling
 
-   Added specific handling for `UnicodeDecodeError` in the HTTP middleware:
+    Added specific handling for `UnicodeDecodeError` in the HTTP middleware:
 
-   ```python
-   @app.middleware("http")
-   async def log_requests(request: Request, call_next):
-       try:
-           response = await call_next(request)
-           # ... existing code ...
-       except UnicodeDecodeError as ude:
-           # Handle unicode decode errors specifically
-           process_time = time.time() - start_time
-           logger.error(
-               f"Request {request_id} failed after {process_time:.3f}s: "
-               f"Unicode decode error - {str(ude)}"
-           )
-           return JSONResponse(
-               status_code=200,  # Return success since the contract deployment worked
-               content={
-                   "success": True,
-                   "message": "Operation completed but response contains binary data",
-                   "note": (
-                       "The contract was deployed successfully, but the response "
-                       "contains binary data that couldn't be decoded"
-                   )
-               }
-           )
-       # ... existing error handling ...
-   ```
+    ```python
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        try:
+            response = await call_next(request)
+            # ... existing code ...
+        except UnicodeDecodeError as ude:
+            # Handle unicode decode errors specifically
+            process_time = time.time() - start_time
+            logger.error(
+                f"Request {request_id} failed after {process_time:.3f}s: "
+                f"Unicode decode error - {str(ude)}"
+            )
+            return JSONResponse(
+                status_code=200,  # Return success since the contract deployment worked
+                content={
+                    "success": True,
+                    "message": "Operation completed but response contains binary data",
+                    "note": (
+                        "The contract was deployed successfully, but the response "
+                        "contains binary data that couldn't be decoded"
+                    )
+                }
+            )
+        # ... existing error handling ...
+    ```
 
-   ### 2. Improved Receipt Handling in Web3 Helper
+    ### 2. Improved Receipt Handling in Web3 Helper
 
-   Updated the `deploy_contract` function to convert receipts to serializable dictionaries:
+    Updated the `deploy_contract` function to convert receipts to serializable dictionaries:
 
-   ```python
-   # Convert receipt to a serializable dictionary with primitive Python types
-   receipt_dict = {}
-   try:
-       # Extract only the essential receipt data
-       receipt_dict = {
-           "blockHash": web3.to_hex(receipt.blockHash) if receipt.blockHash else None,
-           "blockNumber": receipt.blockNumber,
-           "gasUsed": receipt.gasUsed,
-           "status": receipt.status
-       }
-   except Exception as e:
-       logger.warning(f"Could not fully convert receipt to dict: {str(e)}")
-   ```
+    ```python
+    # Convert receipt to a serializable dictionary with primitive Python types
+    receipt_dict = {}
+    try:
+        # Extract only the essential receipt data
+        receipt_dict = {
+            "blockHash": web3.to_hex(receipt.blockHash) if receipt.blockHash else None,
+            "blockNumber": receipt.blockNumber,
+            "gasUsed": receipt.gasUsed,
+            "status": receipt.status
+        }
+    except Exception as e:
+        logger.warning(f"Could not fully convert receipt to dict: {str(e)}")
+    ```
 
-   ### 3. Enhanced NFT Deployment Service
+    ### 3. Enhanced NFT Deployment Service
 
-   Modified the deployment service to:
+    Modified the deployment service to:
 
-   1. Properly handle binary data by removing non-serializable receipt information:
-   ```python
-   # Ensure receipt is properly JSON-serializable
-   if "receipt" in zc_result:
-       # Either remove receipt or convert to a serializable format
-       zc_result.pop("receipt", None)
-   ```
+    1. Properly handle binary data by removing non-serializable receipt information:
+    ```python
+    # Ensure receipt is properly JSON-serializable
+    if "receipt" in zc_result:
+        # Either remove receipt or convert to a serializable format
+        zc_result.pop("receipt", None)
+    ```
 
-   2. Save database records immediately after critical operations:
-   ```python
-   # Update deployment record - save immediately to avoid loss
-   deployment.zc_contract_address = zc_result["contract_address"]
-   db.add(deployment)
-   db.commit()
-   ```
+    2. Save database records immediately after critical operations:
+    ```python
+    # Update deployment record - save immediately to avoid loss
+    deployment.zc_contract_address = zc_result["contract_address"]
+    db.add(deployment)
+    db.commit()
+    ```
 
-   3. Restructured the result format for better clarity and consistency:
-   ```python
-   deployment_result = {
-       "deploymentId": deployment.id,
-       "result": {
-           "zetaChain": {},
-           "evmChains": {}
-       }
-   }
-   ```
+    3. Restructured the result format for better clarity and consistency:
+    ```python
+    deployment_result = {
+        "deploymentId": deployment.id,
+        "result": {
+            "zetaChain": {},
+            "evmChains": {}
+        }
+    }
+    ```
 
-   ## Benefits of the Fix
+    ## Benefits of the Fix
 
-   1. **Robustness**: The application now properly handles binary data in responses
-   2. **Data Integrity**: Database records are saved immediately after critical operations
-   3. **Better Error Handling**: More specific error handling allows successful operations to complete despite serialization issues
-   4. **No Data Loss**: Transaction receipts essential information is preserved in a serializable format
-   5. **Improved User Experience**: Users get proper success responses instead of cryptic errors
+    1. **Robustness**: The application now properly handles binary data in responses
+    2. **Data Integrity**: Database records are saved immediately after critical operations
+    3. **Better Error Handling**: More specific error handling allows successful operations to complete despite serialization issues
+    4. **No Data Loss**: Transaction receipts essential information is preserved in a serializable format
+    5. **Improved User Experience**: Users get proper success responses instead of cryptic errors
 
-   ## Testing Verification
+    ## Testing Verification
 
-   The fixes were verified through:
+    The fixes were verified through:
 
-   1. **Direct NFT Deployment Tests**: Using `test_nft_deployment.py` to test deployment on a single chain
-   2. **API Tests**: Using `test_nft_api.py` to test the complete API flow
-   3. **Manual API testing**: Validated the deployment endpoints with the API server running
+    1. **Direct NFT Deployment Tests**: Using `test_nft_deployment.py` to test deployment on a single chain
+    2. **API Tests**: Using `test_nft_api.py` to test the complete API flow
+    3. **Manual API testing**: Validated the deployment endpoints with the API server running
 
-   All tests confirmed that NFT deployments now complete successfully, and all relevant data is properly stored in the database and returned to the client.
+    All tests confirmed that NFT deployments now complete successfully, and all relevant data is properly stored in the database and returned to the client.
 
-   ## Future Improvements
+    ## Future Improvements
 
-   1. **Standardized Serialization**: Implement a standard serialization approach for all Web3 objects
-   2. **More Robust Error Recovery**: Add automatic retries for specific error scenarios
-   3. **Better Testing Coverage**: Add more unit tests to catch serialization issues earlier
-   4. **Stricter Type Checking**: Use more specific type hints to catch potential serialization issues at development time
+    1. **Standardized Serialization**: Implement a standard serialization approach for all Web3 objects
+    2. **More Robust Error Recovery**: Add automatic retries for specific error scenarios
+    3. **Better Testing Coverage**: Add more unit tests to catch serialization issues earlier
+    4. **Stricter Type Checking**: Use more specific type hints to catch potential serialization issues at development time
 
 ## For Future Developers
 

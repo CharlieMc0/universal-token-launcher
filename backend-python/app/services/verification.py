@@ -2,11 +2,13 @@
 
 from typing import Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.utils.logger import logger
 from app.config import get_chain_config
 from app.utils.web3_helper import verify_contract_submission
 from app.models import TokenModel
+from app.models.nft import NFTCollectionModel
 
 
 class VerificationService:
@@ -39,29 +41,16 @@ class VerificationService:
             f"Verifying {contract_type} {'token' if is_token else 'NFT'} contract {contract_address} on chain {chain_id}"
         )
         
-        # Get chain config
-        numeric_chain_id = int(chain_id)
+        try:
+            numeric_chain_id = int(chain_id)
+        except ValueError:
+            return {"success": False, "message": f"Invalid chain ID: {chain_id}", "status": "failed"}
+        
         chain_config = get_chain_config(numeric_chain_id)
         if not chain_config:
-            return {
-                "success": False,
-                "message": f"Chain ID {chain_id} not supported",
-                "status": "failed"
-            }
+            return {"success": False, "message": f"Chain ID {chain_id} not supported", "status": "failed"}
         
-        # Determine if this is a ZetaChain contract
-        is_zetachain = (
-            contract_type.lower() == "zetachain" 
-            or numeric_chain_id in [7000, 7001]
-        )
-        
-        # Check if explorer API key is available (skip for ZetaChain/Blockscout)
-        if not is_zetachain and not chain_config.get("api_key"):
-            return {
-                "success": False,
-                "message": f"No API key available for chain {chain_id}",
-                "status": "failed"
-            }
+        is_zetachain = (contract_type.lower() == "zetachain")
         
         # Determine contract name based on type and whether it's a token or NFT
         if is_token:
@@ -92,6 +81,38 @@ class VerificationService:
         
         return verification_result
     
+    async def _update_evm_verification_status(
+        self,
+        model_instance: TokenModel | NFTCollectionModel,
+        chain_id: str,
+        verification_result: Dict[str, Any]
+    ) -> None:
+        """Helper to update verification status in connected_chains_json for EVM chains."""
+        status = verification_result.get("status", "unknown")
+        message = verification_result.get("message", "")
+        guid = verification_result.get("guid") # Etherscan GUID
+        
+        if not model_instance.connected_chains_json:
+            model_instance.connected_chains_json = {}
+        
+        if chain_id not in model_instance.connected_chains_json:
+            model_instance.connected_chains_json[chain_id] = {}
+        
+        chain_data = model_instance.connected_chains_json[chain_id]
+        chain_data["verification_status"] = status
+        chain_data["verification_message"] = message
+        if guid:
+             chain_data["verification_guid"] = guid # Store GUID if available
+
+        # Mark the JSON field as modified for SQLAlchemy
+        # (Needed if modifying nested structures in JSONB)
+        flag_modified(model_instance, "connected_chains_json")
+
+        logger.info(
+            f"Updated EVM verification status for chain {chain_id} "
+            f"contract {chain_data.get('contract_address')} to {status}"
+        )
+
     async def _update_verification_status(
         self,
         db: Session,
@@ -102,153 +123,77 @@ class VerificationService:
         is_token: bool = True
     ) -> None:
         """
-        Update verification status in the database.
-        
-        Args:
-            db: Database session
-            chain_id: Chain ID where contract is deployed
-            contract_address: Address of the verified contract
-            is_zetachain: Whether it's a ZetaChain contract
-            verification_result: Result from verification attempt
-            is_token: Flag to indicate if this is a token (True) or NFT (False) contract
+        Update verification status in the database for Token or NFT.
+        Handles ZetaChain and EVM chain updates separately.
         """
+        record = None
+        model_cls = TokenModel if is_token else NFTCollectionModel
+        asset_type = "token" if is_token else "NFT collection"
+
         try:
-            # Find token or NFT collection with matching contract address
-            if is_token:
-                # Token verification
-                token = None
+            # Find the record based on contract address and chain type
+            if is_zetachain:
+                record = db.query(model_cls).filter(
+                    model_cls.zc_contract_address.ilike(contract_address)
+                ).first()
+            else: # EVM chain
+                # Need to query differently as address is inside JSON
+                records = db.query(model_cls).filter(
+                     # Use JSONB path exists query if possible, or iterate
+                     # This is a basic iteration approach
+                     model_cls.connected_chains_json != None # Ensure JSON is not null
+                 ).all()
                 
-                if is_zetachain:
-                    # For ZetaChain contracts
-                    token = db.query(TokenModel).filter(
-                        TokenModel.zc_contract_address.ilike(contract_address)
-                    ).first()
-                else:
-                    # For other EVM chains, look in connected_chains_json
-                    tokens = db.query(TokenModel).all()
-                    for t in tokens:
-                        # Skip tokens without connected chains data
-                        if not t.connected_chains_json:
-                            continue
-                            
-                        # Check if this chain's contract address matches
-                        chain_data = t.connected_chains_json.get(chain_id)
-                        if chain_data and chain_data.get("contract_address") == contract_address:
-                            token = t
-                            break
-                
-                if not token:
-                    logger.warning(
-                        f"No token found with contract {contract_address} on chain {chain_id}"
-                    )
-                    return
-                
-                # Update verification status
-                status = verification_result.get("status", "unknown")
-                
-                if is_zetachain:
-                    # For ZetaChain, we would update a dedicated field if it existed
-                    # For now, we'll log the verification status
-                    logger.info(
-                        f"ZetaChain contract {contract_address} "
-                        f"verification status: {status}"
-                    )
-                else:
-                    # For other chains, update in connected_chains_json
-                    if not token.connected_chains_json:
-                        token.connected_chains_json = {}
-                    
-                    if chain_id not in token.connected_chains_json:
-                        token.connected_chains_json[chain_id] = {}
-                    
-                    token.connected_chains_json[chain_id]["verification_status"] = status
-                    token.connected_chains_json[chain_id]["verification_message"] = (
-                        verification_result.get("message", "")
-                    )
-                    
-                    # Save changes
-                    db.add(token)
-                    db.commit()
-                    logger.info(
-                        f"Updated verification status for token on chain {chain_id} "
-                        f"contract {contract_address} to {status}"
-                    )
-            else:
-                # NFT collection verification - import here to avoid circular imports
-                from app.models import NFTCollectionModel
-                
-                collection = None
-                
-                if is_zetachain:
-                    # For ZetaChain contracts
-                    collection = db.query(NFTCollectionModel).filter(
-                        NFTCollectionModel.zc_contract_address.ilike(contract_address)
-                    ).first()
-                else:
-                    # For other EVM chains, look in connected_chains_json
-                    collections = db.query(NFTCollectionModel).all()
-                    for coll in collections:
-                        # Skip collections without connected chains data
-                        if not coll.connected_chains_json:
-                            continue
-                            
-                        # Check if this chain's contract address matches
-                        chain_data = coll.connected_chains_json.get(chain_id)
-                        if chain_data and chain_data.get("contract_address") == contract_address:
-                            collection = coll
-                            break
-                
-                if not collection:
-                    logger.warning(
-                        f"No NFT collection found with contract {contract_address} on chain {chain_id}"
-                    )
-                    return
-                
-                # Update verification status
-                status = verification_result.get("status", "unknown")
-                
-                if is_zetachain:
-                    # For ZetaChain, we'll store this in a dedicated field when one exists
-                    # For now, log it
-                    logger.info(
-                        f"ZetaChain NFT contract {contract_address} "
-                        f"verification status: {status}"
-                    )
-                    
-                    # Store verification status in the metadata field
-                    if not collection.metadata:
-                        collection.metadata = {}
-                    
-                    collection.metadata["verification_status"] = status
-                    collection.metadata["verification_message"] = verification_result.get("message", "")
-                    
-                    # Save changes
-                    db.add(collection)
-                    db.commit()
-                    
-                else:
-                    # For other chains, update in connected_chains_json
-                    if not collection.connected_chains_json:
-                        collection.connected_chains_json = {}
-                    
-                    if chain_id not in collection.connected_chains_json:
-                        collection.connected_chains_json[chain_id] = {}
-                    
-                    collection.connected_chains_json[chain_id]["verification_status"] = status
-                    collection.connected_chains_json[chain_id]["verification_message"] = (
-                        verification_result.get("message", "")
-                    )
-                    
-                    # Save changes
-                    db.add(collection)
-                    db.commit()
-                    logger.info(
-                        f"Updated verification status for NFT collection on chain {chain_id} "
-                        f"contract {contract_address} to {status}"
-                    )
+                for r in records:
+                     if not r.connected_chains_json: continue
+                     chain_data = r.connected_chains_json.get(chain_id)
+                     if chain_data and chain_data.get("contract_address") == contract_address:
+                         record = r
+                         break
+            
+            if not record:
+                logger.warning(
+                    f"No {asset_type} found with contract {contract_address} on chain {chain_id} for status update."
+                )
+                return
+
+            # Update status based on chain type
+            status = verification_result.get("status", "unknown")
+            message = verification_result.get("message", "")
+
+            if is_zetachain:
+                logger.info(
+                    f"ZetaChain {asset_type} contract {contract_address} "
+                    f"verification status update: {status}. Message: {message}"
+                )
+                # TODO: Add dedicated zc_verification_status fields to models
+                # Temporary: Log for Token, Update metadata for NFT (if field exists)
+                if not is_token:
+                    # Assuming NFTCollectionModel has or will have a metadata field
+                    if hasattr(record, 'metadata'): 
+                        if not record.metadata: record.metadata = {}
+                        record.metadata["verification_status"] = status
+                        record.metadata["verification_message"] = message
+                        flag_modified(record, "metadata")
+                        logger.info(f"Updated NFT metadata verification status to {status}")
+                    else:
+                         logger.warning("NFTCollectionModel has no 'metadata' field for ZC status.")
+
+            else: # EVM chain
+                await self._update_evm_verification_status(
+                    model_instance=record,
+                    chain_id=chain_id,
+                    verification_result=verification_result
+                )
+            
+            # Commit changes
+            db.add(record)
+            db.commit()
+            logger.info(f"Committed verification status update for {asset_type} ID {record.id}")
                 
         except Exception as e:
-            logger.error(f"Error updating verification status: {str(e)}")
+            logger.error(f"Failed to update verification status in DB: {e}", exc_info=True)
+            db.rollback()
 
 
 # Singleton instance

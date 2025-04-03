@@ -5,14 +5,21 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 import re
 
-from app.models import TokenSchema, TokenVerifySchema, TokenResponse, TokenModel
+from app.models import (
+    TokenSchema, TokenVerifySchema, TokenResponse, TokenModel,
+    UserTokenResponse, UserTokenInfo, TokenBalanceInfo, TokenAllocation
+)
 from app.services.deployment import deployment_service
 from app.services.verification import verification_service
 from app.services.token import token_service
 from app.db import get_db
 from app.utils.logger import logger
-from app.config import Config
-from app.utils.chain_config import get_supported_chains
+from app.utils.chain_config import (
+    get_supported_chains, get_chain_config, get_enabled_chains
+)
+from app.utils.web3_helper import (
+    get_web3, ZC_UNIVERSAL_TOKEN_ABI, UNIVERSAL_TOKEN_ABI
+)
 
 router = APIRouter(prefix="/api", tags=["deployment"])
 
@@ -21,10 +28,11 @@ router = APIRouter(prefix="/api", tags=["deployment"])
     "/deploy",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
-    description="Deploy Universal Token contracts on multiple chains"
+    description="Deploy Universal Token contracts on multiple chains",
+    summary="Start Token Deployment"
 )
 async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
-    """Deploy Universal Token contracts on multiple chains."""
+    """Initiate Universal Token deployment across selected chains."""
     try:
         logger.info(f"Received deployment request for token '{token_data.token_name}'")
         
@@ -43,17 +51,27 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
 
         # Convert string chain identifiers to numeric chain IDs
         numeric_chain_ids = []
+        enabled_chains = get_enabled_chains()
         for chain_id in token_data.selected_chains:
-            # Check if the chain_id is already numeric
             if chain_id.isdigit():
+                if chain_id not in enabled_chains:
+                     raise ValueError(f"Chain {chain_id} is not enabled or supported.")
                 numeric_chain_ids.append(chain_id)
             else:
                 # Look up chain ID in config
-                chain_config = Config.CHAINS.get(chain_id)
-                if chain_config:
-                    numeric_chain_ids.append(str(chain_config["chain_id"]))
-                else:
-                    raise ValueError(f"Unsupported chain: {chain_id}")
+                found = False
+                for cid, config in enabled_chains.items():
+                    if config.get("name", "").lower() == chain_id.lower():
+                        numeric_chain_ids.append(cid)
+                        found = True
+                        break
+                if not found:
+                    raise ValueError(f"Unsupported or disabled chain name: {chain_id}")
+
+        # Ensure ZetaChain (7001) is included if EVM chains are selected
+        if any(cid != "7001" for cid in numeric_chain_ids) and \
+           "7001" not in numeric_chain_ids:
+            raise ValueError("ZetaChain (7001) must be included for cross-chain deployment.")
         
         if not numeric_chain_ids:
             raise ValueError("No valid chains selected")
@@ -91,7 +109,10 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
         is_partial = False
         overall_message = "Deployment completed successfully."
         error_details = []
-        verification_status = db_deployment.verification_status or "unknown" 
+        # Determine verification status for the response model
+        # Since verification runs separately, default to pending or unknown
+        # A more sophisticated approach could check individual chain statuses later.
+        verification_status = "pending" # Default status after deployment
 
         # Analyze ZetaChain result (using deployment_result for initial call outcome, db_deployment for final state)
         zeta_chain_id_str = "7001" # Define zeta chain id str for use later
@@ -107,7 +128,7 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
              error_message = zc_result.get('message', f"Deployment status: {db_deployment.deployment_status}, Ownership: {zc_ownership_status}")
              error_details.append(f"ZetaChain: Failed - {error_message}")
              final_status_summary["zetaChain"] = {"status": "failed", "details": zc_result}
-             verification_status = "failed"
+             # Don't set overall verification to failed just because ZC failed
 
 
         # Analyze EVM chain results (using connected_chains_data from DB for final state)
@@ -145,10 +166,10 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
              "success": success_bool,
              "message": overall_message,
              "deployment_id": db_deployment.id, # Use ID from DB model
-             "verification_status": verification_status, # Determined above
+             "verification_status": verification_status, # Use the determined default status
              "errors": error_details if error_details else None,
              "deployment": { 
-                 "deploymentId": db_deployment.id, # Include ID here as well?
+                 "deploymentId": db_deployment.id, # Use ID from DB model
                  "zc_contract_address": db_deployment.zc_contract_address, 
                  "deployer_address": db_deployment.deployer_address, # Final owner
                  "chain_statuses": {
@@ -179,8 +200,8 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
             detail=str(e)
         )
     except Exception as e:
-        # Log the actual error causing the 500 - now moved inside the final try/except
-        logger.error(f"Unexpected error during deployment processing: {str(e)}", exc_info=True) 
+        logger.error(f"Unexpected error during deployment processing: {e}",
+                     exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Deployment failed due to unexpected server error: {str(e)}"
@@ -206,16 +227,16 @@ async def verify_contract(verify_data: TokenVerifySchema, db: Session = Depends(
         
         # Verify contract
         verification_result = await verification_service.verify_contract(
-            verify_data.contract_address,
-            verify_data.chain_id,
-            contract_type,
-            db
+            contract_address=verify_data.contract_address,
+            chain_id=verify_data.chain_id,
+            contract_type=contract_type,
+            db=db,
+            is_token=True
         )
         
         return TokenResponse(
             success=verification_result.get("success", False),
             message=verification_result.get("message", "Verification failed"),
-            detail=f"Contract verification {verification_result.get('status', 'unknown')}",
             verification_status=verification_result.get("status")
         )
     
@@ -223,7 +244,7 @@ async def verify_contract(verify_data: TokenVerifySchema, db: Session = Depends(
         logger.error(f"Verification failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Verification failed: {str(e)}"
+            detail=f"Verification process failed: {e}"
         )
 
 

@@ -172,7 +172,13 @@ const LaunchNFTPage = ({ embedded = false }) => {
   };
   
   const handleImageUpload = (imageFile) => {
+    console.log('Image uploaded:', imageFile ? 'Image file received' : 'No image file');
     setNftImage(imageFile);
+    
+    // Clear the image error if it exists
+    if (errors.image) {
+      setErrors(prev => ({ ...prev, image: null }));
+    }
   };
   
   const handleChainSelection = (e) => {
@@ -218,6 +224,7 @@ const LaunchNFTPage = ({ embedded = false }) => {
     
     console.log('Validating form with data:', formData);
     console.log('Selected chains:', selectedChains);
+    console.log('Image state:', nftImage);
     
     // Network validation
     if (!isZetaChainNetwork) {
@@ -255,10 +262,13 @@ const LaunchNFTPage = ({ embedded = false }) => {
       console.log('Validation failed: Invalid max supply');
     }
     
-    // Image validation
+    // Image validation - making it optional since it's not actually sent to backend
+    // The frontend shows an image uploader, but the API call doesn't include the image data
+    // So we'll log a warning but allow the form to proceed
     if (!nftImage) {
-      newErrors.image = 'Please upload an image for your NFT collection';
-      console.log('Validation failed: Missing image');
+      console.log('Warning: No image file detected in state, but proceeding with form submission');
+      // Uncomment the following line if you want to enforce image upload again
+      // newErrors.image = 'Please upload an image for your NFT collection';
     }
     
     // Selected chains validation
@@ -277,186 +287,152 @@ const LaunchNFTPage = ({ embedded = false }) => {
     e.preventDefault();
     console.log('Submit button clicked');
     
+    // Reset previous errors/status
+    setErrors({});
+    setDeploymentStatus(null);
+    setProcessingStep('');
+    setDeploymentDetails(null);
+    setTxHash('');
+    if (pollingInterval) clearInterval(pollingInterval);
+    setPollingInterval(null);
+
     if (!validateForm()) {
       console.log('Form validation failed');
+      // Ensure errors are displayed
+      // The validateForm function already sets errors state, so just return.
       return;
     }
     
     console.log('Form validation passed, proceeding with deployment');
     
     try {
-      setDeploymentStatus('creating');
-      setProcessingStep('Creating NFT collection configuration...');
+      setDeploymentStatus('creating'); // Use 'creating' or 'initiating'
+      setProcessingStep('Initiating NFT collection deployment with backend...');
       
       // Get the correctly checksummed address using ethers
-      const checksummedAddress = ethers.getAddress(address);
-      console.log('Using checksummed address:', checksummedAddress);
-      
+      let checksummedAddress;
+      try {
+        checksummedAddress = ethers.getAddress(address);
+        console.log('Using checksummed address:', checksummedAddress);
+      } catch (addrError) {
+         console.error("Error checksumming address:", addrError);
+         throw new Error("Invalid deployer wallet address provided.");
+      }
+
       // Prepare data for the backend API
       const apiData = {
         collection_name: formData.name,
         collection_symbol: formData.symbol,
         base_uri: formData.baseUri,
-        max_supply: parseInt(formData.maxSupply),
-        selected_chains: selectedChains,
+        max_supply: parseInt(formData.maxSupply, 10), // Ensure it's an integer
+        selected_chains: selectedChains.map(chain => chain.toString()), // Ensure chain IDs are strings
         deployer_address: checksummedAddress // Use the correctly checksummed address
       };
+
+      // Validate max_supply again after parseInt
+      if (isNaN(apiData.max_supply) || apiData.max_supply <= 0) {
+         throw new Error("Max supply must be a positive number.");
+      }
       
       console.log('Sending NFT collection data to API:', apiData);
       
-      // Step 1: Create collection configuration
-      try {
-        console.log('Calling apiService.deployNFTCollection with:', apiData);
-        const createResponse = await apiService.deployNFTCollection(apiData);
-        console.log('NFT collection creation response:', createResponse);
+      // Step 1: Call the backend to initiate deployment
+      const createResponse = await apiService.deployNFTCollection(apiData);
+      console.log('NFT collection creation response:', createResponse);
+      
+      if (!createResponse || !createResponse.success) {
+        const errorMsg = createResponse?.message || 
+                        (createResponse?.errors && createResponse.errors.length > 0 ? createResponse.errors.join('; ') : 'Failed to initiate deployment. Check backend logs.');
         
-        if (!createResponse.success) {
-          const errorMsg = createResponse.message || 
-                          (createResponse.errors && createResponse.errors.length > 0 ? createResponse.errors.join('; ') : 'Unknown error');
-          
-          // If the error is "Deployment failed" with "Unknown error", provide more context
-          if (errorMsg === "Deployment failed" && createResponse.errors && createResponse.errors.includes("Unknown error")) {
-            throw new Error(`Backend error: The NFT deployment service is experiencing issues. Please check the backend logs for more details.`);
-          }
-          
-          throw new Error(`Failed to create NFT collection: ${errorMsg}`);
+        // Handle specific backend errors if needed
+        if (errorMsg.includes("Deployment failed") && createResponse?.errors?.includes("Unknown error")) {
+          throw new Error(`Backend error: The NFT deployment service is experiencing issues. Please check the backend logs.`);
         }
         
-        // Store deployment ID for further steps
-        const deploymentId = createResponse.deployment_id;
-        if (!deploymentId) {
-          throw new Error('No deployment ID received from the server');
-        }
-        
-        setDeploymentId(deploymentId);
-        setProcessingStep(`NFT collection configuration created. Deployment ID: ${deploymentId}`);
-        
-        // Step 2: Process fee payment
-        setDeploymentStatus('fee_payment');
-        setProcessingStep('Waiting for fee payment transaction...');
-        
-        try {
-          // Request fee payment transaction
-          const txResult = await sendTransaction({
-            to: UNIVERSAL_TOKEN_SERVICE_WALLET,
-            value: parseEther(ZETA_FEE.toString()),
-            chainId: 7001, // Ensure we're on ZetaChain
-          });
-          
-          setTxHash(txResult.hash);
-          setProcessingStep(`Fee payment transaction submitted. Hash: ${txResult.hash}`);
-          
-          // Step 3: Wait for transaction to be confirmed
-          setProcessingStep('Waiting for transaction confirmation...');
-          
-          // Confirm transaction with retries
-          let receipt = null;
-          let attempts = 0;
-          const maxAttempts = 15;
-          
-          while (!receipt && attempts < maxAttempts) {
-            attempts++;
-            setProcessingStep(`Confirming transaction... (Attempt ${attempts}/${maxAttempts})`);
-            
-            try {
-              // Add delay between retries
-              await new Promise(resolve => setTimeout(resolve, 2000 + (attempts * 1000)));
-              
-              receipt = await publicClient.getTransactionReceipt({ hash: txResult.hash });
-              
-              if (receipt && receipt.status === 'success') {
-                setProcessingStep('Transaction confirmed successfully!');
-                break;
-              } else if (receipt && receipt.status === 'reverted') {
-                throw new Error('Transaction reverted on-chain');
+        // Set form-level errors if validation related
+        if (createResponse?.errors) {
+           const apiErrors = {};
+           createResponse.errors.forEach(err => {
+              // Basic parsing assuming "field: message" format or just message
+              const parts = err.split(': ');
+              if (parts.length === 2) {
+                 apiErrors[parts[0]] = parts[1];
+              } else {
+                 // Assign general error if field isn't clear
+                 apiErrors.general = (apiErrors.general ? apiErrors.general + '; ' : '') + err;
               }
-            } catch (error) {
-              console.error(`Error checking transaction (attempt ${attempts}):`, error);
-              if (attempts >= maxAttempts) {
-                throw new Error(`Failed to confirm transaction after ${maxAttempts} attempts`);
-              }
-            }
-          }
-          
-          if (!receipt || receipt.status !== 'success') {
-            throw new Error('Transaction failed or could not be confirmed');
-          }
-          
-          // Step 4: Confirm fee payment with backend
-          setProcessingStep('Confirming payment with backend...');
-          
-          const confirmResponse = await apiService.confirmNFTDeployment(
-            deploymentId,
-            txResult.hash
-          );
-          
-          if (!confirmResponse.success) {
-            throw new Error(confirmResponse.message || 'Failed to confirm deployment');
-          }
-          
-          // Step 5: Start polling for deployment status
-          setDeploymentStatus('deploying');
-          setProcessingStep('Backend is deploying NFT collection contracts...');
-          
-          // Setup polling to check deployment status
-          const intervalId = setInterval(async () => {
-            try {
-              const collectionData = await apiService.getNFTCollection(deploymentId);
-              
-              if (collectionData.collection) {
-                const status = collectionData.collection.deployment_status;
-                
-                if (status === 'completed') {
-                  clearInterval(intervalId);
-                  setDeploymentStatus('completed');
-                  setDeploymentDetails(collectionData.collection);
-                  setProcessingStep('Deployment completed successfully!');
-                } else if (status === 'failed') {
-                  clearInterval(intervalId);
-                  setDeploymentStatus('failed');
-                  setProcessingStep(`Deployment failed: ${collectionData.collection.error_message || 'Unknown error'}`);
-                } else {
-                  setProcessingStep(`Deployment in progress... Current status: ${status}`);
-                }
-              }
-            } catch (error) {
-              console.error('Error polling deployment status:', error);
-            }
-          }, 5000); // Poll every 5 seconds
-          
-          setPollingInterval(intervalId);
-          
-        } catch (txError) {
-          console.error('Transaction error:', txError);
-          // Check if user rejected transaction
-          if (txError.message && txError.message.includes('user rejected')) {
-            throw new Error('Transaction rejected by user. Please try again.');
-          } else if (txError.message && txError.message.includes('insufficient funds')) {
-            throw new Error('Insufficient funds to pay fee. Please add more ZETA to your wallet.');
-          } else {
-            throw new Error(`Transaction error: ${txError.message}`);
-          }
+           });
+           setErrors(prev => ({ ...prev, ...apiErrors }));
         }
-        
-      } catch (apiError) {
-        console.error('API error:', apiError);
-        // Extract any validation errors if available
-        if (apiError.response?.data?.detail && Array.isArray(apiError.response.data.detail)) {
-          const validationErrors = apiError.response.data.detail.map(err => {
-            const field = err.loc[err.loc.length-1];
-            return `${field}: ${err.msg}`;
-          }).join('; ');
-          
-          throw new Error(`Validation error: ${validationErrors}`);
-        } else {
-          throw apiError;
-        }
+
+        throw new Error(`Failed to start NFT deployment: ${errorMsg}`);
       }
       
+      // Store deployment ID for polling
+      const newDeploymentId = createResponse.deployment_id;
+      if (!newDeploymentId) {
+        throw new Error('No deployment ID received from the server after initiation.');
+      }
+      
+      setDeploymentId(newDeploymentId);
+      setDeploymentStatus('deploying'); // Set status to deploying
+      setProcessingStep(`Deployment initiated (ID: ${newDeploymentId}). Waiting for backend completion...`);
+      
+      // Step 2: Start polling for deployment status
+      const intervalId = setInterval(async () => {
+        try {
+          console.log(`Polling deployment status for ID: ${newDeploymentId}...`);
+          const collectionData = await apiService.getNFTCollection(newDeploymentId);
+          
+          if (collectionData && collectionData.collection) {
+            const status = collectionData.collection.deployment_status || collectionData.collection.deploymentStatus; // Check both cases
+            const errorMsg = collectionData.collection.error_message;
+
+            console.log(`Polling result - Status: ${status}, Error: ${errorMsg}`);
+            
+            if (status === 'completed') {
+              clearInterval(intervalId);
+              setPollingInterval(null); // Clear interval state
+              setDeploymentStatus('completed');
+              setDeploymentDetails(collectionData.collection); // Store details for confirmation display
+              setProcessingStep('Deployment completed successfully!');
+              console.log('Deployment completed:', collectionData.collection);
+            } else if (status === 'failed') {
+              clearInterval(intervalId);
+              setPollingInterval(null); // Clear interval state
+              setDeploymentStatus('failed');
+              const finalErrorMsg = `Deployment failed: ${errorMsg || 'Unknown error from backend.'}`;
+              setProcessingStep(finalErrorMsg);
+              setErrors(prev => ({ ...prev, general: finalErrorMsg })); // Display error
+              console.error('Deployment failed:', collectionData.collection);
+            } else {
+              // Still processing
+              setProcessingStep(`Deployment in progress... Status: ${status || 'pending'}`);
+            }
+          } else {
+             console.warn(`Polling for ID ${newDeploymentId}: Received unexpected data format or no collection data.`);
+             // Optionally add a counter to stop polling after too many empty responses
+          }
+        } catch (pollError) {
+          console.error(`Error polling deployment status for ID ${newDeploymentId}:`, pollError);
+          // Decide if polling should stop or continue after an error
+          // Maybe stop after several consecutive errors?
+          // clearInterval(intervalId);
+          // setPollingInterval(null);
+          // setDeploymentStatus('error');
+          // setProcessingStep(`Error checking deployment status: ${pollError.message}`);
+        }
+      }, 5000); // Poll every 5 seconds
+      
+      setPollingInterval(intervalId); // Store interval ID to clear later if needed
+      
     } catch (error) {
-      console.error('Deployment error:', error);
+      console.error('NFT Deployment handleSubmit error:', error);
       setDeploymentStatus('error');
-      setProcessingStep(`Error: ${error.message}`);
+      const displayError = error.message || 'An unexpected error occurred during deployment.';
+      setProcessingStep(`Error: ${displayError}`);
+      // Set general form error
+      setErrors(prev => ({ ...prev, general: displayError }));
     }
   };
   
@@ -466,64 +442,85 @@ const LaunchNFTPage = ({ embedded = false }) => {
       try {
         console.log('Fetching supported chains from API...');
         setChainsLoading(true);
-        setChainsError(null);
+        setChainsError(null); // Reset error state on new fetch
         
         const chains = await apiService.getSupportedChains();
-        console.log('API returned chains:', chains);
+        console.log('API returned raw chains:', chains);
         
-        // Transform API response to match the component's expected format
-        if (chains && chains.length > 0) {
-          const formattedChains = chains
-            .filter(chain => chain.is_testnet === true || chain.testnet === true) // Only include testnet chains
-            .map(chain => ({
-              value: chain.chain_id || chain.id,
-              label: chain.name,
-              disabled: !chain.enabled, // Disabled if not enabled
-              comingSoon: !chain.enabled, // Show "Coming Soon" badge for disabled chains
-              isZetaChain: chain.chain_id === '7001' || chain.id === '7001' || chain.isZetaChain || false
-            }));
-            
-          // Sort the chains to put ZetaChain first
-          const sortedChains = formattedChains.sort((a, b) => {
-            // Always put ZetaChain at the top (will be first in the grid, upper left)
-            if (a.value === '7001' || a.isZetaChain) return -1;
-            if (b.value === '7001' || b.isZetaChain) return 1;
-            
-            // Then sort enabled chains before disabled chains
-            if (a.disabled && !b.disabled) return 1;
-            if (!a.disabled && b.disabled) return -1;
-            
-            // Then sort alphabetically by name
-            return a.label.localeCompare(b.label);
-          });
-          
-          console.log('Formatted chain options:', sortedChains);
-          setChainOptions(sortedChains);
-          
-          // Ensure ZetaChain is selected by default
-          if (!selectedChains.includes('7001')) {
-            setSelectedChains(['7001']);
-          }
+        // Ensure API returned an array before proceeding
+        if (!Array.isArray(chains)) {
+          throw new Error('Invalid data format received from API (expected array).');
+        }
+
+        // Transform API response, filter for testnets
+        const formattedChains = chains
+          .filter(chain => chain && (chain.is_testnet === true || chain.testnet === true)) // Filter for testnet chains
+          .map(chain => ({
+            value: chain.chain_id || chain.id,
+            label: chain.name || 'Unknown Chain',
+            disabled: chain.enabled === false, // Explicitly check for false
+            comingSoon: chain.enabled === false,
+            isZetaChain: chain.chain_id === '7001' || chain.id === '7001' || chain.name?.toLowerCase().includes('zetachain') || false
+          }));
+
+        console.log('Formatted and filtered (testnet only) chains:', formattedChains);
+
+        // Check if any chains remain after filtering
+        if (formattedChains.length === 0) {
+           console.warn('No enabled testnet chains found after filtering.');
+           // Set options to empty to trigger the "No supported chains" message in renderChainSelector
+           setChainOptions([]);
+           // Optionally set an error message
+           // setChainsError('No enabled testnet chains are currently available.'); 
         } else {
-          throw new Error('No chains returned from API');
+            // Sort the chains: ZetaChain first, then enabled, then disabled, then alphabetically
+            const sortedChains = formattedChains.sort((a, b) => {
+              if (a.isZetaChain && !b.isZetaChain) return -1;
+              if (!a.isZetaChain && b.isZetaChain) return 1;
+              if (!a.disabled && b.disabled) return -1; // Enabled before disabled
+              if (a.disabled && !b.disabled) return 1;
+              return a.label.localeCompare(b.label); // Alphabetical
+            });
+          
+            console.log('Sorted chain options to be set:', sortedChains);
+            setChainOptions(sortedChains);
+          
+            // Ensure ZetaChain ('7001') is selected by default if available and enabled
+            const zetaChainOption = sortedChains.find(c => c.value === '7001' && !c.disabled);
+            if (zetaChainOption && !selectedChains.includes('7001')) {
+              // Only add ZetaChain if it's not already there
+              // Note: ChainSelector might expect unique values; handle potential duplicates if necessary
+              console.log('Adding default ZetaChain selection');
+              setSelectedChains(prev => [...new Set(['7001', ...prev])]); 
+            } else if (!zetaChainOption) {
+               console.warn('ZetaChain (7001) is not available or disabled in the fetched chains.');
+               // Consider clearing selection or selecting the first available enabled chain?
+               // setSelectedChains(prev => prev.filter(c => c !== '7001')); 
+            }
         }
       } catch (error) {
-        console.error('Error fetching supported chains:', error);
-        setChainsError(`Failed to load chains: ${error.message}`);
+        console.error('Error fetching/processing supported chains:', error);
+        setChainsError(`Failed to load chains: ${error.message}. Using fallback.`);
         
-        // Fallback to default testnet chains if API fails
+        // Fallback to minimal default testnet chains
         setChainOptions([
-          { value: '7001', label: 'ZetaChain Athens', isZetaChain: true },
-          { value: '11155111', label: 'Ethereum Sepolia', disabled: false, comingSoon: false },
-          { value: '84531', label: 'Base Sepolia', disabled: false, comingSoon: false }
+          { value: '7001', label: 'ZetaChain Athens', isZetaChain: true, disabled: false, comingSoon: false },
+          // Add other critical fallbacks if needed
         ]);
+         // Ensure ZetaChain is selected in fallback
+         if (!selectedChains.includes('7001')) {
+            setSelectedChains(['7001']);
+         }
       } finally {
+        // Ensure loading state is always turned off
         setChainsLoading(false);
+        console.log('Finished fetching chains, loading set to false.');
       }
     };
 
     fetchSupportedChains();
-  }, [selectedChains]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount. Re-fetching based on selectedChains seems incorrect here.
   
   // Function to reload chains if needed
   const reloadChains = async () => {
