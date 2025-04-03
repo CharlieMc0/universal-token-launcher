@@ -16,6 +16,9 @@ import TokenSectionContainer from '../../../components/TokenSectionContainer';
 import TokenFilterControls from '../../../components/TokenFilterControls';
 import EnhancedTransferPanel from '../../../components/EnhancedTransferPanel';
 
+// Add import for the NetworkModeContext
+import { useNetworkMode } from '../../../contexts/NetworkModeContext';
+
 const PageContainer = styled.div`
   max-width: ${props => props.embedded ? '100%' : '800px'};
   margin: 0 auto;
@@ -521,13 +524,84 @@ const TransferTokens = ({ embedded = false }) => {
   const [filteredTokens, setFilteredTokens] = useState([]);
   const [transferStep, setTransferStep] = useState('source');
 
+  // Inside the TransferTokens component, add the network mode context
+  const { networkMode } = useNetworkMode();
+
+  // Replace the hardcoded supportedChains with dynamic chains based on network mode
+  // Replace the existing supportedChains definition with:
+  // Chains will be loaded dynamically based on network mode
+  const [supportedChains, setSupportedChains] = useState([
+    { id: networkMode === 'testnet' ? '7001' : '7000', 
+      name: networkMode === 'testnet' ? 'ZetaChain Athens' : 'ZetaChain', 
+      logo: chainLogos[networkMode === 'testnet' ? '7001' : '7000'] }
+  ]);
+
+  // Add an effect to load chains based on network mode
+  useEffect(() => {
+    const fetchSupportedChains = async () => {
+      try {
+        console.log(`Fetching chains for ${networkMode} mode...`);
+        const chains = await apiService.getSupportedChains(networkMode);
+        
+        if (chains && Array.isArray(chains)) {
+          // Map the API response to the format expected by the component
+          const formattedChains = chains.map(chain => ({
+            id: chain.chain_id || chain.id,
+            name: chain.name,
+            logo: chainLogos[chain.chain_id || chain.id] || '/chain-logos/placeholder.svg',
+            disabled: !chain.enabled
+          }));
+          
+          // Sort chains with ZetaChain first
+          const zetaChainId = networkMode === 'testnet' ? '7001' : '7000';
+          const sortedChains = formattedChains.sort((a, b) => {
+            if (a.id === zetaChainId) return -1;
+            if (b.id === zetaChainId) return 1;
+            return 0;
+          });
+          
+          setSupportedChains(sortedChains);
+        }
+      } catch (error) {
+        console.error('Error fetching supported chains:', error);
+        
+        // Fallback based on network mode
+        if (networkMode === 'testnet') {
+          setSupportedChains([
+            { id: '7001', name: 'ZetaChain Athens', logo: chainLogos['7001'] },
+            { id: '11155111', name: 'Ethereum Sepolia', logo: chainLogos['11155111'] },
+            { id: '97', name: 'BSC Testnet', logo: chainLogos['97'] },
+            { id: '84532', name: 'Base Sepolia', logo: chainLogos['84532'] }
+          ]);
+        } else {
+          setSupportedChains([
+            { id: '7000', name: 'ZetaChain', logo: chainLogos['7000'] },
+            { id: '1', name: 'Ethereum', logo: chainLogos['1'] },
+            { id: '56', name: 'BNB Chain', logo: chainLogos['56'] },
+            { id: '8453', name: 'Base', logo: chainLogos['8453'] }
+          ]);
+        }
+      }
+    };
+    
+    fetchSupportedChains();
+  }, [networkMode]);
+
   // Handle network switch
   const handleSwitchToZetaChain = async () => {
     try {
       setSwitchingNetwork(true);
-      const success = await switchToZetaChain();
+      // Use the appropriate ZetaChain ID based on the network mode
+      const zetaChainId = networkMode === 'testnet' ? CHAIN_IDS.ZETACHAIN : CHAIN_IDS.ZETACHAIN_MAINNET;
+      
+      // Add the mainnet ZetaChain ID if it doesn't exist
+      if (!CHAIN_IDS.ZETACHAIN_MAINNET) {
+        CHAIN_IDS.ZETACHAIN_MAINNET = 7000;
+      }
+      
+      const success = await switchToZetaChain(zetaChainId);
       if (!success) {
-        setError("Failed to switch to ZetaChain network. Please switch manually in your wallet.");
+        setError(`Failed to switch to ${networkMode === 'testnet' ? 'ZetaChain Athens' : 'ZetaChain'} network. Please switch manually in your wallet.`);
       }
     } catch (error) {
       console.error('Error switching to ZetaChain:', error);
@@ -536,17 +610,6 @@ const TransferTokens = ({ embedded = false }) => {
       setSwitchingNetwork(false);
     }
   };
-
-  // All supported chains
-  const supportedChains = [
-    { id: '7001', name: chainNames['7001'], logo: chainLogos['7001'] },
-    { id: '11155111', name: chainNames['11155111'], logo: chainLogos['11155111'] },
-    { id: '97', name: chainNames['97'], logo: chainLogos['97'] },
-    { id: '84532', name: chainNames['84532'], logo: chainLogos['84532'] },
-    { id: 'solana', name: chainNames['solana'], logo: chainLogos['solana'], disabled: true },
-    { id: 'sui', name: chainNames['sui'], logo: chainLogos['sui'], disabled: true },
-    { id: 'ton', name: chainNames['ton'], logo: chainLogos['ton'], disabled: true }
-  ];
 
   const handleChange = (e) => {
     setFormData({

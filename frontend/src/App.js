@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { configureChains, createConfig, WagmiConfig, useAccount } from 'wagmi';
-import { mainnet, sepolia, bscTestnet, baseSepolia } from 'wagmi/chains';
+import { mainnet, sepolia, bscTestnet, bsc, base, baseSepolia } from 'wagmi/chains';
 import { publicProvider } from 'wagmi/providers/public';
 import {
   RainbowKitProvider,
@@ -23,8 +23,10 @@ import MovePage from './pages/Move';
 import Layout from './components/layout/Layout';
 // Import API Service
 import apiService from './services/apiService';
+// Import NetworkModeProvider
+import { NetworkModeProvider, useNetworkMode } from './contexts/NetworkModeContext';
 
-// Define ZetaChain Testnet (Athens)
+// Define ZetaChain Networks
 const zetaChainAthens = {
   id: 7001,
   name: 'ZetaChain Athens',
@@ -44,29 +46,28 @@ const zetaChainAthens = {
   testnet: true,
 };
 
-// Configure Chains
-const { chains, publicClient } = configureChains(
-  [mainnet, sepolia, bscTestnet, baseSepolia, zetaChainAthens],
-  [publicProvider()]
-);
-
-// Configure Wallets
-const connectors = connectorsForWallets([
-  {
-    groupName: 'Recommended',
-    wallets: [
-      metaMaskWallet({ chains }),
-      coinbaseWallet({ appName: 'Universal Launcher', chains }),
-    ],
+const zetaChainMainnet = {
+  id: 7000,
+  name: 'ZetaChain',
+  network: 'zetachain',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'ZETA',
+    symbol: 'ZETA',
   },
-]);
+  rpcUrls: {
+    public: { http: ['https://zetachain.g.allthatnode.com/archive/evm'] },
+    default: { http: ['https://zetachain.g.allthatnode.com/archive/evm'] },
+  },
+  blockExplorers: {
+    default: { name: 'ZetaScan', url: 'https://explorer.zetachain.com' },
+  },
+  testnet: false,
+};
 
-// Configure Wagmi Client
-const wagmiConfig = createConfig({
-  autoConnect: true,
-  connectors,
-  publicClient
-});
+// Group chains by network type
+const testnetChains = [sepolia, bscTestnet, baseSepolia, zetaChainAthens];
+const mainnetChains = [mainnet, bsc, base, zetaChainMainnet];
 
 // Wallet Connector component to set address in apiService
 function WalletConnector({ children }) {
@@ -84,35 +85,78 @@ function WalletConnector({ children }) {
   return children;
 }
 
+// Network-aware application wrapper
+function NetworkAwareApp() {
+  const { networkMode } = useNetworkMode();
+  const [networkChains, setNetworkChains] = useState([]);
+  
+  // Effect to configure chains when network mode changes
+  useEffect(() => {
+    console.log(`Configuring chains for ${networkMode} mode`);
+    const selectedChains = networkMode === 'testnet' ? testnetChains : mainnetChains;
+    setNetworkChains(selectedChains);
+  }, [networkMode]);
+  
+  return (
+    <RainbowKitProvider
+      theme={darkTheme({
+        accentColor: '#4A9FFF',
+        accentColorForeground: 'white',
+        borderRadius: 'medium',
+        fontStack: 'system',
+      })}
+      chains={networkChains}
+    >
+      <WalletConnector>
+        <Router>
+          <Routes>
+            <Route path="/" element={<Layout><HomePage /></Layout>} />
+            <Route path="/make" element={<Layout><MakePage /></Layout>} />
+            <Route path="/move" element={<Layout><MovePage /></Layout>} />
+            
+            {/* Legacy routes with redirects */}
+            <Route path="/create" element={<Navigate to="/make" replace />} />
+            <Route path="/transfer" element={<Navigate to="/move" replace />} />
+            
+            {/* Catch-all route */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
+      </WalletConnector>
+    </RainbowKitProvider>
+  );
+}
+
 function App() {
+  // Configure chains
+  const { chains, publicClient } = configureChains(
+    [...testnetChains, ...mainnetChains], // Include all chains initially
+    [publicProvider()]
+  );
+  
+  // Configure wallets
+  const connectors = connectorsForWallets([
+    {
+      groupName: 'Recommended',
+      wallets: [
+        metaMaskWallet({ chains }),
+        coinbaseWallet({ appName: 'Universal Launcher', chains }),
+      ],
+    },
+  ]);
+  
+  // Configure Wagmi client
+  const wagmiConfig = createConfig({
+    autoConnect: true,
+    connectors,
+    publicClient
+  });
+
   return (
     <WagmiConfig config={wagmiConfig}>
-      <RainbowKitProvider
-        theme={darkTheme({
-          accentColor: '#4A9FFF',
-          accentColorForeground: 'white',
-          borderRadius: 'medium',
-          fontStack: 'system',
-        })}
-        chains={chains}
-      >
-        <WalletConnector>
-          <Router>
-            <Routes>
-              <Route path="/" element={<Layout><HomePage /></Layout>} />
-              <Route path="/make" element={<Layout><MakePage /></Layout>} />
-              <Route path="/move" element={<Layout><MovePage /></Layout>} />
-              
-              {/* Legacy routes with redirects */}
-              <Route path="/create" element={<Navigate to="/make" replace />} />
-              <Route path="/transfer" element={<Navigate to="/move" replace />} />
-              
-              {/* Catch-all route */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Router>
-        </WalletConnector>
-      </RainbowKitProvider>
+      <NetworkModeProvider>
+        <NetworkAwareApp />
+      </NetworkModeProvider>
     </WagmiConfig>
   );
 }

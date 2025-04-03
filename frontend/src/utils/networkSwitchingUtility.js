@@ -1,15 +1,27 @@
 import { switchNetwork } from 'wagmi/actions';
 import { CHAIN_IDS } from './contracts';
 
+// Add mainnet ZetaChain chain ID if not defined
+if (!CHAIN_IDS.ZETACHAIN_MAINNET) {
+  CHAIN_IDS.ZETACHAIN_MAINNET = 7000;
+}
+
 /**
  * Switches the user's wallet to the ZetaChain network
  * Handles both switching to an existing network and adding a new network if needed
  * 
+ * @param {number} [targetChainId=CHAIN_IDS.ZETACHAIN] - Target ZetaChain ID (testnet or mainnet)
  * @returns {Promise<boolean>} Success status
  */
-export async function switchToZetaChain() {
+export async function switchToZetaChain(targetChainId = CHAIN_IDS.ZETACHAIN) {
   try {
-    console.log('Starting ZetaChain network switch...');
+    console.log(`Starting ZetaChain network switch to chain ID: ${targetChainId}...`);
+    
+    const isTestnet = targetChainId === CHAIN_IDS.ZETACHAIN;
+    const networkName = isTestnet ? 'ZetaChain Testnet (Athens)' : 'ZetaChain';
+    const rpcUrl = isTestnet 
+      ? 'https://zetachain-athens-evm.blockpi.network/v1/rpc/public'
+      : 'https://zetachain.g.allthatnode.com/archive/evm';
     
     // Check current network first
     if (window.ethereum) {
@@ -17,15 +29,15 @@ export async function switchToZetaChain() {
       const currentChainId = parseInt(chainIdHex, 16);
       console.log('Current chain ID before switch:', currentChainId);
       
-      if (currentChainId === CHAIN_IDS.ZETACHAIN) {
-        console.log('Already on ZetaChain network, no switch needed');
+      if (currentChainId === targetChainId) {
+        console.log(`Already on ${networkName} network, no switch needed`);
         return true;
       }
     }
     
     // First try to just switch to the network
-    console.log('Attempting to switch to ZetaChain with chainId:', CHAIN_IDS.ZETACHAIN);
-    await switchNetwork({ chainId: CHAIN_IDS.ZETACHAIN });
+    console.log(`Attempting to switch to ${networkName} with chainId:`, targetChainId);
+    await switchNetwork({ chainId: targetChainId });
     
     // Add a delay to allow the switch to complete
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -36,8 +48,8 @@ export async function switchToZetaChain() {
       const newChainId = parseInt(chainIdHex, 16);
       console.log('Chain ID after switchNetwork:', newChainId);
       
-      if (newChainId === CHAIN_IDS.ZETACHAIN) {
-        console.log('Successfully switched to ZetaChain network');
+      if (newChainId === targetChainId) {
+        console.log(`Successfully switched to ${networkName} network`);
         return true;
       }
     }
@@ -46,23 +58,29 @@ export async function switchToZetaChain() {
     throw new Error('Switch network failed, trying to add network');
   } catch (switchError) {
     console.error('Error switching to ZetaChain:', switchError);
+    const isTestnet = targetChainId === CHAIN_IDS.ZETACHAIN;
+    const networkName = isTestnet ? 'ZetaChain Testnet (Athens)' : 'ZetaChain';
+    const rpcUrl = isTestnet 
+      ? 'https://zetachain-athens-evm.blockpi.network/v1/rpc/public'
+      : 'https://zetachain.g.allthatnode.com/archive/evm';
+    const explorerUrl = 'https://explorer.zetachain.com';
     
     // If the network is not added, try to add it
     if (window.ethereum) {
       try {
-        console.log('Attempting to add ZetaChain network...');
+        console.log(`Attempting to add ${networkName} network...`);
         await window.ethereum.request({
           method: 'wallet_addEthereumChain',
           params: [{
-            chainId: `0x${CHAIN_IDS.ZETACHAIN.toString(16)}`,
-            chainName: 'ZetaChain Testnet (Athens)',
+            chainId: `0x${targetChainId.toString(16)}`,
+            chainName: networkName,
             nativeCurrency: {
               name: 'ZETA',
               symbol: 'ZETA',
               decimals: 18,
             },
-            rpcUrls: ['https://zetachain-athens-evm.blockpi.network/v1/rpc/public'],
-            blockExplorerUrls: ['https://explorer.zetachain.com']
+            rpcUrls: [rpcUrl],
+            blockExplorerUrls: [explorerUrl]
           }]
         });
         
@@ -74,15 +92,15 @@ export async function switchToZetaChain() {
         const newChainId = parseInt(chainIdHex, 16);
         console.log('Chain ID after adding network:', newChainId);
         
-        if (newChainId === CHAIN_IDS.ZETACHAIN) {
-          console.log('Successfully added and switched to ZetaChain network');
+        if (newChainId === targetChainId) {
+          console.log(`Successfully added and switched to ${networkName} network`);
           return true;
         } else {
-          console.log('Added ZetaChain network but not switched to it. Attempting manual switch...');
+          console.log(`Added ${networkName} network but not switched to it. Attempting manual switch...`);
           // Try one more explicit switch
           await window.ethereum.request({
             method: 'wallet_switchEthereumChain',
-            params: [{ chainId: `0x${CHAIN_IDS.ZETACHAIN.toString(16)}` }],
+            params: [{ chainId: `0x${targetChainId.toString(16)}` }],
           });
           
           // Final check
@@ -90,10 +108,10 @@ export async function switchToZetaChain() {
           const finalChainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
           const finalChainId = parseInt(finalChainIdHex, 16);
           
-          return finalChainId === CHAIN_IDS.ZETACHAIN;
+          return finalChainId === targetChainId;
         }
       } catch (addError) {
-        console.error('Error adding ZetaChain network:', addError);
+        console.error(`Error adding ${networkName} network:`, addError);
         return false;
       }
     }
@@ -109,9 +127,9 @@ export async function switchToZetaChain() {
  * @returns {Promise<boolean>} Success status
  */
 export async function switchToNetwork(chainId) {
-  // Special case for ZetaChain
-  if (chainId === CHAIN_IDS.ZETACHAIN) {
-    return switchToZetaChain();
+  // Special case for ZetaChain (either testnet or mainnet)
+  if (chainId === CHAIN_IDS.ZETACHAIN || chainId === CHAIN_IDS.ZETACHAIN_MAINNET) {
+    return switchToZetaChain(chainId);
   }
   
   try {
@@ -154,6 +172,19 @@ function getNetworkParams(chainId) {
   
   // Define parameters for supported chains
   switch (chainIdNum) {
+    case CHAIN_IDS.ZETACHAIN_MAINNET:
+      return {
+        chainId: `0x${chainIdNum.toString(16)}`,
+        chainName: 'ZetaChain',
+        nativeCurrency: {
+          name: 'ZETA',
+          symbol: 'ZETA',
+          decimals: 18,
+        },
+        rpcUrls: ['https://zetachain.g.allthatnode.com/archive/evm'],
+        blockExplorerUrls: ['https://explorer.zetachain.com']
+      };
+      
     case CHAIN_IDS.ETHEREUM_SEPOLIA:
       return {
         chainId: `0x${chainIdNum.toString(16)}`,
@@ -165,6 +196,19 @@ function getNetworkParams(chainId) {
         },
         rpcUrls: ['https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161'],
         blockExplorerUrls: ['https://sepolia.etherscan.io']
+      };
+      
+    case CHAIN_IDS.ETHEREUM_MAINNET:
+      return {
+        chainId: `0x${chainIdNum.toString(16)}`,
+        chainName: 'Ethereum Mainnet',
+        nativeCurrency: {
+          name: 'Ether',
+          symbol: 'ETH',
+          decimals: 18,
+        },
+        rpcUrls: ['https://ethereum.publicnode.com'],
+        blockExplorerUrls: ['https://etherscan.io']
       };
       
     case CHAIN_IDS.BSC_TESTNET:
@@ -180,6 +224,19 @@ function getNetworkParams(chainId) {
         blockExplorerUrls: ['https://testnet.bscscan.com']
       };
       
+    case CHAIN_IDS.BSC_MAINNET:
+      return {
+        chainId: `0x${chainIdNum.toString(16)}`,
+        chainName: 'BNB Chain',
+        nativeCurrency: {
+          name: 'Binance Coin',
+          symbol: 'BNB',
+          decimals: 18,
+        },
+        rpcUrls: ['https://bsc-dataseed.binance.org/'],
+        blockExplorerUrls: ['https://bscscan.com']
+      };
+      
     case CHAIN_IDS.BASE_SEPOLIA:
       return {
         chainId: `0x${chainIdNum.toString(16)}`,
@@ -191,6 +248,19 @@ function getNetworkParams(chainId) {
         },
         rpcUrls: ['https://sepolia.base.org'],
         blockExplorerUrls: ['https://sepolia.basescan.org']
+      };
+      
+    case CHAIN_IDS.BASE_MAINNET:
+      return {
+        chainId: `0x${chainIdNum.toString(16)}`,
+        chainName: 'Base',
+        nativeCurrency: {
+          name: 'Ether',
+          symbol: 'ETH',
+          decimals: 18,
+        },
+        rpcUrls: ['https://mainnet.base.org'],
+        blockExplorerUrls: ['https://basescan.org']
       };
       
     default:

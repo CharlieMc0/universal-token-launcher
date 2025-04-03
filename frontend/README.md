@@ -6,6 +6,18 @@ This project is the frontend for the Universal Token Launcher, which allows user
 
 We've implemented several design and UX enhancements to create a premium, intuitive experience:
 
+### Network Mode Switcher
+- **Enhanced Toggle Design**: Implemented a prominent network mode toggle (220px width) with smooth transitions and hover effects
+- **Stable Layout**: Fixed dimensions and positioning to prevent layout shifts during interaction
+- **Visual Hierarchy**: 
+  - Positioned below wallet connection button for logical grouping
+  - Uses gradient background for mainnet mode (135deg, #4A9FFF 0%, #A269FF 100%)
+  - Clear visual feedback with hover elevation and loading animation
+- **Improved Typography**:
+  - Larger font sizes (15px for label, 14px for mode text)
+  - Better contrast with white text on colored backgrounds
+  - Medium font weight (500) for better readability
+
 ### Rebranding & Navigation
 - **Simplified Navigation**: Reduced to just two primary actions ("Make" and "Move") for a cleaner, more focused experience
 - **Action-Oriented Language**: Changed terminology from "Create/Transfer" to "Make/Move" for more intuitive user interaction
@@ -28,6 +40,83 @@ We've implemented several design and UX enhancements to create a premium, intuit
 - **Reduced Friction**: Combined or eliminated unnecessary steps in main workflows
 - **Better Feedback**: Enhanced loading states, success/error feedback, and transaction status visibility
 - **Progressive Disclosure**: Show advanced options only when needed
+
+## Network Mode Implementation
+
+The application now supports switching between testnet and mainnet networks through a global network mode context and UI toggle.
+
+### Features
+
+- **Global State Management**: Uses React Context API to manage network mode state across the application
+- **Persistent Preferences**: Saves user's network mode preference to localStorage
+- **Automatic Chain Filtering**: 
+  - Testnet mode shows only testnet networks (e.g., ZetaChain Athens, Sepolia)
+  - Mainnet mode shows only mainnet networks (e.g., ZetaChain, Ethereum)
+- **Dynamic Wallet Configuration**: Updates supported wallet chains based on selected mode
+- **Smooth Network Transitions**: Handles network switching with loading states and error recovery
+
+### Implementation Details
+
+The network mode feature is implemented through several key components:
+
+1. **NetworkModeContext**: Global context provider that manages the network mode state:
+   ```jsx
+   const { networkMode, toggleNetworkMode } = useNetworkMode();
+   ```
+
+2. **NetworkModeToggle Component**: UI component for switching between modes:
+   - Positioned in the header below wallet connection
+   - Shows active mode with gradient background
+   - Includes loading animation during network switches
+   - Prevents interaction during mode transitions
+
+3. **Chain Configuration**: Dynamic chain configuration based on network mode:
+   ```javascript
+   const testnetChains = [sepolia, bscTestnet, baseSepolia, zetaChainAthens];
+   const mainnetChains = [mainnet, bsc, base, zetaChainMainnet];
+   ```
+
+4. **API Integration**: Modified API calls to include network mode:
+   ```javascript
+   const chains = await apiService.getSupportedChains(networkMode);
+   ```
+
+### Usage
+
+The network mode affects several aspects of the application:
+
+1. **Chain Selection**: 
+   - Only shows chains appropriate for the selected mode
+   - ZetaChain is always shown (testnet or mainnet version)
+   - Disabled chains are shown as "Coming Soon"
+
+2. **Wallet Connection**:
+   - Updates available networks in wallet connection UI
+   - Handles network switching when mode changes
+   - Maintains consistent state between UI and wallet
+
+3. **Deployment Options**:
+   - Filters available deployment chains based on mode
+   - Shows appropriate warnings for unavailable networks
+   - Maintains deployment configuration when switching modes
+
+### Error Handling
+
+The implementation includes robust error handling:
+
+- **Network Switching**: Gracefully handles failed network switches
+- **Chain Availability**: Shows appropriate messages for unavailable chains
+- **State Recovery**: Maintains application state during mode transitions
+- **API Failures**: Provides fallback chains if API is unavailable
+
+### Future Improvements
+
+Planned enhancements for the network mode feature:
+
+1. **Chain Migration**: Tools for migrating tokens between testnet and mainnet
+2. **Network Analytics**: Usage statistics for different network modes
+3. **Enhanced Validation**: Additional checks for contract deployments in mainnet mode
+4. **Custom Network Support**: Allow users to add custom network configurations
 
 ## Backend Integration
 

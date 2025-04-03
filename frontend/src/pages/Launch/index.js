@@ -18,6 +18,9 @@ import { switchToZetaChain } from '../../utils/networkSwitchingUtility';
 import { parseDistributionCSV } from '../../utils/csvParser';
 import apiService from '../../services/apiService';
 
+// Add import for useNetworkMode
+import { useNetworkMode } from '../../contexts/NetworkModeContext';
+
 // Constants
 const ZETA_FEE = 1; // 1 ZETA fee
 const ZETACHAIN_ID = 7001; // Athens Testnet
@@ -208,28 +211,37 @@ const LaunchPage = ({ embedded = false }) => {
   ]);
   const [pollingCount, setPollingCount] = useState(0);
   
-  // Add effect to fetch supported chains from API
+  // Inside the component function, add this hook:
+  const { networkMode } = useNetworkMode();
+  
+  // Find the useEffect that fetches chains and modify it:
+  // Replace the existing useEffect for fetching chains with this one:
   useEffect(() => {
     const fetchSupportedChains = async () => {
       try {
-        const chains = await apiService.getSupportedChains();
+        // Pass the current network mode to get appropriate chains
+        const chains = await apiService.getSupportedChains(networkMode);
+        
         // Transform API response to match the component's expected format
         if (chains && chains.length > 0) {
-          const formattedChains = chains
-            .filter(chain => chain.testnet === true) // Only include testnet chains
-            .map(chain => ({
-              value: chain.id,
-              label: chain.name,
-              disabled: !chain.enabled, // Disabled if not enabled
-              comingSoon: !chain.enabled, // Show "Coming Soon" badge for disabled chains
-              isZetaChain: chain.isZetaChain || false
-            }));
+          const formattedChains = chains.map(chain => ({
+            value: chain.chain_id || chain.id,
+            label: chain.name,
+            disabled: !chain.enabled, // Disabled if not enabled
+            comingSoon: !chain.enabled, // Show "Coming Soon" badge for disabled chains
+            isZetaChain: chain.isZetaChain || false,
+            isTestnet: chain.is_testnet || chain.testnet || false
+          }));
             
           // Sort the chains to put ZetaChain first
           const sortedChains = formattedChains.sort((a, b) => {
-            // Always put ZetaChain at the top (will be first in the grid, upper left)
-            if (a.value === '7001' || a.isZetaChain) return -1;
-            if (b.value === '7001' || b.isZetaChain) return 1;
+            // Always put the appropriate ZetaChain at the top
+            const zetaTestnetId = '7001';
+            const zetaMainnetId = '7000';
+            const zetaId = networkMode === 'testnet' ? zetaTestnetId : zetaMainnetId;
+            
+            if (a.value === zetaId || a.isZetaChain) return -1;
+            if (b.value === zetaId || b.isZetaChain) return 1;
             
             // Then sort enabled chains before disabled chains
             if (a.disabled && !b.disabled) return 1;
@@ -252,18 +264,27 @@ const LaunchPage = ({ embedded = false }) => {
           chainOptions: 'Temporarily unavailable, please check back soon'
         }));
         
-        // Fallback to default testnet chains if API fails
-        setChainOptions([
-          { value: '7001', label: 'ZetaChain Athens', isZetaChain: true },
-          { value: '84532', label: 'Base Sepolia', disabled: true, comingSoon: true },
-          { value: '97', label: 'BSC Testnet', disabled: true, comingSoon: true },
-          { value: '11155111', label: 'Ethereum Sepolia', disabled: true, comingSoon: true }
-        ]);
+        // Fallback chains based on network mode
+        if (networkMode === 'testnet') {
+          setChainOptions([
+            { value: '7001', label: 'ZetaChain Athens', isZetaChain: true },
+            { value: '84532', label: 'Base Sepolia', disabled: true, comingSoon: true },
+            { value: '97', label: 'BSC Testnet', disabled: true, comingSoon: true },
+            { value: '11155111', label: 'Ethereum Sepolia', disabled: true, comingSoon: true }
+          ]);
+        } else {
+          setChainOptions([
+            { value: '7000', label: 'ZetaChain', isZetaChain: true },
+            { value: '1', label: 'Ethereum Mainnet', disabled: true, comingSoon: true },
+            { value: '56', label: 'Binance Smart Chain', disabled: true, comingSoon: true },
+            { value: '8453', label: 'Base', disabled: true, comingSoon: true }
+          ]);
+        }
       }
     };
 
     fetchSupportedChains();
-  }, []);
+  }, [networkMode]); // Add networkMode as a dependency
 
   // Check if wallet client is ready
   useEffect(() => {
@@ -274,13 +295,16 @@ const LaunchPage = ({ embedded = false }) => {
     }
   }, [isConnected, isZetaChainNetwork, walletClient]);
   
+  // Modify the resetForm function to set the correct default ZetaChain ID based on network mode
   const resetForm = () => {
+    const defaultZetaChainId = networkMode === 'testnet' ? '7001' : '7000';
+    
     setFormData({
       name: '',
       symbol: '',
       decimals: '18',
       totalSupply: '',
-      selectedChains: ['7001'],
+      selectedChains: [defaultZetaChainId],
     });
     setTokenIcon(null);
     setCsvFile(null);

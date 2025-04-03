@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import NetworkModeToggle from '../NetworkModeToggle';
 
 const HeaderContainer = styled.header`
   display: flex;
@@ -65,7 +66,24 @@ const NavAction = styled(Link)`
 
 const ActionsContainer = styled.div`
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 280px;
+`;
+
+const WalletContainer = styled.div`
+  height: 40px;
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+`;
+
+const NetworkToggleWrapper = styled.div`
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 4px;
 `;
 
 const Header = () => {
@@ -89,7 +107,12 @@ const Header = () => {
       </MainNav>
       
       <ActionsContainer>
-        <ConnectButton />
+        <WalletContainer>
+          <ConnectButton />
+        </WalletContainer>
+        <NetworkToggleWrapper>
+          <NetworkModeToggle />
+        </NetworkToggleWrapper>
       </ActionsContainer>
     </HeaderContainer>
   );

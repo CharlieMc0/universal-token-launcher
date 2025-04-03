@@ -3,10 +3,17 @@ import { ethers } from 'ethers';
 
 // Chain IDs
 export const CHAIN_IDS = {
+  // Testnet chains
   ZETACHAIN: 7001, // Athens Testnet
   ETHEREUM_SEPOLIA: 11155111,
   BSC_TESTNET: 97,
-  BASE_SEPOLIA: 84532
+  BASE_SEPOLIA: 84532,
+  
+  // Mainnet chains
+  ZETACHAIN_MAINNET: 7000,
+  ETHEREUM_MAINNET: 1,
+  BSC_MAINNET: 56,
+  BASE_MAINNET: 8453
 };
 
 // ABI for ZetaChainUniversalToken
@@ -66,7 +73,7 @@ export const EVM_UNIVERSAL_TOKEN_ABI = [
 export function getAbiForChain(chainId) {
   const chainIdNum = parseInt(chainId, 10);
   
-  if (chainIdNum === CHAIN_IDS.ZETACHAIN) {
+  if (chainIdNum === CHAIN_IDS.ZETACHAIN || chainIdNum === CHAIN_IDS.ZETACHAIN_MAINNET) {
     return ZETACHAIN_UNIVERSAL_TOKEN_ABI;
   } else {
     return EVM_UNIVERSAL_TOKEN_ABI;
@@ -80,10 +87,14 @@ export function estimateCrossChainGas(sourceChain, destChain) {
   const sourceChainNum = parseInt(sourceChain, 10);
   const destChainNum = parseInt(destChain, 10);
   
+  // Check if either source or destination is any ZetaChain network (testnet or mainnet)
+  const isSourceZetaChain = sourceChainNum === CHAIN_IDS.ZETACHAIN || sourceChainNum === CHAIN_IDS.ZETACHAIN_MAINNET;
+  const isDestZetaChain = destChainNum === CHAIN_IDS.ZETACHAIN || destChainNum === CHAIN_IDS.ZETACHAIN_MAINNET;
+  
   // ZetaChain requires substantially more gas for cross-chain operations
-  if (sourceChainNum === CHAIN_IDS.ZETACHAIN) {
+  if (isSourceZetaChain) {
     return '3000000'; // Higher default for ZetaChain as source
-  } else if (destChainNum === CHAIN_IDS.ZETACHAIN) {
+  } else if (isDestZetaChain) {
     return '1000000'; // Medium gas for transfers to ZetaChain
   } else {
     return '500000'; // Standard gas for other chains
@@ -108,7 +119,10 @@ export async function getConnectedContracts(provider, zetaChainContractAddress) 
     const supportedChainIds = Object.values(CHAIN_IDS);
     
     for (const chainId of supportedChainIds) {
-      if (chainId === CHAIN_IDS.ZETACHAIN) {
+      // Check if this is a ZetaChain ID (either testnet or mainnet)
+      const isZetaChain = chainId === CHAIN_IDS.ZETACHAIN || chainId === CHAIN_IDS.ZETACHAIN_MAINNET;
+      
+      if (isZetaChain) {
         // For ZetaChain, use the main contract address
         connectedContracts[chainId] = zetaChainContractAddress;
       } else {

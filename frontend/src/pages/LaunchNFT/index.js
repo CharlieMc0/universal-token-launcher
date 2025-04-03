@@ -8,6 +8,7 @@ import DistributionInput from '../../components/DistributionInput';
 import ChainSelector from '../../components/ChainSelector';
 import apiService from '../../services/apiService';
 import { ethers } from 'ethers';
+import { useNetworkMode } from '../../contexts/NetworkModeContext';
 
 // Styled Components
 const PageContainer = styled.div`
@@ -135,17 +136,18 @@ const LaunchNFTPage = ({ embedded = false }) => {
   });
   const { sendTransaction } = useSendTransaction();
   const publicClient = usePublicClient();
+  const { networkMode } = useNetworkMode();
   
   const [formData, setFormData] = useState({
     name: '',
     symbol: '',
     baseUri: '',
     maxSupply: '',
+    selectedChains: [networkMode === 'testnet' ? '7001' : '7000'], // Use networkMode-dependent ZetaChain ID
   });
   
   const [errors, setErrors] = useState({});
   const [nftImage, setNftImage] = useState(null);
-  const [selectedChains, setSelectedChains] = useState(['7001']); // Initialize with ZetaChain
   const [distributions, setDistributions] = useState([]);
   const [deploymentStatus, setDeploymentStatus] = useState(null);
   const [deploymentDetails, setDeploymentDetails] = useState(null);
@@ -189,7 +191,10 @@ const LaunchNFTPage = ({ embedded = false }) => {
     
     // Make sure we're getting an array of chain IDs
     if (Array.isArray(value)) {
-      setSelectedChains(value);
+      setFormData({
+        ...formData,
+        selectedChains: value
+      });
     } else {
       console.error('Expected an array for chain selection, but got:', typeof value, value);
       // Try to handle string values
@@ -198,13 +203,22 @@ const LaunchNFTPage = ({ embedded = false }) => {
           // See if it's a JSON string
           const parsed = JSON.parse(value);
           if (Array.isArray(parsed)) {
-            setSelectedChains(parsed);
+            setFormData({
+              ...formData,
+              selectedChains: parsed
+            });
           } else {
-            setSelectedChains([value]); // Use as single value
+            setFormData({
+              ...formData,
+              selectedChains: [value]
+            });
           }
         } catch (e) {
           // Not JSON, use as single value
-          setSelectedChains([value]);
+          setFormData({
+            ...formData,
+            selectedChains: [value]
+          });
         }
       }
     }
@@ -223,7 +237,7 @@ const LaunchNFTPage = ({ embedded = false }) => {
     const newErrors = {};
     
     console.log('Validating form with data:', formData);
-    console.log('Selected chains:', selectedChains);
+    console.log('Selected chains:', formData.selectedChains);
     console.log('Image state:', nftImage);
     
     // Network validation
@@ -272,7 +286,7 @@ const LaunchNFTPage = ({ embedded = false }) => {
     }
     
     // Selected chains validation
-    if (selectedChains.length === 0) {
+    if (formData.selectedChains.length === 0) {
       newErrors.chains = 'Please select at least one chain';
       console.log('Validation failed: No chains selected');
     }
@@ -325,7 +339,7 @@ const LaunchNFTPage = ({ embedded = false }) => {
         collection_symbol: formData.symbol,
         base_uri: formData.baseUri,
         max_supply: parseInt(formData.maxSupply, 10), // Ensure it's an integer
-        selected_chains: selectedChains.map(chain => chain.toString()), // Ensure chain IDs are strings
+        selected_chains: formData.selectedChains.map(chain => chain.toString()), // Ensure chain IDs are strings
         deployer_address: checksummedAddress // Use the correctly checksummed address
       };
 
@@ -440,136 +454,74 @@ const LaunchNFTPage = ({ embedded = false }) => {
   useEffect(() => {
     const fetchSupportedChains = async () => {
       try {
-        console.log('Fetching supported chains from API...');
         setChainsLoading(true);
         setChainsError(null); // Reset error state on new fetch
         
-        const chains = await apiService.getSupportedChains();
-        console.log('API returned raw chains:', chains);
+        // Pass the network mode to get appropriate chains
+        const chains = await apiService.getSupportedChains(networkMode);
         
-        // Ensure API returned an array before proceeding
-        if (!Array.isArray(chains)) {
-          throw new Error('Invalid data format received from API (expected array).');
-        }
-
-        // Transform API response, filter for testnets
-        const formattedChains = chains
-          .filter(chain => chain && (chain.is_testnet === true || chain.testnet === true)) // Filter for testnet chains
-          .map(chain => ({
-            value: chain.chain_id || chain.id,
-            label: chain.name || 'Unknown Chain',
-            disabled: chain.enabled === false, // Explicitly check for false
-            comingSoon: chain.enabled === false,
-            isZetaChain: chain.chain_id === '7001' || chain.id === '7001' || chain.name?.toLowerCase().includes('zetachain') || false
+        if (chains && chains.length > 0) {
+          // Transform API response to match the component's expected format
+          const formattedChains = chains.map(chain => ({
+            value: chain.chain_id || chain.id, 
+            label: chain.name,
+            disabled: !chain.enabled,
+            comingSoon: !chain.enabled,
+            isZetaChain: chain.value === (networkMode === 'testnet' ? '7001' : '7000') || false
           }));
-
-        console.log('Formatted and filtered (testnet only) chains:', formattedChains);
-
-        // Check if any chains remain after filtering
-        if (formattedChains.length === 0) {
-           console.warn('No enabled testnet chains found after filtering.');
-           // Set options to empty to trigger the "No supported chains" message in renderChainSelector
-           setChainOptions([]);
-           // Optionally set an error message
-           // setChainsError('No enabled testnet chains are currently available.'); 
+          
+          // Sort the chains to put ZetaChain first
+          const sortedChains = formattedChains.sort((a, b) => {
+            // Always put the appropriate ZetaChain at the top
+            const zetaId = networkMode === 'testnet' ? '7001' : '7000';
+            
+            if (a.value === zetaId || a.isZetaChain) return -1;
+            if (b.value === zetaId || b.isZetaChain) return 1;
+            
+            // Then sort enabled chains before disabled chains
+            if (a.disabled && !b.disabled) return 1;
+            if (!a.disabled && b.disabled) return -1;
+            
+            // Then sort alphabetically by name
+            return a.label.localeCompare(b.label);
+          });
+          
+          setChainOptions(sortedChains);
         } else {
-            // Sort the chains: ZetaChain first, then enabled, then disabled, then alphabetically
-            const sortedChains = formattedChains.sort((a, b) => {
-              if (a.isZetaChain && !b.isZetaChain) return -1;
-              if (!a.isZetaChain && b.isZetaChain) return 1;
-              if (!a.disabled && b.disabled) return -1; // Enabled before disabled
-              if (a.disabled && !b.disabled) return 1;
-              return a.label.localeCompare(b.label); // Alphabetical
-            });
-          
-            console.log('Sorted chain options to be set:', sortedChains);
-            setChainOptions(sortedChains);
-          
-            // Ensure ZetaChain ('7001') is selected by default if available and enabled
-            const zetaChainOption = sortedChains.find(c => c.value === '7001' && !c.disabled);
-            if (zetaChainOption && !selectedChains.includes('7001')) {
-              // Only add ZetaChain if it's not already there
-              // Note: ChainSelector might expect unique values; handle potential duplicates if necessary
-              console.log('Adding default ZetaChain selection');
-              setSelectedChains(prev => [...new Set(['7001', ...prev])]); 
-            } else if (!zetaChainOption) {
-               console.warn('ZetaChain (7001) is not available or disabled in the fetched chains.');
-               // Consider clearing selection or selecting the first available enabled chain?
-               // setSelectedChains(prev => prev.filter(c => c !== '7001')); 
-            }
+          throw new Error('No chains returned from API');
         }
       } catch (error) {
-        console.error('Error fetching/processing supported chains:', error);
-        setChainsError(`Failed to load chains: ${error.message}. Using fallback.`);
+        console.error('Error fetching supported chains:', error);
         
-        // Fallback to minimal default testnet chains
-        setChainOptions([
-          { value: '7001', label: 'ZetaChain Athens', isZetaChain: true, disabled: false, comingSoon: false },
-          // Add other critical fallbacks if needed
-        ]);
-         // Ensure ZetaChain is selected in fallback
-         if (!selectedChains.includes('7001')) {
-            setSelectedChains(['7001']);
-         }
+        // Show error message in the UI
+        setErrors(prev => ({
+          ...prev,
+          chainOptions: 'Could not fetch supported chains. Using default chains instead.'
+        }));
+        
+        // Fallback chains based on network mode
+        if (networkMode === 'testnet') {
+          setChainOptions([
+            { value: '7001', label: 'ZetaChain Athens', isZetaChain: true },
+            { value: '84532', label: 'Base Sepolia', disabled: true, comingSoon: true },
+            { value: '97', label: 'BSC Testnet', disabled: true, comingSoon: true },
+            { value: '11155111', label: 'Ethereum Sepolia', disabled: true, comingSoon: true }
+          ]);
+        } else {
+          setChainOptions([
+            { value: '7000', label: 'ZetaChain', isZetaChain: true },
+            { value: '1', label: 'Ethereum Mainnet', disabled: true, comingSoon: true },
+            { value: '56', label: 'Binance Smart Chain', disabled: true, comingSoon: true },
+            { value: '8453', label: 'Base', disabled: true, comingSoon: true }
+          ]);
+        }
       } finally {
-        // Ensure loading state is always turned off
         setChainsLoading(false);
-        console.log('Finished fetching chains, loading set to false.');
       }
     };
-
+    
     fetchSupportedChains();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount. Re-fetching based on selectedChains seems incorrect here.
-  
-  // Function to reload chains if needed
-  const reloadChains = async () => {
-    try {
-      setChainsLoading(true);
-      setChainsError(null);
-      console.log('Reloading supported chains...');
-
-      const chains = await apiService.getSupportedChains();
-      console.log('API returned chains:', chains);
-      
-      // Transform API response to match the component's expected format
-      if (chains && chains.length > 0) {
-        const formattedChains = chains
-          .filter(chain => chain.is_testnet === true || chain.testnet === true) // Only include testnet chains
-          .map(chain => ({
-            value: chain.chain_id || chain.id,
-            label: chain.name,
-            disabled: !chain.enabled, // Disabled if not enabled
-            comingSoon: !chain.enabled, // Show "Coming Soon" badge for disabled chains
-            isZetaChain: chain.chain_id === '7001' || chain.id === '7001' || chain.isZetaChain || false
-          }));
-          
-        // Sort the chains to put ZetaChain first
-        const sortedChains = formattedChains.sort((a, b) => {
-          // Always put ZetaChain at the top (will be first in the grid, upper left)
-          if (a.value === '7001' || a.isZetaChain) return -1;
-          if (b.value === '7001' || b.isZetaChain) return 1;
-          
-          // Then sort enabled chains before disabled chains
-          if (a.disabled && !b.disabled) return 1;
-          if (!a.disabled && b.disabled) return -1;
-          
-          // Then sort alphabetically by name
-          return a.label.localeCompare(b.label);
-        });
-        
-        console.log('Formatted chain options:', sortedChains);
-        setChainOptions(sortedChains);
-      } else {
-        throw new Error('No chains returned from API');
-      }
-    } catch (error) {
-      console.error('Error reloading chains:', error);
-      setChainsError(`Failed to load chains: ${error.message}`);
-    } finally {
-      setChainsLoading(false);
-    }
-  };
+  }, [networkMode]); // Add networkMode as dependency
   
   // Cleanup interval on component unmount
   useEffect(() => {
@@ -633,7 +585,44 @@ const LaunchNFTPage = ({ embedded = false }) => {
         <div style={{ textAlign: 'center', padding: '20px' }}>
           <p style={{ color: 'var(--error)' }}>Error loading chains: {chainsError}</p>
           <button 
-            onClick={reloadChains}
+            onClick={() => {
+              setChainsLoading(true);
+              setChainsError(null);
+              // Re-fetch chains using network mode
+              apiService.getSupportedChains(networkMode)
+                .then(chains => {
+                  if (chains && chains.length > 0) {
+                    const formattedChains = chains.map(chain => ({
+                      value: chain.chain_id || chain.id, 
+                      label: chain.name,
+                      disabled: !chain.enabled,
+                      comingSoon: !chain.enabled,
+                      isZetaChain: chain.value === (networkMode === 'testnet' ? '7001' : '7000') || false
+                    }));
+                    
+                    const sortedChains = formattedChains.sort((a, b) => {
+                      const zetaId = networkMode === 'testnet' ? '7001' : '7000';
+                      
+                      if (a.value === zetaId || a.isZetaChain) return -1;
+                      if (b.value === zetaId || b.isZetaChain) return 1;
+                      
+                      if (a.disabled && !b.disabled) return 1;
+                      if (!a.disabled && b.disabled) return -1;
+                      
+                      return a.label.localeCompare(b.label);
+                    });
+                    
+                    setChainOptions(sortedChains);
+                  }
+                })
+                .catch(error => {
+                  console.error('Error reloading chains:', error);
+                  setChainsError(`Failed to reload chains: ${error.message}`);
+                })
+                .finally(() => {
+                  setChainsLoading(false);
+                });
+            }}
             style={{ 
               padding: '8px 16px', 
               backgroundColor: 'var(--accent-primary)', 
@@ -656,7 +645,44 @@ const LaunchNFTPage = ({ embedded = false }) => {
         <div style={{ textAlign: 'center', padding: '20px' }}>
           <p>No supported chains available. Please check backend configuration.</p>
           <button 
-            onClick={reloadChains}
+            onClick={() => {
+              setChainsLoading(true);
+              setChainsError(null);
+              // Re-fetch chains using network mode
+              apiService.getSupportedChains(networkMode)
+                .then(chains => {
+                  if (chains && chains.length > 0) {
+                    const formattedChains = chains.map(chain => ({
+                      value: chain.chain_id || chain.id, 
+                      label: chain.name,
+                      disabled: !chain.enabled,
+                      comingSoon: !chain.enabled,
+                      isZetaChain: chain.value === (networkMode === 'testnet' ? '7001' : '7000') || false
+                    }));
+                    
+                    const sortedChains = formattedChains.sort((a, b) => {
+                      const zetaId = networkMode === 'testnet' ? '7001' : '7000';
+                      
+                      if (a.value === zetaId || a.isZetaChain) return -1;
+                      if (b.value === zetaId || b.isZetaChain) return 1;
+                      
+                      if (a.disabled && !b.disabled) return 1;
+                      if (!a.disabled && b.disabled) return -1;
+                      
+                      return a.label.localeCompare(b.label);
+                    });
+                    
+                    setChainOptions(sortedChains);
+                  }
+                })
+                .catch(error => {
+                  console.error('Error reloading chains:', error);
+                  setChainsError(`Failed to reload chains: ${error.message}`);
+                })
+                .finally(() => {
+                  setChainsLoading(false);
+                });
+            }}
             style={{ 
               padding: '8px 16px', 
               backgroundColor: 'var(--accent-primary)', 
@@ -678,7 +704,7 @@ const LaunchNFTPage = ({ embedded = false }) => {
     return (
       <ChainSelector 
         options={chainOptions}
-        value={selectedChains}
+        value={formData.selectedChains}
         onChange={handleChainSelection}
         error={errors.chains}
         helperText="Select the chains to deploy your NFT collection to. ZetaChain is required."

@@ -405,16 +405,19 @@ export const getDeploymentLogs = async (tokenId) => {
 };
 
 /**
- * Get supported chains information
+ * Get supported chains from the API
  * 
+ * @param {string} networkMode - 'testnet' or 'mainnet' to filter chains
  * @returns {Promise<Array>} - Array of supported chains
  */
-export const getSupportedChains = async () => {
+export const getSupportedChains = async (networkMode = 'testnet') => {
   try {
+    console.log(`Getting supported chains for ${networkMode} mode`);
+    
     // For development/testing - if mock API mode is enabled, return default chains
     if (process.env.REACT_APP_MOCK_API === 'true') {
       console.log('Using mock API for chains data');
-      return [
+      const mockChains = [
         {
           chain_id: "7001",
           name: "ZetaChain Testnet",
@@ -426,12 +429,31 @@ export const getSupportedChains = async () => {
           logo_url: "https://assets.coingecko.com/coins/images/29108/large/zetachain.jpeg"
         },
         {
+          chain_id: "7000",
+          name: "ZetaChain",
+          rpc_url: "https://zetachain.g.allthatnode.com/archive/evm",
+          explorer_url: "https://explorer.zetachain.com",
+          blockscout_url: "https://explorer.zetachain.com",
+          enabled: true,
+          is_testnet: false,
+          logo_url: "https://assets.coingecko.com/coins/images/29108/large/zetachain.jpeg"
+        },
+        {
           chain_id: "11155111",
           name: "Sepolia Testnet",
           rpc_url: "https://rpc.sepolia.org",
           explorer_url: "https://sepolia.etherscan.io",
           enabled: true,
           is_testnet: true,
+          logo_url: "https://ethereum.org/static/6b935ac0e6194247347855dc3d328e83/13c43/eth-diamond-black.png"
+        },
+        {
+          chain_id: "1",
+          name: "Ethereum Mainnet",
+          rpc_url: "https://eth.llamarpc.com",
+          explorer_url: "https://etherscan.io",
+          enabled: true,
+          is_testnet: false,
           logo_url: "https://ethereum.org/static/6b935ac0e6194247347855dc3d328e83/13c43/eth-diamond-black.png"
         },
         {
@@ -444,15 +466,20 @@ export const getSupportedChains = async () => {
           logo_url: "https://assets.coingecko.com/asset_platforms/images/165/large/base.png"
         },
         {
-          chain_id: "421614",
-          name: "Arbitrum Sepolia",
-          rpc_url: "https://sepolia-rollup.arbitrum.io/rpc",
-          explorer_url: "https://sepolia.arbiscan.io",
+          chain_id: "8453",
+          name: "Base",
+          rpc_url: "https://mainnet.base.org",
+          explorer_url: "https://basescan.org",
           enabled: true,
-          is_testnet: true,
-          logo_url: "https://assets.coingecko.com/coins/images/16547/large/photo_2023-03-29_21.47.00.jpeg"
+          is_testnet: false,
+          logo_url: "https://assets.coingecko.com/asset_platforms/images/165/large/base.png"
         }
       ];
+      
+      // Filter chains based on network mode
+      return mockChains.filter(chain => 
+        networkMode === 'testnet' ? chain.is_testnet : !chain.is_testnet
+      );
     }
 
     // Try to get chains from the backend API
@@ -461,17 +488,16 @@ export const getSupportedChains = async () => {
       const response = await api.get('/chains');
       console.log('API response for chains:', response.data);
       
-      // Make sure we have valid chain data
+      // Extract chains from the response
+      let chains = [];
       if (response.data && response.data.chains && Array.isArray(response.data.chains)) {
-        return response.data.chains;
+        chains = response.data.chains;
       } else if (response.data && Array.isArray(response.data)) {
-        // Sometimes the API might return an array directly
-        return response.data;
+        chains = response.data;
       } else if (response.data) {
-        // Try to extract chains if it's not in the expected format
         const possibleChains = response.data.chains || response.data.data || response.data;
         if (Array.isArray(possibleChains)) {
-          return possibleChains;
+          chains = possibleChains;
         } else {
           console.error('Unexpected API response format:', response.data);
           throw new Error('Invalid chain data format received from API');
@@ -479,45 +505,90 @@ export const getSupportedChains = async () => {
       } else {
         throw new Error('Invalid chain data format received from API');
       }
+      
+      // Filter chains based on network mode
+      const filteredChains = chains.filter(chain => {
+        // Check the is_testnet (or testnet) field and match to the current network mode
+        const isTestnet = chain.is_testnet || chain.testnet || false;
+        return networkMode === 'testnet' ? isTestnet : !isTestnet;
+      });
+      
+      console.log(`Filtered ${chains.length} chains to ${filteredChains.length} ${networkMode} chains`);
+      return filteredChains;
     } catch (apiError) {
       console.error('Error fetching supported chains from API:', apiError);
       console.log('API error details:', apiError.response?.data || apiError.message);
       console.log('Falling back to default chains');
       
       // Fallback to default chains if API call fails
-      return [
-        {
-          chain_id: "7001",
-          name: "ZetaChain Testnet",
-          rpc_url: "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
-          explorer_url: "https://explorer.athens.zetachain.com",
-          blockscout_url: "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
-          enabled: true,
-          is_testnet: true,
-          logo_url: "https://assets.coingecko.com/coins/images/29108/large/zetachain.jpeg"
-        },
-        {
-          chain_id: "11155111",
-          name: "Sepolia Testnet",
-          rpc_url: "https://rpc.sepolia.org",
-          explorer_url: "https://sepolia.etherscan.io",
-          enabled: true,
-          is_testnet: true,
-          logo_url: "https://ethereum.org/static/6b935ac0e6194247347855dc3d328e83/13c43/eth-diamond-black.png"
-        }
-      ];
+      if (networkMode === 'testnet') {
+        return [
+          {
+            chain_id: "7001",
+            name: "ZetaChain Testnet",
+            rpc_url: "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
+            explorer_url: "https://explorer.athens.zetachain.com",
+            blockscout_url: "https://zetachain-athens-evm.blockpi.network/v1/rpc/public",
+            enabled: true,
+            is_testnet: true,
+            logo_url: "https://assets.coingecko.com/coins/images/29108/large/zetachain.jpeg"
+          },
+          {
+            chain_id: "11155111",
+            name: "Sepolia Testnet",
+            rpc_url: "https://rpc.sepolia.org",
+            explorer_url: "https://sepolia.etherscan.io",
+            enabled: true,
+            is_testnet: true,
+            logo_url: "https://ethereum.org/static/6b935ac0e6194247347855dc3d328e83/13c43/eth-diamond-black.png"
+          }
+        ];
+      } else {
+        return [
+          {
+            chain_id: "7000",
+            name: "ZetaChain",
+            rpc_url: "https://zetachain.g.allthatnode.com/archive/evm",
+            explorer_url: "https://explorer.zetachain.com",
+            blockscout_url: "https://explorer.zetachain.com",
+            enabled: true,
+            is_testnet: false,
+            logo_url: "https://assets.coingecko.com/coins/images/29108/large/zetachain.jpeg"
+          },
+          {
+            chain_id: "1",
+            name: "Ethereum Mainnet",
+            rpc_url: "https://eth.llamarpc.com",
+            explorer_url: "https://etherscan.io",
+            enabled: true,
+            is_testnet: false,
+            logo_url: "https://ethereum.org/static/6b935ac0e6194247347855dc3d328e83/13c43/eth-diamond-black.png"
+          }
+        ];
+      }
     }
   } catch (error) {
     console.error('Error in getSupportedChains:', error);
     // Return a minimal set of chains to prevent UI breakage
-    return [
-      {
-        chain_id: "7001",
-        name: "ZetaChain Testnet",
-        enabled: true,
-        is_testnet: true
-      }
-    ];
+    if (networkMode === 'testnet') {
+      return [
+        {
+          chain_id: "7001",
+          name: "ZetaChain Testnet",
+          enabled: true,
+          is_testnet: true
+        }
+      ];
+    } else {
+      return [
+        {
+          chain_id: "7000",
+          name: "ZetaChain",
+          enabled: true,
+          is_testnet: false
+        }
+      ];
+    }
   }
 };
 
