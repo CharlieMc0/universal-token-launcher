@@ -199,106 +199,113 @@ def load_contract_data():
     global UNIVERSAL_NFT_ABI, UNIVERSAL_NFT_BYTECODE
     global ZC_UNIVERSAL_NFT_ABI, ZC_UNIVERSAL_NFT_BYTECODE
 
+    # Define fallback ABIs (minimal structure)
+    fallback_zc_token_abi = [
+        {"inputs": [{"internalType": "string", "name": "name_", "type": "string"}, {"internalType": "string", "name": "symbol_", "type": "string"}, {"internalType": "uint8", "name": "decimals_", "type": "uint8"}, {"internalType": "uint256", "name": "initialSupply", "type": "uint256"}, {"internalType": "address", "name": "initialOwner", "type": "address"}], "stateMutability": "nonpayable", "type": "constructor"},
+        {"inputs": [{"internalType": "address", "name": "to", "type": "address"}, {"internalType": "uint256", "name": "amount", "type": "uint256"}], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"},
+        {"inputs": [{"internalType": "uint256", "name": "_chainId", "type": "uint256"}, {"internalType": "address", "name": "_contractAddress", "type": "address"}], "name": "setConnectedContract", "outputs": [], "stateMutability": "nonpayable", "type": "function"} # Added ZC specific method
+    ]
+    fallback_evm_token_abi = [
+        {"inputs": [{"internalType": "string", "name": "name_", "type": "string"}, {"internalType": "string", "name": "symbol_", "type": "string"}, {"internalType": "uint8", "name": "decimals_", "type": "uint8"}, {"internalType": "address", "name": "initialOwner", "type": "address"}], "stateMutability": "nonpayable", "type": "constructor"},
+        {"inputs": [{"internalType": "address", "name": "to", "type": "address"}, {"internalType": "uint256", "name": "amount", "type": "uint256"}], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"},
+        {"inputs": [{"internalType": "address", "name": "_zetaChainContract", "type": "address"}], "name": "setZetaChainContract", "outputs": [], "stateMutability": "nonpayable", "type": "function"} # Added EVM specific method
+    ]
+    fallback_bytecode = "0x"
+    
+    fallback_zc_nft_abi = [
+        {"inputs": [{"internalType": "string", "name": "name_", "type": "string"}, {"internalType": "string", "name": "symbol_", "type": "string"}, {"internalType": "string", "name": "baseURI_", "type": "string"}, {"internalType": "uint256", "name": "maxSupply_", "type": "uint256"}, {"internalType": "address", "name": "initialOwner", "type": "address"}], "stateMutability": "nonpayable", "type": "constructor"},
+        {"inputs": [{"internalType": "address", "name": "to", "type": "address"}], "name": "mint", "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}], "stateMutability": "nonpayable", "type": "function"}
+    ]
+    fallback_evm_nft_abi = [
+        {"inputs": [{"internalType": "string", "name": "name_", "type": "string"}, {"internalType": "string", "name": "symbol_", "type": "string"}, {"internalType": "string", "name": "baseURI_", "type": "string"}, {"internalType": "uint256", "name": "maxSupply_", "type": "uint256"}, {"internalType": "address", "name": "initialOwner", "type": "address"}], "stateMutability": "nonpayable", "type": "constructor"},
+        {"inputs": [{"internalType": "address", "name": "to", "type": "address"}], "name": "mint", "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}], "stateMutability": "nonpayable", "type": "function"}
+        # Add setZetaChainContract if applicable to EVM NFT
+    ]
+
     try:
-        # Load ZetaChain token artifact first
-        zc_token_path = os.path.join(SMART_CONTRACTS_DIR, "ZetaChainUniversalToken_bytecode.json")
-        zc_abi_path = os.path.join(SMART_CONTRACTS_DIR, "ZetaChainUniversalToken_abi.json")
-        
-        if os.path.exists(zc_token_path) and os.path.exists(zc_abi_path):
-            with open(zc_token_path, 'r') as f:
-                ZC_UNIVERSAL_TOKEN_BYTECODE = json.load(f)
-            with open(zc_abi_path, 'r') as f:
-                ZC_UNIVERSAL_TOKEN_ABI = json.load(f)
-            logger.info("Loaded ZetaChain token artifacts from JSON files")
+        # --- Load ZetaChain Token Artifact ---
+        if os.path.exists(ZC_TOKEN_PATH):
+            with open(ZC_TOKEN_PATH, 'r') as f:
+                zc_token_artifact = json.load(f)
+                ZC_UNIVERSAL_TOKEN_ABI = zc_token_artifact.get('abi')
+                ZC_UNIVERSAL_TOKEN_BYTECODE = zc_token_artifact.get('bytecode')
+                if not ZC_UNIVERSAL_TOKEN_ABI or not ZC_UNIVERSAL_TOKEN_BYTECODE:
+                    logger.warning(f"ZC token artifact at {ZC_TOKEN_PATH} missing ABI/bytecode, using fallback")
+                    ZC_UNIVERSAL_TOKEN_ABI = fallback_zc_token_abi
+                    ZC_UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
+                else:
+                    logger.info(f"Loaded ZetaChain token artifact from {ZC_TOKEN_PATH}")
         else:
-            logger.warning("ZetaChain token artifacts not found, using fallback")
-            # Fallback ABI and bytecode
-            ZC_UNIVERSAL_TOKEN_ABI = [
-                {"inputs": [
-                    {"internalType": "string", "name": "name_", "type": "string"},
-                    {"internalType": "string", "name": "symbol_", "type": "string"},
-                    {"internalType": "uint8", "name": "decimals_", "type": "uint8"},
-                    {"internalType": "uint256", "name": "initialSupply", "type": "uint256"},
-                    {"internalType": "address", "name": "initialOwner", "type": "address"}
-                ], "stateMutability": "nonpayable", "type": "constructor"},
-                {"inputs": [
-                    {"internalType": "address", "name": "to", "type": "address"},
-                    {"internalType": "uint256", "name": "amount", "type": "uint256"}
-                ],
-                "name": "mint",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"}
-            ]
-            # Placeholder bytecode for testing
-            ZC_UNIVERSAL_TOKEN_BYTECODE = "0x60806040523480156200001157600080fd5b50604051620000a4..."
-        
-        # Use ZetaChain token ABI/bytecode for EVM token initially
-        UNIVERSAL_TOKEN_ABI = ZC_UNIVERSAL_TOKEN_ABI
-        UNIVERSAL_TOKEN_BYTECODE = ZC_UNIVERSAL_TOKEN_BYTECODE
-        
-        # Load NFT contracts (placeholder for now)
-        UNIVERSAL_NFT_ABI = [
-            {"inputs": [
-                {"internalType": "string", "name": "name_", "type": "string"},
-                {"internalType": "string", "name": "symbol_", "type": "string"},
-                {"internalType": "string", "name": "baseURI_", "type": "string"}
-            ], "stateMutability": "nonpayable", "type": "constructor"},
-            {"inputs": [
-                {"internalType": "address", "name": "to", "type": "address"}
-            ],
-            "name": "mint",
-            "outputs": [
-                {"internalType": "uint256", "name": "", "type": "uint256"}
-            ],
-            "stateMutability": "nonpayable",
-            "type": "function"}
-        ]
-        # Placeholder bytecode for NFT
-        UNIVERSAL_NFT_BYTECODE = "0x60806040523480156200001157600080fd5b50604051620000a4..."
-        ZC_UNIVERSAL_NFT_ABI = UNIVERSAL_NFT_ABI
-        ZC_UNIVERSAL_NFT_BYTECODE = UNIVERSAL_NFT_BYTECODE
-        
+            logger.warning(f"ZetaChain token artifact not found at {ZC_TOKEN_PATH}, using fallback")
+            ZC_UNIVERSAL_TOKEN_ABI = fallback_zc_token_abi
+            ZC_UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
+
+        # --- Load EVM Token Artifact ---
+        if os.path.exists(EVM_TOKEN_PATH):
+            with open(EVM_TOKEN_PATH, 'r') as f:
+                evm_token_artifact = json.load(f)
+                UNIVERSAL_TOKEN_ABI = evm_token_artifact.get('abi')
+                UNIVERSAL_TOKEN_BYTECODE = evm_token_artifact.get('bytecode')
+                if not UNIVERSAL_TOKEN_ABI or not UNIVERSAL_TOKEN_BYTECODE:
+                    logger.warning(f"EVM token artifact at {EVM_TOKEN_PATH} missing ABI/bytecode, using fallback")
+                    UNIVERSAL_TOKEN_ABI = fallback_evm_token_abi
+                    UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
+                else:
+                     logger.info(f"Loaded EVM token artifact from {EVM_TOKEN_PATH}")
+        else:
+            logger.warning(f"EVM token artifact not found at {EVM_TOKEN_PATH}, using fallback")
+            UNIVERSAL_TOKEN_ABI = fallback_evm_token_abi
+            UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
+
+        # --- Load ZetaChain NFT Artifact ---
+        if os.path.exists(ZC_NFT_PATH):
+            with open(ZC_NFT_PATH, 'r') as f:
+                zc_nft_artifact = json.load(f)
+                ZC_UNIVERSAL_NFT_ABI = zc_nft_artifact.get('abi')
+                ZC_UNIVERSAL_NFT_BYTECODE = zc_nft_artifact.get('bytecode')
+                if not ZC_UNIVERSAL_NFT_ABI or not ZC_UNIVERSAL_NFT_BYTECODE:
+                    logger.warning(f"ZC NFT artifact at {ZC_NFT_PATH} missing ABI/bytecode, using fallback")
+                    ZC_UNIVERSAL_NFT_ABI = fallback_zc_nft_abi
+                    ZC_UNIVERSAL_NFT_BYTECODE = fallback_bytecode
+                else:
+                    logger.info(f"Loaded ZetaChain NFT artifact from {ZC_NFT_PATH}")
+        else:
+            logger.warning(f"ZetaChain NFT artifact not found at {ZC_NFT_PATH}, using fallback")
+            ZC_UNIVERSAL_NFT_ABI = fallback_zc_nft_abi
+            ZC_UNIVERSAL_NFT_BYTECODE = fallback_bytecode
+            
+        # --- Load EVM NFT Artifact ---
+        if os.path.exists(EVM_NFT_PATH):
+            with open(EVM_NFT_PATH, 'r') as f:
+                evm_nft_artifact = json.load(f)
+                UNIVERSAL_NFT_ABI = evm_nft_artifact.get('abi') # EVM NFT ABI
+                UNIVERSAL_NFT_BYTECODE = evm_nft_artifact.get('bytecode') # EVM NFT Bytecode
+                if not UNIVERSAL_NFT_ABI or not UNIVERSAL_NFT_BYTECODE:
+                    logger.warning(f"EVM NFT artifact at {EVM_NFT_PATH} missing ABI/bytecode, using fallback")
+                    UNIVERSAL_NFT_ABI = fallback_evm_nft_abi
+                    UNIVERSAL_NFT_BYTECODE = fallback_bytecode
+                else:
+                     logger.info(f"Loaded EVM NFT artifact from {EVM_NFT_PATH}")
+        else:
+            logger.warning(f"EVM NFT artifact not found at {EVM_NFT_PATH}, using fallback")
+            UNIVERSAL_NFT_ABI = fallback_evm_nft_abi
+            UNIVERSAL_NFT_BYTECODE = fallback_bytecode
+
         logger.info("Contract data loaded successfully")
         return True
 
     except Exception as e:
         logger.error(f"Error loading contract data: {e}", exc_info=True)
-        # Set fallback minimal data
-        UNIVERSAL_TOKEN_ABI = [
-            {"inputs": [
-                {"internalType": "address", "name": "initialOwner", "type": "address"},
-                {"internalType": "string", "name": "name", "type": "string"},
-                {"internalType": "string", "name": "symbol", "type": "string"}
-            ], "stateMutability": "nonpayable", "type": "constructor"},
-            {"inputs": [
-                {"internalType": "address", "name": "to", "type": "address"},
-                {"internalType": "uint256", "name": "amount", "type": "uint256"}
-            ], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"},
-        ]
-        # Minimal bytecode for testing
-        UNIVERSAL_TOKEN_BYTECODE = "0x60806040523480156200001157600080fd5b50604051620000a4..."
-        ZC_UNIVERSAL_TOKEN_ABI = UNIVERSAL_TOKEN_ABI
-        ZC_UNIVERSAL_TOKEN_BYTECODE = UNIVERSAL_TOKEN_BYTECODE
-        
-        UNIVERSAL_NFT_ABI = [
-            {"inputs": [
-                {"internalType": "string", "name": "name_", "type": "string"},
-                {"internalType": "string", "name": "symbol_", "type": "string"},
-                {"internalType": "string", "name": "baseURI_", "type": "string"}
-            ], "stateMutability": "nonpayable", "type": "constructor"},
-            {"inputs": [
-                {"internalType": "address", "name": "to", "type": "address"}
-            ],
-            "name": "mint",
-            "outputs": [],
-            "stateMutability": "nonpayable",
-            "type": "function"}
-        ]
-        # Minimal bytecode for testing
-        UNIVERSAL_NFT_BYTECODE = "0x60806040523480156200001157600080fd5b50604051620000a4..."
-        ZC_UNIVERSAL_NFT_ABI = UNIVERSAL_NFT_ABI
-        ZC_UNIVERSAL_NFT_BYTECODE = UNIVERSAL_NFT_BYTECODE
+        # Set fallback minimal data if any exception occurs during loading
+        logger.warning("Critical error loading contract data, using minimal fallbacks for all types!")
+        ZC_UNIVERSAL_TOKEN_ABI = fallback_zc_token_abi
+        ZC_UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
+        UNIVERSAL_TOKEN_ABI = fallback_evm_token_abi
+        UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
+        ZC_UNIVERSAL_NFT_ABI = fallback_zc_nft_abi
+        ZC_UNIVERSAL_NFT_BYTECODE = fallback_bytecode
+        UNIVERSAL_NFT_ABI = fallback_evm_nft_abi
+        UNIVERSAL_NFT_BYTECODE = fallback_bytecode
         
         return False
 

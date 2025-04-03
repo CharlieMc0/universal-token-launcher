@@ -1,4 +1,4 @@
-<!-- # Universal Launcher Application Flow
+# Universal Launcher Application Flow
 
 This document provides a comprehensive walkthrough of the user journey through the Universal Launcher application, with special attention to potential pain points and best practices based on our implementation experience.
 
@@ -7,1049 +7,197 @@ This document provides a comprehensive walkthrough of the user journey through t
 ## 1. User Entry & Wallet Connection
 
 ### Flow Stages
-1. **Initial Landing**
-   - User arrives at the application landing page
-   - System presents welcome message and "Connect Wallet" button
+1.  **Initial Landing**
+    *   User arrives at the application landing page.
+    *   System presents a welcome message and a prominent "Connect Wallet" button.
 
-2. **Wallet Connection**
-   - User clicks "Connect Wallet" button
-   - System displays wallet selection modal (using RainbowKit)
-   - User selects their wallet provider (MetaMask, Coinbase Wallet, etc.)
-   - System prompts wallet connection
-   - User confirms connection in their wallet
+2.  **Wallet Connection**
+    *   User clicks "Connect Wallet".
+    *   System displays a wallet selection modal (e.g., using RainbowKit).
+    *   User selects their preferred wallet provider (MetaMask, Coinbase Wallet, etc.).
+    *   System initiates the connection request to the selected wallet.
+    *   User confirms the connection request within their wallet application.
 
-3. **Network Validation**
-   - System checks if user is connected to ZetaChain network
-   - If not on ZetaChain, system displays network switching prompt
-   - User clicks "Switch to ZetaChain" button
-   - System sends network switch request to wallet
-   - If ZetaChain not yet added to wallet, system sends request to add network
+3.  **Network Validation & Setup (Crucial Step)**
+    *   Upon successful connection, the system checks the user's current network.
+    *   **If the user is not on the required ZetaChain network:**
+        *   System displays a clear message prompting the user to switch to ZetaChain.
+        *   A "Switch to ZetaChain" button is presented.
+    *   **User clicks "Switch to ZetaChain":**
+        *   System sends a network switch request (`wallet_switchEthereumChain`) to the user's wallet for the ZetaChain network ID.
+        *   **If ZetaChain is not configured in the user's wallet:** The switch request might fail. The system should anticipate this and follow up with a request to *add* the ZetaChain network (`wallet_addEthereumChain`) providing the necessary chain details (Chain ID, Name, RPC URL, Symbol, Explorer URL).
+    *   User approves the network switch and/or addition in their wallet.
+    *   System confirms the user is now connected to the correct ZetaChain network.
 
-### Key Technical Considerations
-- **Network Detection & Switching**
-  ```javascript
-  // Check current network
-  const isZetaChainNetwork = chainId === ZETACHAIN_ID;
+### Key Technical Considerations (Without Code)
 
-  // Switching implementation with fallback to add network
-  const handleSwitchToZetaChain = async () => {
-    try {
-      await switchChain({ chainId: ZETACHAIN_ID });
-    } catch (switchError) {
-      // Fallback: try to add the network
-      if (window.ethereum) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: `0x${ZETACHAIN_ID.toString(16)}`,
-              chainName: 'ZetaChain',
-              nativeCurrency: {
-                decimals: 18,
-                name: 'ZETA',
-                symbol: 'ZETA',
-              },
-              rpcUrls: ['https://zetachain-evm.blockpi.network/v1/rpc/public'],
-              blockExplorerUrls: ['https://explorer.zetachain.com']
-            }]
-          });
-        } catch (error) {
-          console.error('Error adding ZetaChain:', error);
-        }
-      }
-    }
-  };
-  ```
-
-  // Note: For a cleaner implementation, you can replace the above inline network switching logic
-  // with the custom network switching utility function 'switchToZetaChain' located in
-  // 'frontend/src/utils/networkSwitchingUtility.js'. This utility encapsulates the logic for both
-  // switching to ZetaChain and adding it if not already present.
-
-- **Balance Check**
-  - Ensure proper ZETA balance check using wagmi's useBalance hook
-  ```javascript
-  // Native token balance check - no token address needed for native token
-  const { data: balanceData } = useBalance({
-    address,
-    chainId: ZETACHAIN_ID
-  });
-  ```
-
-- **Conditional Rendering**
-  - Only render main app components when wallet is connected and on the correct network
-  - Provide clear guidance on network switching with helpful links
+*   **Network Detection & Switching Logic:** The frontend must reliably detect the connected chain ID. The switching logic should handle both `wallet_switchEthereumChain` and the fallback `wallet_addEthereumChain` requests seamlessly to ensure users can easily get onto the correct network.
+*   **Balance Check:** Once connected to ZetaChain, the system should fetch and display the user's native ZETA balance using appropriate hooks (e.g., `useBalance` from wagmi).
+*   **Conditional Rendering:** The main application interface (Make/Move sections) should only be fully accessible *after* the wallet is connected *and* validated to be on the ZetaChain network. Until then, clear guidance or prompts for connection/switching should be displayed.
 
 ---
 
-## 2. Make Flow
+## 2. Make Flow (Create Assets)
 
 ### Flow Stages
-1. **Asset Type Selection**
-   - User arrives at the Make page
-   - User selects between "Make Token" or "Make NFT Collection" using visual card selection
-   - System shows the appropriate creation form based on selection
+1.  **Asset Type Selection**
+    *   User navigates to the "Make" section.
+    *   System presents clear options (e.g., using distinct visual cards) to select between creating a "Token" or an "NFT Collection".
+    *   User selects their desired asset type.
+    *   System dynamically displays the appropriate creation form.
 
-2. **Token Creation Form** (when "Make Token" is selected)
-   - User enters token details (name, symbol, total supply, decimals)
-   - User uploads token icon
-   - User selects target chains for deployment
-   - User configures token distribution
+2.  **Token Creation Form** (if "Token" selected)
+    *   User fills in required token details: Name, Symbol, Total Supply (as a string for large numbers), Decimals (defaulting to 18).
+    *   User optionally uploads a token icon image.
+    *   User selects the target EVM chains for deployment (ZetaChain is implicitly included).
+    *   User optionally provides initial token distribution details, often via a CSV upload (address, amount per address, max ~100 entries).
 
-3. **NFT Collection Creation Form** (when "Make NFT Collection" is selected)
-   - User enters collection details (name, description, quantity, price)
-   - User uploads collection artwork
-   - User selects target chains for deployment
-   - User optionally configures free NFT distribution
+3.  **NFT Collection Creation Form** (if "NFT Collection" selected)
+    *   User fills in collection details: Name, Symbol, Base URI (for metadata), Max Supply.
+    *   User uploads collection artwork/image.
+    *   User selects target EVM chains for deployment.
+    *   User optionally configures a free NFT distribution list.
 
-4. **Fee Information**
-   - System displays required deployment fee (1 ZETA)
-   - System shows user's current ZETA balance
-   - System validates sufficient balance for deployment
+4.  **Fee Information & Validation**
+    *   System clearly displays the required fixed deployment fee (e.g., 1 ZETA).
+    *   System shows the user's current ZETA balance (fetched earlier).
+    *   System validates that the user has sufficient ZETA balance to cover the fee *before* enabling the deployment/payment button.
+    *   System validates all form inputs (required fields, formats, supply vs. distribution amounts if applicable).
 
-### Key Technical Considerations
-- **Visual Card Selection Implementation**
-  ```javascript
-  const [assetType, setAssetType] = useState('token'); // 'token' or 'nft'
-  
-  return (
-    <PageContainer>
-      <PageTitle>Make Universal Assets</PageTitle>
-      <PageDescription>
-        Launch tokens or NFT collections that work seamlessly across multiple blockchains with ZetaChain technology.
-      </PageDescription>
-      
-      <AssetTypeContainer>
-        <AssetTypeCard 
-          selected={assetType === 'token'} 
-          onClick={() => setAssetType('token')}
-        >
-          <AssetTypeIcon selected={assetType === 'token'}>
-            <TokenIcon />
-          </AssetTypeIcon>
-          <AssetTypeTitle>Make a Token</AssetTypeTitle>
-          <AssetTypeDescription>
-            Create your own token that works across multiple blockchains
-          </AssetTypeDescription>
-        </AssetTypeCard>
-        
-        <AssetTypeCard 
-          selected={assetType === 'nft'} 
-          onClick={() => setAssetType('nft')}
-        >
-          <AssetTypeIcon selected={assetType === 'nft'}>
-            <NFTIcon />
-          </AssetTypeIcon>
-          <AssetTypeTitle>Make an NFT Collection</AssetTypeTitle>
-          <AssetTypeDescription>
-            Create unique digital collectibles that can move between chains
-          </AssetTypeDescription>
-        </AssetTypeCard>
-      </AssetTypeContainer>
-      
-      {assetType === 'token' ? <LaunchPage embedded={true} /> : <LaunchNFTPage embedded={true} />}
-    </PageContainer>
-  );
-  ```
+### Key Technical Considerations (Without Code)
 
-- **Embedded Page Design**
-  - Original pages are reused with an `embedded` prop
-  - When embedded, page titles and padding are adjusted
-  ```javascript
-  const PageContainer = styled.div`
-    max-width: ${props => props.embedded ? '100%' : '800px'};
-    margin: 0 auto;
-    padding: ${props => props.embedded ? '0' : '40px 20px'};
-  `;
-
-  const PageTitle = styled.h1`
-    margin-bottom: 32px;
-    text-align: center;
-    display: ${props => props.embedded ? 'none' : 'block'};
-  `;
-  ```
-
-- **Form Data Preparation**
-  ```javascript
-  // Correctly prepare form data with exact field names
-  const formDataToSend = new FormData();
-  formDataToSend.append('tokenName', formData.name);
-  formDataToSend.append('tokenSymbol', formData.symbol);
-  formDataToSend.append('decimals', formData.decimals);
-  formDataToSend.append('totalSupply', formData.totalSupply);
-  
-  // Format distribution data according to backend expectations
-  const distributionsForBackend = allDistributions.map(dist => ({
-    recipientAddress: dist.address,
-    chainId: chainId.toString(),
-    tokenAmount: dist.amount
-  }));
-  
-  formDataToSend.append('selectedChains', JSON.stringify([chainId.toString()]));
-  formDataToSend.append('distributionsJson', JSON.stringify(distributionsForBackend));
-  if (tokenIcon) {
-    formDataToSend.append('icon', tokenIcon);
-  }
-  ```
-
-- **CSV Parsing**
-  - Implement robust CSV validation
-  - Check for required columns (address, amount)
-  - Validate address format
-  - Handle whitespace and empty lines properly
-
-- **Validation Logic**
-  ```javascript
-  const validateForm = () => {
-    const newErrors = {};
-    
-    // Network validation
-    if (!isZetaChainNetwork) {
-      newErrors.network = 'Please switch to ZetaChain network';
-      return false;
-    }
-
-    // Balance validation - properly format amounts
-    if (balanceData && parseFloat(balanceData.formatted) < ZETA_FEE) {
-      newErrors.balance = `Insufficient ZETA balance. You need at least ${ZETA_FEE} ZETA. Current balance: ${parseFloat(balanceData.formatted).toFixed(2)} ZETA`;
-      return false;
-    }
-    
-    // Other validations...
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-  ```
+*   **Dynamic Form Rendering:** Use conditional rendering based on the selected asset type (Token/NFT) to show the correct form fields.
+*   **Visual Selection:** Implement the Token/NFT selection using clear, interactive UI elements like cards.
+*   **Form Data Preparation:** Ensure data submitted to the backend API matches the expected format (field names like `token_name`, data types like strings for large numbers, JSON strings for arrays/objects).
+*   **CSV Parsing & Validation:** If CSV upload is used for distribution, implement robust client-side parsing and validation (checking for required columns, correct address formats, valid amounts, total distribution vs. total supply).
+*   **Input Validation:** Perform thorough client-side validation of all form fields to provide immediate feedback and prevent invalid API requests.
+*   **Fee & Balance Check:** Reliably compare the required fee (as a BigInt or formatted number) with the user's fetched ZETA balance.
 
 ---
 
 ## 3. Asset Deployment Process
 
 ### Flow Stages
-1. **Fee Payment**
-   - User clicks "Deploy Token" button
-   - System validates form inputs
-   - System sends token creation request to backend (`POST /api/tokens`)
-   - System requests fee payment transaction (using `wagmi` `sendTransactionAsync`)
-   - User approves transaction in wallet
-   - System waits for transaction confirmation on-chain (using `publicClient.getTransactionReceipt`)
-   - System notifies backend about fee payment (`POST /api/tokens/:id/deploy`)
+1.  **Initiation & Fee Payment (Tokens Only)**
+    *   User clicks the "Deploy" button after filling the form.
+    *   System performs final client-side validation.
+    *   **(Tokens):** System sends the initial token configuration to the backend (`POST /api/deploy`) to get a `deployment_id`.
+    *   **(Tokens):** System prompts the user to pay the fixed ZETA fee via a wallet transaction (`sendTransactionAsync`). The transaction must be explicitly sent on the ZetaChain network.
+    *   User approves the fee transaction in their wallet.
+    *   System displays the fee transaction hash immediately with an explorer link.
+    *   System waits for on-chain confirmation of the fee transaction (using `waitForTransactionReceipt` with polling/retries).
+    *   **(Tokens):** Upon confirmation, system sends the `deployment_id` and the `fee_paid_tx` hash back to the backend (`POST /api/deploy` again) to trigger the actual deployment process.
+    *   **(NFTs):** System sends the complete NFT configuration directly to the backend (`POST /api/nft/deploy`), which handles the entire deployment without a separate frontend fee payment step.
 
-2. **Deployment Status Tracking & Polling**
-   - System displays deployment pending state (`deploymentStatus` = `INITIATED` or `POLLING`)
-   - **Frontend polls backend periodically (`useEffect` hook):**
-     - Calls `apiService.getToken(tokenId)` to check overall `deployment_status`.
-     - If status is `completed` or `failed`, polling stops.
-     - If still `pending` or similar, polling continues.
-   - System updates UI with meaningful status messages (e.g., "Backend is deploying contracts...").
+2.  **Deployment Status Tracking & Polling (Frontend)**
+    *   Backend initiates the asynchronous deployment process across selected chains.
+    *   Frontend enters a polling state, displaying clear status messages (e.g., "Deployment initiated", "Deploying contracts on ZetaChain...", "Connecting contracts...").
+    *   Frontend periodically calls the backend status endpoint (`GET /api/token/{id}` or `GET /api/nft/collection/{id}`) to check the overall `deployment_status` field.
+    *   Polling continues at intervals (e.g., every 5-10 seconds) as long as the status is pending/processing.
 
-3. **Deployment Completion / Confirmation**
-   - **If backend status is `completed`:**
-     - System fetches detailed deployment logs (`apiService.getDeploymentLogs(tokenId)`).
-     - System updates state (`deploymentStatus` = `COMPLETED`).
-     - **System renders the `DeploymentConfirmation` component:**
-       - Displays a success message.
-       - Shows the `tokenId`.
-       - Lists each successfully deployed contract (`chain_name`, `contract_address`).
-       - Shows contract verification status (`verificationStatus`) using badges.
-       - Provides links to view contracts on block explorers (`verifiedUrl` or fallback).
-       - Offers a button to start a new deployment (resets the form).
-   - **If backend status is `failed`:**
-     - System fetches deployment logs (if available).
-     - System updates state (`deploymentStatus` = `FAILED_DEPLOYMENT`).
-     - System displays an error message, potentially including details from the logs.
-     - Offers a button to start over.
+3.  **Deployment Completion / Confirmation**
+    *   **If backend status becomes `completed`:**
+        *   Polling stops.
+        *   Frontend fetches the final detailed deployment information from the backend status endpoint.
+        *   Frontend updates the UI to display a clear success confirmation.
+        *   Confirmation includes: Token/NFT name, links to view the primary ZetaChain contract and contracts on each selected EVM chain on their respective explorers, and verification status badges.
+        *   Option to start a new deployment is presented.
+    *   **If backend status becomes `failed`:**
+        *   Polling stops.
+        *   Frontend fetches the final status, including any error messages from the backend.
+        *   Frontend displays a clear error message explaining that the deployment failed, potentially showing specific error details if available.
+        *   Option to retry (if applicable) or start a new deployment is presented.
 
-### Key Technical Considerations
-- **Transaction Handling**
-  ```javascript
-  // Fee payment and deploy API call (simplified)
-  try {
-    // ... (Create Token Config) ...
-    setCreatedTokenId(response.tokenId);
-    setDeploymentStatus(DEPLOYMENT_STATUS.PAYING);
+### Key Technical Considerations (Without Code)
 
-    // ... (Process Fee Payment Transaction with Confirmation) ...
-    const feeTxHash = txHashString; // Assume hash is retrieved
-
-    // ... (Wait for Transaction Confirmation) ...
-    if (!confirmed) {
-      throw new Error('Transaction confirmation timed out...');
-    }
-
-    // Notify backend to start deployment
-    await apiService.deployToken(tokenId, { fee_paid_tx: feeTxHash });
-    setDeploymentStatus(DEPLOYMENT_STATUS.INITIATED); // <<<< START POLLING HERE
-    setProcessingStep('Deployment initiated with backend! Polling for status...');
-
-  } catch (error) {
-    console.error('Error during creation/payment/deploy call:', error);
-    setErrors({ ...errors, submission: error.message });
-    // Set appropriate failure status (e.g., FAILED_PAYMENT or FAILED_DEPLOYMENT)
-    setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_PAYMENT);
-  }
-  ```
-
-- **Status Polling**
-  ```javascript
-  // Poll for deployment status updates using useEffect
-  useEffect(() => {
-    let intervalId;
-
-    const pollStatus = async () => {
-      if (!createdTokenId) return;
-      console.log(`Polling status for Token ID: ${createdTokenId}`);
-      setProcessingStep('Checking deployment status...');
-
-      try {
-        const tokenData = await apiService.getToken(createdTokenId);
-
-        if (tokenData.deployment_status === 'completed') {
-          const logs = await apiService.getDeploymentLogs(createdTokenId);
-          setDeploymentLogs(logs);
-          setDeploymentStatus(DEPLOYMENT_STATUS.COMPLETED);
-          clearInterval(intervalId);
-        } else if (tokenData.deployment_status === 'failed') {
-          const logs = await apiService.getDeploymentLogs(createdTokenId);
-          setDeploymentLogs(logs);
-          setErrors({ ...errors, submission: `Deployment failed: ${tokenData.error_message || 'Unknown reason'}` });
-          setDeploymentStatus(DEPLOYMENT_STATUS.FAILED_DEPLOYMENT);
-          clearInterval(intervalId);
-        } else {
-          setDeploymentStatus(DEPLOYMENT_STATUS.POLLING);
-          setProcessingStep('Backend is deploying contracts...');
-        }
-      } catch (error) {
-        console.error('Polling error:', error);
-        // Handle polling errors, maybe stop after too many failures
-      }
-    };
-
-    if (deploymentStatus === DEPLOYMENT_STATUS.INITIATED || deploymentStatus === DEPLOYMENT_STATUS.POLLING) {
-      pollStatus(); // Initial check
-      intervalId = setInterval(pollStatus, 5000); // Poll every 5 seconds
-    }
-
-    return () => { // Cleanup interval
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [deploymentStatus, createdTokenId, errors]); // Dependencies
-  ```
-
-- **User Experience During Deployment**
-  - Show clear loading indicators and status messages during payment, confirmation, and polling.
-  - Display the fee transaction hash with an explorer link immediately.
-  - Provide meaningful status messages reflecting the current stage (paying fee, confirming tx, initiating deployment, polling status, deploying contracts).
-  - On completion, clearly display the `DeploymentConfirmation` component with all details.
-  - Handle errors gracefully, distinguishing between payment failures (with retry option) and deployment failures (with start over option).
+*   **Transaction Handling (Fee Payment):** Implement robust handling for the fee payment transaction, including gas estimation, user rejection, network errors, and confirmation polling with timeouts and retries. Display the hash immediately.
+*   **API Interaction Workflow:** Strictly follow the backend's expected API call sequence (e.g., the two-step process for tokens vs. one step for NFTs).
+*   **Asynchronous Polling:** Use `useEffect` hooks with proper dependency management and cleanup (clearing intervals) for polling the backend deployment status.
+*   **State Management:** Maintain clear frontend state variables to track the deployment progress (e.g., `IDLE`, `CREATING_CONFIG`, `AWAITING_FEE_PAYMENT`, `CONFIRMING_FEE`, `AWAITING_BACKEND_DEPLOYMENT`, `POLLING_STATUS`, `COMPLETED`, `FAILED`).
+*   **User Feedback:** Provide continuous and informative feedback throughout the potentially multi-minute deployment process. Use loading spinners, status messages, and progress indicators.
+*   **Confirmation Display:** Render a dedicated, clear confirmation component upon success, showing all relevant contract addresses and explorer links derived from the final backend API response.
 
 ---
 
-## 4. Move Flow
+## 4. Move Flow (Transfer Assets)
 
 ### Flow Stages
-1. **Asset Type Selection**
-   - User arrives at the Move page
-   - User selects between "Move Tokens" or "Move NFTs" using visual card selection
-   - System shows the appropriate move interface based on selection
+1.  **Asset & Type Selection**
+    *   User navigates to the "Move" section.
+    *   System presents options (e.g., visual cards) to select between moving "Tokens" or "NFTs".
+    *   System fetches and displays the user's owned assets of the selected type (potentially calling `/api/users/{address}` and supplementing with direct contract reads for real-time balances).
 
-2. **Token Move Interface** (when "Move Tokens" is selected)
-   - User views all their tokens in a compact list format
-   - Tokens are grouped by "Tokens You Made" and "Tokens You Hold"
-   - User clicks on a token to select for moving
-   - System displays the Move panel
-   - User selects source chain (auto-selected if only one option)
-   - User selects destination chain
-   - User enters move amount and recipient address (optional)
+2.  **Token Move Interface** (if "Tokens" selected)
+    *   User views their tokens, possibly grouped (e.g., "Tokens You Made", "Tokens You Hold") or sorted.
+    *   Each token card displays the name, symbol, and balances across different chains.
+    *   User selects a specific token to move.
+    *   System displays a dedicated "Move Panel" or section for the selected token.
+    *   User selects the *source chain* from which to move the tokens (must have a balance > 0). This might be auto-selected if the user only holds the token on one chain.
+    *   User selects the *destination chain* from the list of other supported, connected chains for that token.
+    *   User enters the *amount* to move (validation against source chain balance occurs).
+    *   User optionally enters a recipient address (defaults to their own address if left blank).
+    *   User clicks "Initiate Move".
 
-3. **NFT Move Interface** (when "Move NFTs" is selected)
-   - User views all their NFT collections
-   - User selects an NFT to move
-   - User selects a destination chain
-   - User enters recipient address
-   - System processes the NFT move
+3.  **NFT Move Interface** (if "NFTs" selected)
+    *   User views their owned NFTs, likely grouped by collection.
+    *   User selects a specific NFT to move (showing its current chain location).
+    *   System displays a "Move Panel".
+    *   User selects the *destination chain*.
+    *   User optionally enters a recipient address.
+    *   User clicks "Initiate Move".
 
-### Key Technical Considerations
-- **Visual Card Selection Implementation**
-  ```javascript
-  const [assetType, setAssetType] = useState('token'); // 'token' or 'nft'
-  
-  return (
-    <PageContainer>
-      <PageTitle>Move Digital Assets</PageTitle>
-      <PageDescription>
-        Move your tokens or NFTs between chains effortlessly with ZetaChain's cross-chain technology.
-      </PageDescription>
-      
-      <AssetTypeContainer>
-        <AssetTypeCard 
-          selected={assetType === 'token'} 
-          onClick={() => setAssetType('token')}
-        >
-          <AssetTypeIcon selected={assetType === 'token'}>
-            <TokenIcon />
-          </AssetTypeIcon>
-          <AssetTypeTitle>Move Tokens</AssetTypeTitle>
-          <AssetTypeDescription>
-            Move tokens between different blockchains
-          </AssetTypeDescription>
-        </AssetTypeCard>
-        
-        <AssetTypeCard 
-          selected={assetType === 'nft'} 
-          onClick={() => setAssetType('nft')}
-        >
-          <AssetTypeIcon selected={assetType === 'nft'}>
-            <NFTIcon />
-          </AssetTypeIcon>
-          <AssetTypeTitle>Move NFTs</AssetTypeTitle>
-          <AssetTypeDescription>
-            Move your NFTs across different chains
-          </AssetTypeDescription>
-        </AssetTypeCard>
-      </AssetTypeContainer>
-      
-      {assetType === 'token' ? <MoveTokens embedded={true} /> : <MoveNFTPage embedded={true} />}
-    </PageContainer>
-  );
-  ```
+4.  **Move Execution & Tracking**
+    *   System performs client-side validation (amount, addresses).
+    *   System ensures the user is connected to the selected *source chain* network (prompting a switch if necessary).
+    *   **(Crucial Check):** System may perform a read-only call to the source contract to verify cross-chain setup is complete (e.g., `connectedContracts` or `zetaChainContract` is set) before proceeding.
+    *   System prepares and prompts the user to sign the cross-chain move transaction via their wallet (interacting directly with the `crossChainMove` function or similar on the source chain contract).
+    *   User approves the transaction.
+    *   System displays the source chain transaction hash and confirmation status.
+    *   System provides feedback indicating the cross-chain message is being processed (this may take several minutes depending on ZetaChain processing).
+    *   (Optional/Advanced): System might monitor ZetaChain or the destination chain for the corresponding mint event to confirm completion, or rely on the user checking their balance later.
 
-- **Token Data Structure**
-  ```javascript
-  const token = {
-    id: string,
-    name: string,
-    symbol: string,
-    iconUrl: string,
-    deployedChains: string[],
-    balances: {
-      [chainId: string]: number
-    }
-  };
-  ```
+### Key Technical Considerations (Without Code)
 
-- **Chain Selection Logic**
-  ```javascript
-  // Get available destination chains
-  const getAvailableDestinationChains = () => {
-    if (!selectedToken) return [];
-    
-    // Return all supported chains except the source chain
-    return supportedChains.filter(chain => 
-      chain.id !== formData.sourceChain
-    );
-  };
-  ```
-
-- **Move Processing**
-  ```javascript
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    try {
-      setMoving(true);
-      setMoveResult(null);
-      
-      const result = await apiService.moveTokens({
-        tokenId: selectedToken.id,
-        sourceChainId: sourceChain,
-        destinationChainId: destinationChain,
-        moveAmount: formData.moveAmount,
-        recipientAddress: formData.recipientAddress
-      });
-      
-      setMoveResult(result);
-    } catch (error) {
-      console.error('Move failed:', error);
-      alert(`Move failed: ${error.message}`);
-    } finally {
-      setMoving(false);
-    }
-  };
-  ```
-
-### User Experience Considerations
-1. **Visual Feedback**
-   - Clear indication of selected token and chain
-   - Disabled state for unavailable chains
-   - Loading states during move
-   - Success/error messages with transaction details
-
-2. **Error Handling**
-   - Validate move amount against available balance
-   - Check for valid recipient address format
-   - Handle network errors gracefully
-   - Provide clear error messages
-
-3. **Accessibility**
-   - Keyboard navigation for chain selection
-   - Clear focus states
-   - Descriptive labels and helper text
-   - High contrast for important information
+*   **Asset Display:** Fetch and display user assets, potentially combining backend data (`/api/users/{address}`) with real-time on-chain balance checks (`balanceOf` calls) for accuracy.
+*   **Chain Selection Logic:** Dynamically populate source and destination chain selectors based on where the selected asset exists and is connected.
+*   **Direct Contract Interaction:** Use `ethers.js` / `wagmi` (`useContractWrite`) to interact directly with the deployed Universal Token/NFT contract's `crossChainMove` (or similar) function on the selected source chain.
+*   **Network Management:** Ensure the user's wallet is connected to the correct *source chain* before initiating the move transaction.
+*   **Pre-Move Checks:** Implement read-only contract calls to verify necessary cross-chain setup/links are configured on the contracts to prevent transactions that are guaranteed to fail on-chain.
+*   **Amount Formatting:** Use `ethers.parseUnits` with the correct token decimals when preparing the transaction amount.
+*   **Status Feedback:** Provide clear feedback during the transaction signing, confirmation on the source chain, and the subsequent cross-chain processing period. Acknowledge that the cross-chain part takes time.
 
 ---
 
 ## 5. Error Handling & Recovery
 
 ### Common Error Scenarios
-1. **Wallet Connection Errors**
-   - Wallet not installed
-   - User rejects connection
-   - Network switching fails
+1.  **Wallet Errors:** Connection failures, user rejections, network switching problems.
+2.  **Transaction Errors:** Insufficient funds (gas or tokens), user rejection, on-chain reverts (e.g., invalid parameters, contract state issues like incomplete setup), timeouts.
+3.  **API Errors:** Backend service unavailable, invalid requests, server errors.
+4.  **Cross-Chain Delays:** Moves not completing instantly due to the nature of cross-chain messaging.
 
-2. **Transaction Errors**
-   - User rejects transaction
-   - Insufficient balance
-   - Network congestion / failed transaction
+### Technical Implementation (Conceptual)
 
-3. **API Errors**
-   - Backend unavailable
-   - Request validation errors
-   - CORS issues
-
-### Technical Implementation
-- **Frontend Error Boundaries**
-  - Implement React error boundaries for component-level errors
-  - Provide meaningful error messages with recovery options
-
-- **Transaction Recovery**
-  ```javascript
-  try {
-    // Transaction logic
-  } catch (error) {
-    // Error classification and handling
-    if (error.code === 4001) {
-      // User rejected transaction
-      setErrors({...errors, submission: 'Transaction was rejected. Please try again.'});
-    } else if (error.message.includes('insufficient funds')) {
-      // Insufficient balance
-      setErrors({...errors, submission: `Insufficient ZETA balance. Please add more ZETA to your wallet.`});
-    } else {
-      // Other errors
-      setErrors({...errors, submission: `Transaction failed: ${error.message}`});
-    }
-  }
-  ```
-
-- **Wallet Readiness Verification**
-  ```javascript
-  // Add a state to track wallet readiness
-  const [walletReady, setWalletReady] = useState(false);
-  
-  // Use walletClient hook from wagmi
-  const { data: walletClient } = useWalletClient({ chainId: ZETACHAIN_ID });
-  
-  // Check wallet readiness when dependencies change
-  useEffect(() => {
-    if (isConnected && isZetaChainNetwork && walletClient) {
-      setWalletReady(true);
-    } else {
-      setWalletReady(false);
-    }
-  }, [isConnected, isZetaChainNetwork, walletClient]);
-  
-  // Verify readiness before transaction
-  if (!walletReady) {
-    // Wait briefly for wallet to be ready
-    setProcessingStep('Preparing wallet...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    if (!walletClient) {
-      throw new Error('Wallet client not available. Please ensure your wallet is properly connected.');
-    }
-  }
-  ```
-
-- **Transaction Preparation and Submission**
-  ```javascript
-  // Prepare transaction parameters
-  const txParams = {
-    to: UNIVERSAL_TOKEN_SERVICE_WALLET,
-    value: feeInWei,
-    chainId: ZETACHAIN_ID // Ensure transaction is sent on the correct chain
-  };
-  
-  setProcessingStep('Waiting for wallet signature...');
-  
-  let txResult;
-  try {
-    // Try to send the transaction with a separate try/catch
-    txResult = await sendTransaction(txParams);
-    console.log('Transaction request sent, waiting for user to sign:', txResult);
-  } catch (sendError) {
-    // Specific error handling for sendTransaction failures
-    console.error('Failed to send transaction:', sendError);
-    
-    // More descriptive error message for different error cases
-    if (sendError.message.includes('user rejected')) {
-      throw new Error('Transaction was rejected by the user. Please try again.');
-    } else if (sendError.message.includes('network') || sendError.message.includes('chain')) {
-      throw new Error('Network error: Please ensure you are connected to ZetaChain and try again.');
-    } else {
-      throw new Error(`Failed to send transaction: ${sendError.message}`);
-    }
-  }
-  ```
-
-- **Transaction Hash Display and Tracking**
-  ```javascript
-  // Save and display transaction hash
-  setTransactionHash(txResult.hash);
-  
-  // Render transaction hash with explorer link
-  {transactionHash && (
-    <div style={{ margin: '15px 0', padding: '10px', backgroundColor: 'rgba(60, 157, 242, 0.1)', borderRadius: '8px' }}>
-      <p style={{ marginBottom: '5px', fontWeight: 'bold' }}>Transaction Hash:</p>
-      <p style={{ wordBreak: 'break-all', fontSize: '14px' }}>{transactionHash}</p>
-      <p style={{ marginTop: '10px' }}>
-        <a 
-          href={`https://explorer.zetachain.com/tx/${transactionHash}`} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          style={{ 
-            color: 'var(--accent-primary)', 
-            textDecoration: 'none',
-            padding: '5px 10px',
-            border: '1px solid var(--accent-primary)',
-            borderRadius: '5px',
-            fontSize: '14px',
-            display: 'inline-block',
-            marginTop: '5px'
-          }}
-        >
-          View on Explorer
-        </a>
-      </p>
-    </div>
-  )}
-  ```
-
-- **Transaction Confirmation Handling**
-  ```javascript
-  // Wait for transaction confirmation before continuing
-  setProcessingStep('Waiting for transaction confirmation (this may take 10-15 seconds)...');
-  
-  let confirmed = false;
-  let attempts = 0;
-  const maxAttempts = 20; // 20 attempts * 1.5 seconds = 30 seconds max wait time
-  
-  while (!confirmed && attempts < maxAttempts) {
-    try {
-      attempts++;
-      
-      // Try to get transaction receipt to check if confirmed
-      const txReceipt = await publicClient.getTransactionReceipt({ 
-        hash: txResult.hash 
-      });
-      
-      if (txReceipt && txReceipt.status === 'success') {
-        confirmed = true;
-        console.log('Transaction confirmed:', txReceipt);
-      } else {
-        // Wait before trying again
-        await new Promise(resolve => setTimeout(resolve, 1500));
-      }
-    } catch (error) {
-      console.log(`Waiting for confirmation (attempt ${attempts}/${maxAttempts})...`);
-      // Wait before trying again
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    }
-  }
-  
-  if (!confirmed) {
-    throw new Error('Transaction confirmation timed out. The transaction may still complete - please check your wallet and retry later if needed.');
-  }
-  
-  // Only now proceed with the API call
-  await apiService.deployToken(tokenId, {
-    fee_paid_tx: txResult.hash
-  });
-  ```
-
-- **Retry Mechanism**
-  ```javascript
-  // Show retry button for failed transactions
-  {showRetryButton && (
-    <div style={{ marginTop: '20px' }}>
-      <p>Transaction failed. Would you like to try again?</p>
-      <ButtonContainer>
-        <SubmitButton onClick={handleRetryTransaction}>
-          Retry Transaction
-        </SubmitButton>
-      </ButtonContainer>
-    </div>
-  )}
-  
-  // Retry logic with attempt tracking
-  const handleRetryTransaction = async () => {
-    if (createdTokenId) {
-      setTransactionRetries(prev => prev + 1);
-      setShowRetryButton(false);
-      setErrors({});
-      setTransactionHash(null);
-      const success = await processFeePayment(createdTokenId);
-      if (!success && transactionRetries >= 2) {
-        // After 3 attempts, suggest manual deployment
-        setErrors({
-          ...errors,
-          submission: `Multiple transaction attempts failed. Please try again later or contact support with your Token ID: ${createdTokenId}.`
-        });
-      }
-    }
-  };
-  ```
-
-- **API Error Handling**
-  ```javascript
-  // In API service
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('API Error:', response.status, errorText);
-    throw new Error(`API Error (${response.status}): ${errorText || 'Unknown error'}`);
-  }
-  ```
+*   **Frontend Error Boundaries:** Use React error boundaries to catch rendering errors in specific UI sections.
+*   **Specific Error Messages:** Catch errors from wallet interactions, API calls, and contract calls. Provide user-friendly messages based on error codes or content (e.g., distinguish user rejection `4001` from insufficient funds).
+*   **Transaction State Handling:** Track transaction states (signing, submitted, confirming, confirmed, failed) and update the UI accordingly.
+*   **Retry Mechanisms:** Offer retries for certain failures, like fee payment transaction submission (but not necessarily for on-chain reverts).
+*   **Clear Feedback for Delays:** For cross-chain moves, manage user expectations by explaining that the process takes time after the initial source chain transaction is confirmed.
+*   **Logging:** Implement client-side logging to capture errors and context for easier debugging.
 
 ---
 
 ## 6. Best Practices & Lessons Learned
 
 ### Frontend Best Practices
-1. **Wallet Integration**
-   - Use established libraries (wagmi, ethers) for reliable wallet connections
-   - Handle network switching with fallbacks for adding networks
-   - Validate network and balance before operations
-   - Check wallet readiness before attempting transactions
-   - Use the walletClient hook to ensure proper wallet initialization
+1.  **Wallet Interaction:** Use robust libraries (`wagmi`, `ethers`). Handle network switching/adding gracefully. Validate connection and network *before* initiating actions.
+2.  **Form Handling:** Match backend field names precisely. Validate inputs client-side. Handle large numbers and data types correctly.
+3.  **Transaction Lifecycle:** Manage the full lifecycle: prepare -> estimate gas -> sign -> submit -> display hash -> confirm -> handle result. Provide clear UI feedback at each stage.
+4.  **Asynchronous Operations:** Handle promises and async operations correctly, especially for polling and transaction confirmation.
+5.  **State Management:** Keep UI state consistent with blockchain and backend state.
 
-2. **Form Handling**
-   - Match field names exactly with backend expectations
-   - Validate addresses and amounts client-side
-   - Convert data types appropriately (strings for BigInts, JSON strings for arrays)
-
-3. **Transaction Processing**
-   - Don't convert BigInt values to strings when using wagmi hooks
-   - Handle transaction confirmation and errors explicitly
-   - Wait for blockchain confirmation before notifying backend APIs
-   - Update UI based on transaction stages with clear status messages
-   - Implement retry mechanisms for failed transactions
-   - Show transaction hash with explorer link for transparency
-   - Use separate try/catch blocks for transaction preparation and confirmation
-   - Provide clear and specific error messages for different failure scenarios
-
-### Backend Best Practices
-1. **API Route Configuration**
-   - Use consistent prefix strategy (either in router or in app.include_router, not both)
-   - Document endpoints clearly with expected parameters
-
-2. **CORS Handling**
-   - Configure CORS middleware with appropriate origins
-   - Include development mode with wildcard origins
-
-3. **Authentication**
-   - Implement development bypass for testing
-   - Use clear error messages for authentication failures
-
----
-
-## 7. Contract Verification
-
-The Universal Token Launcher now provides automatic contract verification for deployed tokens, enhancing transparency and trust for users.
-
-### 7.1 Verification Process Overview
-
-1. **Automatic Verification:**
-   - Contracts are automatically verified after deployment
-   - No user intervention required
-   - Process runs in background during token deployment
-
-2. **Verification Status:**
-   - Verification status is stored directly in the token's `connected_chains_json` attribute
-   - Each chain entry contains its own `verification_status` field
-   - Possible statuses: pending, processing, verified, failed, skipped
-   - Error messages stored alongside status if verification fails
-
-3. **Explorer Integration:**
-   - Direct links to verified contracts on block explorers
-   - Explorer URLs stored in `explorer_url` and `blockscout_url` fields
-   - Formatted `contract_url` provides ready-to-use links for frontend
-   - Different explorer support based on chain:
-     - Blockscout for ZetaChain (Athens)
-     - Etherscan for Ethereum networks (Sepolia)
-     - Basescan for Base (Base Sepolia)
-     - Other Etherscan-compatible explorers for additional chains
-
-### 7.2 User Benefits
-
-1. **Enhanced Transparency:**
-   - Users can inspect the source code on block explorers
-   - Builds trust by allowing code verification
-   - Confirms contract behavior matches expected functionality
-
-2. **Better Debugging:**
-   - Makes troubleshooting easier if issues arise
-   - Allows developers to understand token behavior
-   - Provides insight into contract interactions
-
-3. **Social Proof:**
-   - Shows verification checkmark on explorers
-   - Increases credibility for tokens
-   - Standard practice for legitimate projects
-
-### 7.3 Implementation Details
-
-1. **User Experience:**
-   - Seamlessly integrated into deployment flow
-   - Progress indicators during verification
-   - Success or failure notification
-
-2. **Verification Status Storage:**
-   - Status integrated directly into the token database model
-   - Stored in `connected_chains_json` for each deployed chain
-   - ZetaChain-specific verification information in `zeta_chain_info`
-   - Example JSON structure:
-     ```json
-     {
-       "11155111": {
-         "status": "completed",
-         "contract_address": "0x5678...",
-         "transaction_hash": "0xabcd...",
-         "verification_status": "verified",
-         "explorer_url": "https://sepolia.etherscan.io",
-         "contract_url": "https://sepolia.etherscan.io/address/0x5678..."
-       }
-     }
-     ```
-
-3. **UI Elements:**
-   ```jsx
-   // Example verification status display in token details
-   <VerificationStatus status={chain.verification_status}>
-     {chain.verification_status === 'verified' ? (
-       <VerificationLink 
-         href={chain.contract_url} 
-         target="_blank" 
-         rel="noopener noreferrer"
-       >
-         ✓ Verified - View on Explorer
-       </VerificationLink>
-     ) : chain.verification_status === 'failed' ? (
-       <VerificationError>
-         ✗ Verification Failed: {chain.verification_message || 'Unknown error'}
-       </VerificationError>
-     ) : (
-       <span>{capitalizeFirstLetter(chain.verification_status)}...</span>
-     )}
-   </VerificationStatus>
-   ```
-
-4. **Technical Implementation:**
-   - Verification service updates database directly after verification attempts
-   - Takes database session as parameter for database operations
-   - Status updates happen in real-time during verification process
-   - Explorer API keys configured on backend
-   - Proper compiler settings
-   - Accurate source code management
-
-This enhanced verification feature significantly improves the user experience by providing verified, transparent contracts without requiring any additional steps from users, while maintaining a comprehensive record of verification statuses for each deployed contract.
-
----
-
-## 8. Testing Strategies
-
-### Integration Testing Approach
-
-1. **Component Isolation**
-   - Test components in isolation by mocking all external dependencies
-   - Mock API service calls to simulate various response scenarios
-   - Mock wallet connections and blockchain interactions
-   - Focus on testing component behavior, not implementation details
-
-2. **Form Submission Testing**
-   - Test complete form submission flows from input to API call
-   - Verify that form data is correctly formatted and sent to the API
-   - Test validation rules and error handling
-   - Use `screen.getByRole` with name options for more reliable button selection:
-     ```javascript
-     // More reliable than generic queries
-     const submitButton = screen.getByRole('button', { name: 'Launch Token' });
-     fireEvent.click(submitButton);
-     ```
-
-3. **Asynchronous State Management**
-   - Test loading states properly with waitFor and async assertions
-   - Verify that loading indicators appear and disappear appropriately
-   - Test both the loading and loaded states:
-     ```javascript
-     // Check loading state first
-     expect(screen.getByText(/loading your tokens/i)).toBeInTheDocument();
-     
-     // Then wait for loading to resolve
-     await waitFor(() => {
-       expect(screen.queryByText(/loading your tokens/i)).not.toBeInTheDocument();
-     });
-     
-     // Finally check that content appears
-     expect(screen.getByText(/My Universal Token/i)).toBeInTheDocument();
-     ```
-
-4. **API Mock Implementation**
-   - Implement realistic API mocks with delays to simulate network requests
-   - Test both success and error scenarios for each API call
-   - Simulate timeouts and network errors
-   - Example implementation:
-     ```javascript
-     apiService.getUserTokens.mockImplementation(() => {
-       return new Promise((resolve) => {
-         // Add delay to simulate network request
-         setTimeout(() => {
-           resolve([
-             { id: 'token1', name: 'My Universal Token', /* other props */ },
-             { id: 'token2', name: 'Another Token', /* other props */ }
-           ]);
-         }, 100);
-       });
-     });
-     ```
-
-5. **Transaction Testing**
-   - Mock blockchain transactions to test transaction flow
-   - Test error scenarios like user rejection and failed transactions
-   - Simulate transaction waiting and confirmation
-   - Check that UI updates correctly during transaction stages
-
-### Testing Gotchas and Solutions
-
-1. **Element Selection Challenges**
-   - **Problem**: Elements may be nested in styled-components making selection difficult
-   - **Solution**: Use more specific queries with text content or roles, and possibly add test IDs
-
-2. **Asynchronous Testing Issues**
-   - **Problem**: Tests may fail due to timing issues with state updates
-   - **Solution**: Use `waitFor` with appropriate timeouts and check both appearance and disappearance of elements
-
-3. **Mock Implementation Depth**
-   - **Problem**: Complex components may require deep mocking of multiple dependencies
-   - **Solution**: Create a dedicated test setup file with comprehensive mock implementations
-
-4. **Alert Testing**
-   - **Problem**: Browser alerts are not implemented in JSDOM
-   - **Solution**: Mock `window.alert` or refactor code to use custom alert components that can be tested
-
-### Continuous Integration Testing
-
-1. **Test Command**
-   - Use `npm test -- --testMatch="**/*Integration.test.js" --watchAll=false` to run all integration tests
-   - Include specific test files by pattern for more targeted testing
-
-2. **Mocking Strategy**
-   - Ensure all external dependencies are properly mocked in CI environment
-   - Use consistent mock implementations across tests
-   - Consider using MSW (Mock Service Worker) for API mocking in more complex scenarios
-
----
-
-## 9. Flow Diagrams
-
-### Main User Flows
-```
-Landing Page → Connect Wallet → Switch to ZetaChain
-
-MAKE FLOW:
-Make Page → Select Asset Type (Token/NFT) → Enter Details → 
-Add Distributions → Validate & Deploy → Pay Fee →
-Monitor Deployment → View Success
-
-MOVE FLOW:
-Move Page → Select Asset Type (Token/NFT) → Select Asset →
-Select Destination → Enter Amount → Submit Move →
-Verify API Calls → Check Move Status
-```
-
-### Error Recovery Flows
-```
-Wallet Connection Error → Retry or Install Wallet Instructions
-Network Switch Error → Manual Network Addition Instructions
-Deployment Error → View Details → Retry Deployment
-```
-
-### Integration Test Flows
-```
-MAKE INTEGRATION TEST:
-Mock API and Wagmi Hooks → Render MakePage →
-Fill Form Fields → Click Submit Button →
-Verify API Calls → Check Deployment Status →
-Verify Success/Error States
-
-MOVE INTEGRATION TEST:
-Mock API and Wagmi Hooks → Render MovePage →
-Verify Loading State → Wait for Token Data →
-Verify Tokens Displayed → Select Source and Destination →
-Enter Amount → Submit Move →
-Verify API Calls → Check Move Status
-```
-
----
-
-## BlockScout API Integration for Token Move Page
-
-### Overview
-
-The Universal Token Launcher's Move page uses the BlockScout API to identify tokens owned by users and display them for cross-chain moves. This integration connects our database records with on-chain token information.
-
-### Implementation Details
-
-1. **Environment Configuration**:
-   - The BlockScout API URL is configured in the backend `.env` file:
-     ```
-     ZETACHAIN_TESTNET_BLOCKSCOUT_API=https://zetachain-testnet.blockscout.com/
-     ```
-
-2. **API Integration Flow**:
-   - Backend queries the database for deployed Universal Tokens
-   - Makes API request to BlockScout: `${process.env.ZETACHAIN_TESTNET_BLOCKSCOUT_API}?module=account&action=tokenlist&address=${walletAddress}`
-   - Matches BlockScout token data with our deployed contracts
-   - Returns combined data to frontend including token balances
-
-3. **Error Handling**:
-   - Improved error handling prevents API issues from breaking the UI
-   - Detailed logging helps debug BlockScout API responses
-   - Frontend includes fallbacks for missing or incomplete data
-
-4. **Type Consistency**:
-   - Database `chainId` is stored as STRING type
-   - API queries explicitly convert chainId to string: `String(ZETACHAIN_TESTNET_ID)`
-   - This prevents type mismatch errors in database queries
-
-### API Response Structure
-
-The BlockScout API returns token data in this format:
-```json
-{
-  "status": "1",
-  "message": "OK",
-  "result": [
-    {
-      "balance": "1000000000000000000",
-      "contractAddress": "0x123...",
-      "decimals": "18",
-      "name": "Example Token",
-      "symbol": "EXMP",
-      "type": "ERC-20"
-    }
-  ]
-}
-```
-
-### Maintenance Considerations
-
-When working with the BlockScout API:
-1. Monitor for API changes or rate limits
-2. Consider implementing caching to reduce API load
-3. Validate response data before processing
-4. Add appropriate timeout handling for API requests
-5. Handle network interruptions gracefully
-
----
-
-This application flow document provides a comprehensive guide to implementing the Universal Launcher, with particular attention to avoiding common pitfalls and ensuring a smooth user experience. -->
+### Backend Best Practices (Summary)
+1.  **API Design:** Use FastAPI for performance and auto-docs. Maintain consistent naming (snake_case). Configure CORS properly.
+2.  **Database:** Use SQLAlchemy/Alembic. Commit critical data immediately. Handle migrations carefully.
+3.  **Blockchain Interaction:** Use `web3.py`. Manage the service deployer key securely. Ensure `rpc_config.json` is accurate, especially `gateway_address`.
+4.  **Error Handling:** Implement robust error handling and logging.
