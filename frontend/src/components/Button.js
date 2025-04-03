@@ -14,6 +14,8 @@ const baseButtonStyles = css`
   transition: all 0.2s ease-in-out;
   line-height: 1.2; /* Prevent text jumping on wrap */
   white-space: nowrap; /* Prevent text wrapping */
+  height: 48px; /* Add consistent height */
+  box-sizing: border-box; /* Ensure padding doesn't affect height */
 
   &:focus-visible {
     outline: 2px solid var(--accent-primary);

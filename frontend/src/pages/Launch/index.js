@@ -57,6 +57,8 @@ const PageContainer = styled.div`
 `;
 
 const PageTitle = styled.h1`
+  font-size: 32px;
+  font-weight: 700;
   margin-bottom: 32px;
   text-align: center;
   display: ${props => props.embedded ? 'none' : 'block'};
@@ -67,18 +69,19 @@ const FormContainer = styled.div`
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 32px;
+  border: 1px solid var(--border);
 `;
 
 const SectionTitle = styled.h2`
   font-size: 24px;
   font-weight: 600;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 `;
 
 const FormRow = styled.div`
   display: flex;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
   
   @media (max-width: 768px) {
     flex-direction: column;
@@ -93,12 +96,13 @@ const ButtonContainer = styled.div`
   display: flex;
   justify-content: center;
   margin-top: 32px;
+  gap: 16px;
 `;
 
 const FeeSection = styled.div`
   background-color: rgba(60, 157, 242, 0.1);
   border-radius: 8px;
-  padding: 16px;
+  padding: 24px;
   margin-top: 24px;
 `;
 
@@ -106,21 +110,23 @@ const FeeRow = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 `;
 
 const FeeName = styled.span`
   color: var(--text-secondary);
+  font-size: 16px;
 `;
 
 const FeeAmount = styled.span`
   color: var(--text-primary);
   font-weight: 600;
+  font-size: 16px;
 `;
 
 const ErrorMessage = styled.div`
   color: var(--error);
-  padding: 12px;
+  padding: 16px;
   border-radius: 8px;
   background-color: rgba(255, 82, 82, 0.1);
   margin-top: 16px;
@@ -138,16 +144,19 @@ const ToggleButton = styled.button`
   color: ${props => props.$active ? 'white' : 'var(--text-secondary)'};
   border: 1px solid ${props => props.$active ? 'var(--accent-primary)' : 'var(--border)'};
   border-radius: 8px;
-  padding: 8px 16px;
+  padding: 12px 24px;
   font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   transition: color 0.2s ease-in-out, border-color 0.2s ease-in-out, background-color 0.2s ease-in-out;
-  position: relative; /* Optional: for future pseudo-elements */
+  position: relative;
+  height: 48px;
+  box-sizing: border-box;
 
   &:hover {
     border-color: var(--accent-primary);
     color: ${props => props.$active ? 'white' : 'var(--accent-primary)'};
-    background-color: ${props => !props.$active && 'rgba(60, 157, 242, 0.1)'}; /* Subtle background on hover if not active */
+    background-color: ${props => !props.$active && 'rgba(60, 157, 242, 0.1)'};
   }
 
   &:active {
@@ -1000,7 +1009,6 @@ const LaunchPage = ({ embedded = false }) => {
 
       case DEPLOYMENT_STATUS.IDLE:
       default:
-        const isSubmitting = deploymentStatus !== DEPLOYMENT_STATUS.IDLE; // Simplified check
         return (
           <EnhancedCreatePanel>
             <form onSubmit={handleSubmit}>

@@ -39,6 +39,8 @@ const ToggleButton = styled.button`
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  height: 48px;
+  box-sizing: border-box;
   
   &:hover {
     background-color: ${props => props.active ? 'var(--accent-primary)' : 'rgba(60, 157, 242, 0.1)'};
@@ -51,6 +53,7 @@ const ComingSoon = styled.div`
   padding: 60px 32px;
   text-align: center;
   margin-top: 20px;
+  border: 1px solid var(--border);
 `;
 
 const ComingSoonTitle = styled.h2`

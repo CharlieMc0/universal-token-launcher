@@ -974,6 +974,7 @@ We have made significant progress in testing the backend components:
      - Combines on-chain data with application database
      - Returns token balances across all chains
      - Indicates deployer status for each token
+     - **Enhanced (May 2025)**: Now includes tokens where the user is the deployer, regardless of balance, ensuring token contracts remain visible to their owners
 
 5. **Chain Information**
    - **Status**: Implemented

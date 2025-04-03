@@ -33,6 +33,7 @@ const ToggleContainer = styled.div`
   border-radius: var(--radius-sm, 8px);
   padding: 4px; /* Padding to contain the pill */
   width: fit-content; /* Keep width fitting content */
+  min-width: 400px; /* Set a minimum width to prevent buttons from being too narrow */
   /* Removed display: inline-flex; Let default block behavior + margin: auto handle centering */
 
   /* The sliding pill */
@@ -55,6 +56,10 @@ const ToggleContainer = styled.div`
   &[data-active-tab="nft"]::before {
     left: calc(50%); /* Move pill to start of the second half */
   }
+  
+  @media (max-width: 480px) {
+    min-width: 100%; /* On smaller screens, use full width */
+  }
 `;
 
 const ToggleButton = styled.button`
@@ -71,6 +76,9 @@ const ToggleButton = styled.button`
   z-index: 2; /* Ensure text is above the pill */
   flex: 1; /* Allow buttons to take equal space */
   text-align: center; /* Center text within button */
+  height: 48px; /* Add consistent height */
+  box-sizing: border-box; /* Ensure padding doesn't affect height */
+  white-space: nowrap; /* Prevent text wrapping */
   
   &:hover {
     color: var(--text-primary); /* Text brightens on hover */
@@ -102,7 +110,7 @@ const CreatePage = () => {
           active={activeTab === 'nft'} 
           onClick={() => setActiveTab('nft')}
         >
-          Create NFT Collection
+          Create NFTs
         </ToggleButton>
       </ToggleContainer>
       

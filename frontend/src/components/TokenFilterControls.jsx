@@ -7,11 +7,13 @@ const FilterContainer = styled.div`
   align-items: center;
   justify-content: space-between;
   margin-bottom: 24px;
+  height: 48px;
   
   @media (max-width: 768px) {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+    height: auto;
   }
 `;
 
@@ -20,18 +22,23 @@ const TabsContainer = styled.div`
   background-color: rgba(42, 42, 45, 0.5);
   border-radius: 8px;
   padding: 4px;
+  height: 48px;
+  box-sizing: border-box;
 `;
 
 const TabButton = styled.button`
   background-color: ${props => props.active ? 'var(--card-bg)' : 'transparent'};
   color: ${props => props.active ? 'var(--text-primary)' : 'var(--text-secondary)'};
   border: none;
-  padding: 8px 16px;
+  padding: 0 24px;
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  height: 40px;
+  line-height: 40px;
+  white-space: nowrap;
   
   &:hover {
     background-color: ${props => props.active ? 'var(--card-bg)' : 'rgba(42, 42, 45, 0.8)'};
@@ -40,7 +47,7 @@ const TabButton = styled.button`
 
 const SearchContainer = styled.div`
   position: relative;
-  width: 240px;
+  width: 300px;
   
   @media (max-width: 768px) {
     width: 100%;
@@ -60,10 +67,13 @@ const SearchInput = styled.input`
   background-color: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 12px 8px 32px;
+  padding: 8px 12px 8px 36px;
   color: var(--text-primary);
   font-size: 14px;
   width: 100%;
+  height: 48px;
+  line-height: 32px;
+  box-sizing: border-box;
   
   &::placeholder {
     color: var(--text-secondary);
@@ -90,9 +100,13 @@ const SortSelect = styled.select`
   background-color: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 8px 16px;
   color: var(--text-primary);
   font-size: 14px;
+  height: 48px;
+  line-height: 32px;
+  box-sizing: border-box;
+  min-width: 180px;
   
   &:focus {
     border-color: var(--accent-primary);
@@ -114,7 +128,7 @@ const SortSelect = styled.select`
  * @param {Function} props.onSortChange - Callback when sort option changes
  */
 const TokenFilterControls = ({
-  filter = 'all',
+  filter = 'holdings',
   onFilterChange,
   searchQuery = '',
   onSearchChange,
@@ -146,22 +160,16 @@ const TokenFilterControls = ({
     <FilterContainer>
       <TabsContainer>
         <TabButton 
-          active={filter === 'all'} 
-          onClick={() => handleFilterChange('all')}
+          active={filter === 'holdings'} 
+          onClick={() => handleFilterChange('holdings')}
         >
-          All Tokens
+          Tokens You Hold
         </TabButton>
         <TabButton 
           active={filter === 'owned'} 
           onClick={() => handleFilterChange('owned')}
         >
           Tokens You Deployed
-        </TabButton>
-        <TabButton 
-          active={filter === 'holdings'} 
-          onClick={() => handleFilterChange('holdings')}
-        >
-          Tokens You Hold
         </TabButton>
       </TabsContainer>
       

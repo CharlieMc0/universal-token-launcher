@@ -110,11 +110,12 @@ We will use **PostgreSQL** as our primary relational database. Data is normalize
   - **Description:** Retrieve tokens owned by a specific wallet address.
   - **Path Parameters:**
     - `address` - Wallet address to query
-  - **Response:** List of tokens owned by the user with:
+  - **Response:** List of tokens with:
     - Token details (name, symbol, decimals)
     - Deployer status (whether the user is the token deployer)
     - Balance information for each chain where the token is deployed
     - Explorer URLs for each token contract
+    - **Enhanced Behavior:** Now includes all tokens where the user is the deployer, even if they have zero balance, ensuring users can always see tokens they have deployed
 
 #### 4.2.2. Chain Information
 - **GET /api/chains**

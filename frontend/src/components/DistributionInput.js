@@ -116,10 +116,12 @@ const DistributionInput = ({
           return null;
         }
         validationResult.validAddresses++;
+        
+        // Return object with proper field names for the Launch component
         return {
-          recipient_address: addr,
-          chain_id: chainId,
-          token_amount: amount
+          address: addr, // Using 'address' instead of 'recipient_address'
+          amount: amount ? amount.toString() : "0", // Ensure amount is always a string
+          chain_id: chainId
         };
       })
       .filter(Boolean);

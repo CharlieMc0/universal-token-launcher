@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useAccount, useBalance, useChainId, useSendTransaction } from 'wagmi';
+import { useAccount, useBalance, useChainId, useSendTransaction, usePublicClient } from 'wagmi';
 import { parseEther } from 'ethers';
 import FormInput from '../../components/FormInput';
 import ImageUpload from '../../components/ImageUpload';
 import DistributionInput from '../../components/DistributionInput';
 import ChainSelector from '../../components/ChainSelector';
+import apiService from '../../services/apiService';
 
 // Styled Components
 const PageContainer = styled.div`
@@ -18,6 +19,14 @@ const PageTitle = styled.h1`
   margin-bottom: 32px;
   text-align: center;
   display: ${props => props.embedded ? 'none' : 'block'};
+`;
+
+const BackendNotice = styled.div`
+  background-color: rgba(255, 193, 7, 0.1);
+  border-left: 4px solid #ffc107;
+  padding: 16px;
+  margin-bottom: 24px;
+  border-radius: 0 8px 8px 0;
 `;
 
 const FormContainer = styled.div`
@@ -114,7 +123,7 @@ const ErrorMessage = styled.div`
 
 // Constants
 const ZETA_FEE = 1; // Fee in ZETA
-const UNIVERSAL_TOKEN_SERVICE_WALLET = '0x123456789abcdef123456789abcdef123456789'; // Replace with actual service wallet
+const UNIVERSAL_TOKEN_SERVICE_WALLET = '0xa48c0fC87BF398d258A75391Bc5Fe6BC5f8F9b3B'; // Updated with actual service wallet
 
 const LaunchNFTPage = ({ embedded = false }) => {
   const { address, isConnected } = useAccount();
@@ -124,12 +133,13 @@ const LaunchNFTPage = ({ embedded = false }) => {
     chainId: 7001, // ZetaChain Athens testnet
   });
   const { sendTransaction } = useSendTransaction();
+  const publicClient = usePublicClient();
   
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    quantity: '',
-    price: '',
+    symbol: '',
+    baseUri: '',
+    maxSupply: '',
   });
   
   const [errors, setErrors] = useState({});
@@ -138,6 +148,17 @@ const LaunchNFTPage = ({ embedded = false }) => {
   const [distributions, setDistributions] = useState([]);
   const [deploymentStatus, setDeploymentStatus] = useState(null);
   const [deploymentDetails, setDeploymentDetails] = useState(null);
+  const [deploymentId, setDeploymentId] = useState(null);
+  const [processingStep, setProcessingStep] = useState('');
+  const [txHash, setTxHash] = useState('');
+  const [pollingInterval, setPollingInterval] = useState(null);
+  
+  const [chainOptions, setChainOptions] = useState([
+    { value: '7001', label: 'ZetaChain Athens', isZetaChain: true }
+  ]);
+  
+  const [chainsLoading, setChainsLoading] = useState(false);
+  const [chainsError, setChainsError] = useState(null);
   
   const isZetaChainNetwork = chainId === 7001; // ZetaChain Athens testnet
   
@@ -153,8 +174,15 @@ const LaunchNFTPage = ({ embedded = false }) => {
     setNftImage(imageFile);
   };
   
-  const handleChainSelection = (chains) => {
-    setSelectedChains(chains);
+  const handleChainSelection = (e) => {
+    const value = e.target.value;
+    console.log('Chain selection changed:', value);
+    setSelectedChains(value);
+    
+    // Clear any chain selection errors
+    if (errors.chains) {
+      setErrors({...errors, chains: null});
+    }
   };
   
   const handleDistributionsChange = (newDistributions) => {
@@ -181,19 +209,19 @@ const LaunchNFTPage = ({ embedded = false }) => {
       newErrors.name = 'Collection name is required';
     }
     
-    // Description validation
-    if (!formData.description.trim()) {
-      newErrors.description = 'Description is required';
+    // Symbol validation
+    if (!formData.symbol.trim()) {
+      newErrors.symbol = 'Symbol is required';
     }
     
-    // Quantity validation
-    if (!formData.quantity || parseInt(formData.quantity) <= 0) {
-      newErrors.quantity = 'Quantity must be a positive number';
+    // Base URI validation
+    if (!formData.baseUri.trim()) {
+      newErrors.baseUri = 'Base URI is required';
     }
     
-    // Price validation
-    if (!formData.price || parseFloat(formData.price) < 0) {
-      newErrors.price = 'Price must be a non-negative number';
+    // Max Supply validation
+    if (!formData.maxSupply || parseInt(formData.maxSupply) <= 0) {
+      newErrors.maxSupply = 'Max Supply must be a positive number';
     }
     
     // Image validation
@@ -219,223 +247,552 @@ const LaunchNFTPage = ({ embedded = false }) => {
     
     try {
       setDeploymentStatus('creating');
+      setProcessingStep('Creating NFT collection configuration...');
       
-      // Create FormData for NFT collection creation
-      const formDataToSend = new FormData();
-      formDataToSend.append('collection_name', formData.name);
-      formDataToSend.append('description', formData.description);
-      formDataToSend.append('quantity', formData.quantity);
-      formDataToSend.append('price', formData.price);
-      formDataToSend.append('selected_chains', JSON.stringify(selectedChains.map(id => id.toString())));
+      // Prepare data for the backend API in the required format
+      const apiData = {
+        collection_name: formData.name,
+        collection_symbol: formData.symbol,
+        base_uri: formData.baseUri,
+        max_supply: parseInt(formData.maxSupply),
+        selected_chains: selectedChains.map(id => id.toString()),
+        deployer_address: address
+      };
       
-      // Format distribution data
-      if (distributions.length > 0) {
-        const distributionsForBackend = distributions.map(dist => ({
-          recipient_address: dist.address,
-          chain_id: chainId.toString(),
-          nft_quantity: dist.amount || 1
-        }));
-        formDataToSend.append('distributions_json', JSON.stringify(distributionsForBackend));
+      console.log('Sending NFT collection data to API:', apiData);
+      
+      // Step 1: Create collection configuration
+      try {
+        const createResponse = await apiService.deployNFTCollection(apiData);
+        console.log('NFT collection creation response:', createResponse);
+        
+        if (!createResponse.success) {
+          const errorMsg = createResponse.message || 
+                          (createResponse.errors && createResponse.errors.length > 0 ? createResponse.errors.join('; ') : 'Unknown error');
+          throw new Error(`Failed to create NFT collection: ${errorMsg}`);
+        }
+        
+        // Store deployment ID for further steps
+        const deploymentId = createResponse.deployment_id;
+        if (!deploymentId) {
+          throw new Error('No deployment ID received from the server');
+        }
+        
+        setDeploymentId(deploymentId);
+        setProcessingStep(`NFT collection configuration created. Deployment ID: ${deploymentId}`);
+        
+        // Step 2: Process fee payment
+        setDeploymentStatus('fee_payment');
+        setProcessingStep('Waiting for fee payment transaction...');
+        
+        try {
+          // Request fee payment transaction
+          const txResult = await sendTransaction({
+            to: UNIVERSAL_TOKEN_SERVICE_WALLET,
+            value: parseEther(ZETA_FEE.toString()),
+            chainId: 7001, // Ensure we're on ZetaChain
+          });
+          
+          setTxHash(txResult.hash);
+          setProcessingStep(`Fee payment transaction submitted. Hash: ${txResult.hash}`);
+          
+          // Step 3: Wait for transaction to be confirmed
+          setProcessingStep('Waiting for transaction confirmation...');
+          
+          // Confirm transaction with retries
+          let receipt = null;
+          let attempts = 0;
+          const maxAttempts = 15;
+          
+          while (!receipt && attempts < maxAttempts) {
+            attempts++;
+            setProcessingStep(`Confirming transaction... (Attempt ${attempts}/${maxAttempts})`);
+            
+            try {
+              // Add delay between retries
+              await new Promise(resolve => setTimeout(resolve, 2000 + (attempts * 1000)));
+              
+              receipt = await publicClient.getTransactionReceipt({ hash: txResult.hash });
+              
+              if (receipt && receipt.status === 'success') {
+                setProcessingStep('Transaction confirmed successfully!');
+                break;
+              } else if (receipt && receipt.status === 'reverted') {
+                throw new Error('Transaction reverted on-chain');
+              }
+            } catch (error) {
+              console.error(`Error checking transaction (attempt ${attempts}):`, error);
+              if (attempts >= maxAttempts) {
+                throw new Error(`Failed to confirm transaction after ${maxAttempts} attempts`);
+              }
+            }
+          }
+          
+          if (!receipt || receipt.status !== 'success') {
+            throw new Error('Transaction failed or could not be confirmed');
+          }
+          
+          // Step 4: Confirm fee payment with backend
+          setProcessingStep('Confirming payment with backend...');
+          
+          const confirmResponse = await apiService.confirmNFTDeployment(
+            deploymentId,
+            txResult.hash
+          );
+          
+          if (!confirmResponse.success) {
+            throw new Error(confirmResponse.message || 'Failed to confirm deployment');
+          }
+          
+          // Step 5: Start polling for deployment status
+          setDeploymentStatus('deploying');
+          setProcessingStep('Backend is deploying NFT collection contracts...');
+          
+          // Setup polling to check deployment status
+          const intervalId = setInterval(async () => {
+            try {
+              const collectionData = await apiService.getNFTCollection(deploymentId);
+              
+              if (collectionData.collection) {
+                const status = collectionData.collection.deployment_status;
+                
+                if (status === 'completed') {
+                  clearInterval(intervalId);
+                  setDeploymentStatus('completed');
+                  setDeploymentDetails(collectionData.collection);
+                  setProcessingStep('Deployment completed successfully!');
+                } else if (status === 'failed') {
+                  clearInterval(intervalId);
+                  setDeploymentStatus('failed');
+                  setProcessingStep(`Deployment failed: ${collectionData.collection.error_message || 'Unknown error'}`);
+                } else {
+                  setProcessingStep(`Deployment in progress... Current status: ${status}`);
+                }
+              }
+            } catch (error) {
+              console.error('Error polling deployment status:', error);
+            }
+          }, 5000); // Poll every 5 seconds
+          
+          setPollingInterval(intervalId);
+          
+        } catch (txError) {
+          console.error('Transaction error:', txError);
+          // Check if user rejected transaction
+          if (txError.message && txError.message.includes('user rejected')) {
+            throw new Error('Transaction rejected by user. Please try again.');
+          } else if (txError.message && txError.message.includes('insufficient funds')) {
+            throw new Error('Insufficient funds to pay fee. Please add more ZETA to your wallet.');
+          } else {
+            throw new Error(`Transaction error: ${txError.message}`);
+          }
+        }
+        
+      } catch (apiError) {
+        console.error('API error:', apiError);
+        // Extract any validation errors if available
+        if (apiError.response?.data?.detail && Array.isArray(apiError.response.data.detail)) {
+          const validationErrors = apiError.response.data.detail.map(err => {
+            const field = err.loc[err.loc.length-1];
+            return `${field}: ${err.msg}`;
+          }).join('; ');
+          
+          throw new Error(`Validation error: ${validationErrors}`);
+        } else {
+          throw apiError;
+        }
       }
-      
-      // Append NFT image
-      if (nftImage) {
-        formDataToSend.append('image', nftImage);
-      }
-      
-      // Mock API call - in a real app, this would communicate with your backend
-      // const response = await apiService.createNFTCollection(formDataToSend);
-      // setDeploymentDetails(response);
-      
-      // For now, simulate a response
-      setDeploymentDetails({
-        id: Math.floor(Math.random() * 1000),
-        name: formData.name,
-        description: formData.description,
-        quantity: formData.quantity,
-        price: formData.price
-      });
-      
-      // Handle fee payment
-      const feeInWei = parseEther(ZETA_FEE.toString());
-      
-      const txResult = await sendTransaction({
-        to: UNIVERSAL_TOKEN_SERVICE_WALLET,
-        value: feeInWei
-      });
-      
-      if (!txResult || !txResult.hash) {
-        throw new Error('Transaction failed: No transaction hash returned');
-      }
-      
-      // Update deployment status to pending
-      setDeploymentStatus('pending');
-      
-      // In a real app, you would call your API to start the deployment process
-      // await apiService.deployNFTCollection(response.id, {
-      //   fee_paid_tx: txResult.hash
-      // });
-      
-      // For now, simulate success after 3 seconds
-      setTimeout(() => {
-        setDeploymentStatus('success');
-      }, 3000);
       
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Deployment error:', error);
       setDeploymentStatus('error');
-      setErrors({...errors, submission: error.message});
+      setProcessingStep(`Error: ${error.message}`);
     }
   };
   
-  // Render deployment status
+  // Add effect to fetch supported chains from API
+  useEffect(() => {
+    const fetchSupportedChains = async () => {
+      try {
+        console.log('Fetching supported chains from API...');
+        setChainsLoading(true);
+        setChainsError(null);
+        
+        const chains = await apiService.getSupportedChains();
+        console.log('API returned chains:', chains);
+        
+        // Transform API response to match the component's expected format
+        if (chains && chains.length > 0) {
+          const formattedChains = chains
+            .filter(chain => chain.is_testnet === true || chain.testnet === true) // Only include testnet chains
+            .map(chain => ({
+              value: chain.chain_id || chain.id,
+              label: chain.name,
+              disabled: !chain.enabled, // Disabled if not enabled
+              comingSoon: !chain.enabled, // Show "Coming Soon" badge for disabled chains
+              isZetaChain: chain.chain_id === '7001' || chain.id === '7001' || chain.isZetaChain || false
+            }));
+            
+          // Sort the chains to put ZetaChain first
+          const sortedChains = formattedChains.sort((a, b) => {
+            // Always put ZetaChain at the top (will be first in the grid, upper left)
+            if (a.value === '7001' || a.isZetaChain) return -1;
+            if (b.value === '7001' || b.isZetaChain) return 1;
+            
+            // Then sort enabled chains before disabled chains
+            if (a.disabled && !b.disabled) return 1;
+            if (!a.disabled && b.disabled) return -1;
+            
+            // Then sort alphabetically by name
+            return a.label.localeCompare(b.label);
+          });
+          
+          console.log('Formatted chain options:', sortedChains);
+          setChainOptions(sortedChains);
+          
+          // Ensure ZetaChain is selected by default
+          if (!selectedChains.includes('7001')) {
+            setSelectedChains(['7001']);
+          }
+        } else {
+          throw new Error('No chains returned from API');
+        }
+      } catch (error) {
+        console.error('Error fetching supported chains:', error);
+        setChainsError(`Failed to load chains: ${error.message}`);
+        
+        // Fallback to default testnet chains if API fails
+        setChainOptions([
+          { value: '7001', label: 'ZetaChain Athens', isZetaChain: true },
+          { value: '11155111', label: 'Ethereum Sepolia', disabled: false, comingSoon: false },
+          { value: '84531', label: 'Base Sepolia', disabled: false, comingSoon: false }
+        ]);
+      } finally {
+        setChainsLoading(false);
+      }
+    };
+
+    fetchSupportedChains();
+  }, [selectedChains]);
+  
+  // Function to reload chains if needed
+  const reloadChains = async () => {
+    try {
+      setChainsLoading(true);
+      setChainsError(null);
+      console.log('Reloading supported chains...');
+
+      const chains = await apiService.getSupportedChains();
+      console.log('API returned chains:', chains);
+      
+      // Transform API response to match the component's expected format
+      if (chains && chains.length > 0) {
+        const formattedChains = chains
+          .filter(chain => chain.is_testnet === true || chain.testnet === true) // Only include testnet chains
+          .map(chain => ({
+            value: chain.chain_id || chain.id,
+            label: chain.name,
+            disabled: !chain.enabled, // Disabled if not enabled
+            comingSoon: !chain.enabled, // Show "Coming Soon" badge for disabled chains
+            isZetaChain: chain.chain_id === '7001' || chain.id === '7001' || chain.isZetaChain || false
+          }));
+          
+        // Sort the chains to put ZetaChain first
+        const sortedChains = formattedChains.sort((a, b) => {
+          // Always put ZetaChain at the top (will be first in the grid, upper left)
+          if (a.value === '7001' || a.isZetaChain) return -1;
+          if (b.value === '7001' || b.isZetaChain) return 1;
+          
+          // Then sort enabled chains before disabled chains
+          if (a.disabled && !b.disabled) return 1;
+          if (!a.disabled && b.disabled) return -1;
+          
+          // Then sort alphabetically by name
+          return a.label.localeCompare(b.label);
+        });
+        
+        console.log('Formatted chain options:', sortedChains);
+        setChainOptions(sortedChains);
+      } else {
+        throw new Error('No chains returned from API');
+      }
+    } catch (error) {
+      console.error('Error reloading chains:', error);
+      setChainsError(`Failed to load chains: ${error.message}`);
+    } finally {
+      setChainsLoading(false);
+    }
+  };
+  
+  // Cleanup interval on component unmount
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
+  
+  // Add a deployment confirmation component
+  const DeploymentConfirmation = ({ deploymentDetails }) => {
+    if (!deploymentDetails) return null;
+    
+    return (
+      <FormContainer>
+        <SectionTitle>🎉 NFT Collection Successfully Deployed!</SectionTitle>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <p><strong>Collection Name:</strong> {deploymentDetails.collection_name}</p>
+          <p><strong>Symbol:</strong> {deploymentDetails.collection_symbol}</p>
+          <p><strong>Max Supply:</strong> {deploymentDetails.max_supply}</p>
+          <p><strong>Base URI:</strong> {deploymentDetails.base_uri}</p>
+        </div>
+        
+        <SectionTitle>Deployed Contracts</SectionTitle>
+        
+        <div>
+          {deploymentDetails.chainInfo && deploymentDetails.chainInfo.map((chain, index) => (
+            <div key={`chain-${chain.chainId || index}`} style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'rgba(60, 157, 242, 0.1)', borderRadius: '8px' }}>
+              <p><strong>Network:</strong> {chain.name || `Chain ${chain.chainId}`}</p>
+              <p><strong>Contract:</strong> {chain.contractAddress || chain.contract_address}</p>
+              <p><strong>Status:</strong> {chain.deploymentStatus || chain.status || 'Unknown'}</p>
+              {chain.contract_url && (
+                <p>
+                  <a href={chain.contract_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)' }}>
+                    View on Explorer
+                  </a>
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </FormContainer>
+    );
+  };
+  
+  // Render chain selector with proper support for loading/error states
+  const renderChainSelector = () => {
+    if (chainsLoading) {
+      return (
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <div style={{ width: '40px', height: '40px', border: '4px solid rgba(0,0,0,0.1)', borderLeft: '4px solid var(--accent-primary)', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 1s linear infinite' }}></div>
+          <p>Loading supported chains...</p>
+        </div>
+      );
+    }
+    
+    if (chainsError) {
+      return (
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <p style={{ color: 'var(--error)' }}>Error loading chains: {chainsError}</p>
+          <button 
+            onClick={reloadChains}
+            style={{ 
+              padding: '8px 16px', 
+              backgroundColor: 'var(--accent-primary)', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '4px', 
+              marginTop: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    
+    // Use the chainOptions directly instead of the chains state
+    if (!chainOptions || chainOptions.length === 0) {
+      return (
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <p>No supported chains available. Please check backend configuration.</p>
+          <button 
+            onClick={reloadChains}
+            style={{ 
+              padding: '8px 16px', 
+              backgroundColor: 'var(--accent-primary)', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '4px', 
+              marginTop: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    
+    console.log('Rendering ChainSelector with options:', chainOptions);
+    
+    return (
+      <ChainSelector 
+        options={chainOptions}
+        value={selectedChains}
+        onChange={handleChainSelection}
+        error={errors.chains}
+        helperText="Select the chains to deploy your NFT collection to. ZetaChain is required."
+      />
+    );
+  };
+  
   const renderDeploymentStatus = () => {
     switch (deploymentStatus) {
       case 'creating':
-        return <p>Creating NFT collection configuration...</p>;
-      case 'pending':
-        return <p>Deploying NFT collection. This may take a few minutes...</p>;
-      case 'success':
+      case 'fee_payment':
+      case 'deploying':
         return (
-          <div>
-            <h3>Success! Your NFT collection has been deployed.</h3>
-            <p>Collection Name: {deploymentDetails?.name}</p>
-            <p>Quantity: {deploymentDetails?.quantity}</p>
-            <p>Price: {deploymentDetails?.price}</p>
-          </div>
-        );
-      case 'error':
-        return (
-          <ErrorMessage>
-            <p>Error deploying NFT collection. Please try again.</p>
-            {errors.submission && <p>{errors.submission}</p>}
-          </ErrorMessage>
-        );
-      default:
-        return null;
-    }
-  };
-  
-  return (
-    <PageContainer embedded={embedded.toString()}>
-      <PageTitle embedded={embedded.toString()}>Create Universal NFT Collection</PageTitle>
-      
-      {deploymentStatus ? (
-        <FormContainer>
-          <SectionTitle>Deployment Status</SectionTitle>
-          {renderDeploymentStatus()}
-        </FormContainer>
-      ) : (
-        <form onSubmit={handleSubmit}>
           <FormContainer>
-            <SectionTitle>Collection Details</SectionTitle>
-            <FormRow>
-              <FormGroup>
-                <FormInput
-                  label="Collection Name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  error={errors.name}
-                />
-              </FormGroup>
-              <FormGroup>
-                <FormInput
-                  label="Price (in ZETA)"
-                  name="price"
-                  type="number"
-                  value={formData.price}
-                  onChange={handleInputChange}
-                  error={errors.price}
-                />
-              </FormGroup>
-            </FormRow>
-            <FormRow>
-              <FormGroup>
-                <FormInput
-                  label="Quantity"
-                  name="quantity"
-                  type="number"
-                  value={formData.quantity}
-                  onChange={handleInputChange}
-                  error={errors.quantity}
-                />
-              </FormGroup>
-              <FormGroup>
-                {/* Empty form group to maintain grid layout */}
-              </FormGroup>
-            </FormRow>
-            <FormRow>
+            <SectionTitle>Deployment in Progress</SectionTitle>
+            <div style={{ textAlign: 'center', margin: '20px 0' }}>
+              {/* Add spinner or loading animation here */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ width: '40px', height: '40px', border: '4px solid rgba(0,0,0,0.1)', borderLeft: '4px solid var(--accent-primary)', borderRadius: '50%', margin: '0 auto', animation: 'spin 1s linear infinite' }}></div>
+                <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+              </div>
+              <p>{processingStep}</p>
+              {txHash && (
+                <p style={{ marginTop: '16px' }}>
+                  <a 
+                    href={`https://explorer.athens.zetachain.com/tx/${txHash}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ color: 'var(--accent-primary)' }}
+                  >
+                    View Transaction on ZetaChain Explorer
+                  </a>
+                </p>
+              )}
+            </div>
+          </FormContainer>
+        );
+      
+      case 'completed':
+        return <DeploymentConfirmation deploymentDetails={deploymentDetails} />;
+      
+      case 'error':
+      case 'failed':
+        return (
+          <FormContainer>
+            <SectionTitle>Deployment Failed</SectionTitle>
+            <ErrorMessage>{processingStep}</ErrorMessage>
+            <ButtonContainer>
+              <DeployButton onClick={() => setDeploymentStatus(null)}>
+                Try Again
+              </DeployButton>
+            </ButtonContainer>
+          </FormContainer>
+        );
+      
+      default:
+        return (
+          <form onSubmit={handleSubmit}>
+            <FormContainer>
+              <SectionTitle>NFT Collection Details</SectionTitle>
+              <FormRow>
+                <FormGroup>
+                  <FormInput
+                    label="Collection Name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    placeholder="My Awesome NFTs"
+                    error={errors.name}
+                  />
+                </FormGroup>
+                <FormGroup>
+                  <FormInput
+                    label="Symbol"
+                    name="symbol"
+                    value={formData.symbol}
+                    onChange={handleInputChange}
+                    placeholder="NFT"
+                    error={errors.symbol}
+                  />
+                </FormGroup>
+              </FormRow>
+              
+              <FormRow>
+                <FormGroup>
+                  <FormInput
+                    label="Base URI"
+                    name="baseUri"
+                    value={formData.baseUri}
+                    onChange={handleInputChange}
+                    placeholder="https://example.com/metadata/"
+                    error={errors.baseUri}
+                  />
+                </FormGroup>
+                <FormGroup>
+                  <FormInput
+                    label="Max Supply"
+                    name="maxSupply"
+                    type="number"
+                    value={formData.maxSupply}
+                    onChange={handleInputChange}
+                    placeholder="10000"
+                    error={errors.maxSupply}
+                  />
+                </FormGroup>
+              </FormRow>
+              
               <FullWidthFormGroup>
-                <FormInput
-                  label="Description"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  multiline
-                  error={errors.description}
+                <ImageUpload
+                  label="Collection Image"
+                  onImageChange={handleImageUpload}
+                  error={errors.image}
                 />
               </FullWidthFormGroup>
-            </FormRow>
-          </FormContainer>
-          
-          <FormContainer>
-            <SectionTitle>Collection Image</SectionTitle>
-            <ImageUpload 
-              onImageUpload={handleImageUpload}
-              error={errors.image}
-            />
-          </FormContainer>
-          
-          <FormContainer>
-            <SectionTitle>Target Chains</SectionTitle>
-            <ChainSelector 
-              onSelectionChange={handleChainSelection}
-              error={errors.chains}
-            />
-          </FormContainer>
-          
-          <FormContainer>
-            <SectionTitle>Free NFT Distribution (Optional)</SectionTitle>
-            <p style={{ marginBottom: '16px', color: 'var(--text-secondary)' }}>
-              Add wallet addresses that will each receive 1 free NFT from your collection. 
-              Each recipient address will receive exactly one NFT regardless of the amount specified.
-            </p>
-            <DistributionInput 
-              onDistributionsChange={handleDistributionsChange}
-            />
-          </FormContainer>
-          
-          <FormContainer>
-            <SectionTitle>Deployment Fee</SectionTitle>
-            <FeeInfo>
-              <FeeTitle>Required Fee Information</FeeTitle>
-              <FeeDetail>Deployment Fee: {ZETA_FEE} ZETA</FeeDetail>
-              <FeeDetail>This fee covers the deployment of your NFT collection across all selected chains.</FeeDetail>
-              
-              {balanceData && (
-                <BalanceInfo hasError={parseFloat(balanceData.formatted) < ZETA_FEE}>
-                  Your Balance: {parseFloat(balanceData.formatted).toFixed(4)} ZETA
-                </BalanceInfo>
-              )}
-              
-              {errors.network && <ErrorMessage>{errors.network}</ErrorMessage>}
-              {errors.balance && <ErrorMessage>{errors.balance}</ErrorMessage>}
-            </FeeInfo>
+            </FormContainer>
+            
+            <FormContainer>
+              <SectionTitle>Select Chains</SectionTitle>
+              {renderChainSelector()}
+            </FormContainer>
+            
+            <FormContainer>
+              <SectionTitle>Fee Information</SectionTitle>
+              <FeeInfo>
+                <FeeTitle>Deployment Fee</FeeTitle>
+                <FeeDetail>To deploy your NFT collection, a one-time fee of {ZETA_FEE} ZETA is required.</FeeDetail>
+                <FeeDetail>This fee covers gas costs and contract deployment across all selected chains.</FeeDetail>
+                
+                {balanceData && (
+                  <BalanceInfo hasError={parseFloat(balanceData.formatted) < ZETA_FEE}>
+                    Your balance: {parseFloat(balanceData.formatted).toFixed(2)} ZETA
+                    {parseFloat(balanceData.formatted) < ZETA_FEE && ' (Insufficient balance)'}
+                  </BalanceInfo>
+                )}
+              </FeeInfo>
+            </FormContainer>
             
             <ButtonContainer>
               <DeployButton 
                 type="submit" 
                 disabled={!isConnected || !isZetaChainNetwork || (balanceData && parseFloat(balanceData.formatted) < ZETA_FEE)}
               >
-                Create NFT Collection
+                Deploy NFT Collection
               </DeployButton>
             </ButtonContainer>
             
-            {errors.submission && <ErrorMessage>{errors.submission}</ErrorMessage>}
-          </FormContainer>
-        </form>
-      )}
+            {errors.network && <ErrorMessage>{errors.network}</ErrorMessage>}
+            {errors.balance && <ErrorMessage>{errors.balance}</ErrorMessage>}
+          </form>
+        );
+    }
+  };
+
+  return (
+    <PageContainer embedded={embedded}>
+      <PageTitle>Launch NFT Collection</PageTitle>
+      <BackendNotice>
+        <strong>Note:</strong> This feature is connected to the backend API at http://localhost:8000. 
+        If you encounter errors during NFT deployment, please ensure the backend is running and properly configured.
+      </BackendNotice>
+      {renderDeploymentStatus()}
     </PageContainer>
   );
 };

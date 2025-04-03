@@ -30,7 +30,7 @@
     "gateway_address": "0xD6A724F516C76c76035B0b4C91bd850b5d35a8ef"
   },
   "97": {
-    "name": "Binance Smart Chain Testnet",
+    "name": "BSC Testnet",
     "rpc_url": "https://data-seed-prebsc-1-s1.binance.org:8545",
     "explorer_url": "https://testnet.bscscan.com",
     "blockscout_url": null,

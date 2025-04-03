@@ -626,7 +626,7 @@ Example response structure:
 The user tokens endpoint (`GET /api/users/{address}`) allows retrieving all tokens owned by a specific wallet address:
 
 - **Path Parameter**: `address` - The wallet address to lookup
-- **Response**: Includes tokens deployed through this application that the user holds
+- **Response**: Includes tokens deployed through this application that the user holds, as well as tokens where the user is the deployer (even if they have no balance)
 - **Example**: `/api/users/0x4f1684a28e33f42cdf50ab96e29a709e17249e63`
 
 Example response structure:
@@ -670,6 +670,7 @@ The response includes:
 - Whether the user is the deployer of the token
 - ZetaChain contract address
 - Token balances across all chains where the token is deployed
+- **Important**: The endpoint now ensures all tokens deployed by the user are included in the response, even if they have zero balance, preventing deployed tokens from being hidden
 
 ## Smart Contract Integration
 

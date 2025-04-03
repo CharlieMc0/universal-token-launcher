@@ -53,25 +53,37 @@ async def get_user_tokens(
         db_tokens = db.query(TokenModel).all()
         
         # Convert to a dictionary by contract address for easier lookup
-        our_token_addresses = {
-            token.zc_contract_address.lower(): token for token in db_tokens
-            if token.zc_contract_address
-        }
+        our_token_addresses = {}
+        for token in db_tokens:
+            if token.zc_contract_address:
+                our_token_addresses[token.zc_contract_address.lower()] = token
         
         # Initialize response data
         user_tokens = []
         
+        # Set to track tokens we've already added to avoid duplicates
+        processed_token_ids = set()
+        
         # Process each token the user has
         for token_data in zetachain_tokens:
             # Extract token details
-            contract_address = token_data.get("token", {}).get("address", "").lower()
+            token_obj = token_data.get("token", {})
+            contract_address = token_obj.get("address", "").lower()
             
             # Check if this is one of our deployed tokens
             if contract_address in our_token_addresses:
                 db_token = our_token_addresses[contract_address]
                 
+                # Skip if we've already processed this token
+                if db_token.id in processed_token_ids:
+                    continue
+                    
+                processed_token_ids.add(db_token.id)
+                
                 # Get complete token data with chain information
-                token_info = await token_service.get_token_by_id(db_token.id, db)
+                token_info = await token_service.get_token_by_id(
+                    db_token.id, db
+                )
                 
                 if not token_info:
                     continue
@@ -97,7 +109,8 @@ async def get_user_tokens(
                 
                 # Add connected chains (would require checking balances on other chains)
                 # For now, we'll just include the chain info
-                for chain_id, chain_data in token_info.get("connected_chains_json", {}).items():
+                connected_chains = token_info.get("connected_chains_json", {})
+                for chain_id, chain_data in connected_chains.items():
                     chain_contract = chain_data.get("contract_address")
                     if chain_contract:
                         chain_config = get_chain_config(int(chain_id))
@@ -106,7 +119,9 @@ async def get_user_tokens(
                             # on each chain. For now, we'll set it to 0
                             balances.append(TokenBalanceInfo(
                                 chain_id=chain_id,
-                                chain_name=chain_config.get("name", f"Chain {chain_id}"),
+                                chain_name=chain_config.get(
+                                    "name", f"Chain {chain_id}"
+                                ),
                                 balance="0",  # Default to 0 for now
                                 contract_address=chain_contract,
                                 explorer_url=chain_config.get("explorer_url"),
@@ -118,13 +133,80 @@ async def get_user_tokens(
                     token_name=db_token.token_name,
                     token_symbol=db_token.token_symbol,
                     decimals=db_token.decimals,
-                    is_deployer=(db_token.deployer_address.lower() == address.lower()),
+                    is_deployer=(
+                        db_token.deployer_address.lower() == address.lower()
+                    ),
                     zc_contract_address=db_token.zc_contract_address,
                     created_at=token_info.get("created_at"),
                     balances=balances
                 )
                 
                 user_tokens.append(user_token)
+        
+        # Find tokens where the user is the deployer but may not have a balance
+        deployer_filter = TokenModel.deployer_address.ilike(address.lower())
+        deployed_tokens = db.query(TokenModel).filter(deployer_filter).all()
+        
+        # Add tokens where the user is the deployer but not already processed
+        for token in deployed_tokens:
+            if token.id in processed_token_ids:
+                continue
+                
+            processed_token_ids.add(token.id)
+            
+            # Get enhanced token data
+            token_info = await token_service.get_token_by_id(token.id, db)
+            
+            if not token_info:
+                continue
+                
+            # Initialize balances list
+            balances = []
+            
+            # Add ZetaChain with 0 balance since we didn't find it in BlockScout
+            zeta_chain_id = "7001"  # ZetaChain testnet
+            zeta_chain_config = get_chain_config(int(zeta_chain_id))
+            
+            if token.zc_contract_address:
+                balances.append(TokenBalanceInfo(
+                    chain_id=zeta_chain_id,
+                    chain_name=zeta_chain_config.get("name", "ZetaChain"),
+                    balance="0",  # No balance found via BlockScout
+                    contract_address=token.zc_contract_address,
+                    explorer_url=zeta_chain_config.get("explorer_url"),
+                    blockscout_url=zeta_chain_config.get("blockscout_url")
+                ))
+            
+            # Add connected chains
+            connected_chains = token_info.get("connected_chains_json", {})
+            for chain_id, chain_data in connected_chains.items():
+                chain_contract = chain_data.get("contract_address")
+                if chain_contract:
+                    chain_config = get_chain_config(int(chain_id))
+                    if chain_config:
+                        balances.append(TokenBalanceInfo(
+                            chain_id=chain_id,
+                            chain_name=chain_config.get(
+                                "name", f"Chain {chain_id}"
+                            ),
+                            balance="0",  # Default to 0
+                            contract_address=chain_contract,
+                            explorer_url=chain_config.get("explorer_url"),
+                            blockscout_url=chain_config.get("blockscout_url")
+                        ))
+            
+            # Create token info object
+            user_token = UserTokenInfo(
+                token_name=token.token_name,
+                token_symbol=token.token_symbol,
+                decimals=token.decimals,
+                is_deployer=True,  # Definitely the deployer
+                zc_contract_address=token.zc_contract_address,
+                created_at=token_info.get("created_at"),
+                balances=balances
+            )
+            
+            user_tokens.append(user_token)
         
         # Create response
         return UserTokenResponse(

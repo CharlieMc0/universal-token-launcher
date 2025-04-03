@@ -33,6 +33,7 @@ const FormContainer = styled.div`
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 32px;
+  border: 1px solid var(--border);
 `;
 
 const SectionTitle = styled.h2`
@@ -515,7 +516,7 @@ const TransferTokens = ({ embedded = false }) => {
   });
 
   // Add new state for enhanced filtering and searching
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('holdings');
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredTokens, setFilteredTokens] = useState([]);
   const [transferStep, setTransferStep] = useState('source');
@@ -1089,7 +1090,7 @@ const TransferTokens = ({ embedded = false }) => {
     }
   };
 
-  // Add a new effect to handle filtering and searching
+  // Update the filtering logic inside the useEffect 
   useEffect(() => {
     if (!userTokens || userTokens.length === 0) {
       setFilteredTokens([]);
@@ -1098,10 +1099,19 @@ const TransferTokens = ({ embedded = false }) => {
     
     // First apply ownership filter
     let filtered = [...userTokens];
+    
+    // Modified filtering logic to correctly handle "holdings" filter
     if (filter === 'owned') {
       filtered = filtered.filter(token => token.isDeployer);
     } else if (filter === 'holdings') {
-      filtered = filtered.filter(token => !token.isDeployer);
+      // Include tokens where the user has a balance (even if they are also the deployer)
+      filtered = filtered.filter(token => {
+        // Check if the token has a non-zero balance on any chain
+        const hasBalance = token.chainInfo && token.chainInfo.some(chain => 
+          chain.balance && chain.balance !== '0'
+        );
+        return hasBalance;
+      });
     }
     
     // Then apply search query filter if there's a query
@@ -1208,10 +1218,6 @@ const TransferTokens = ({ embedded = false }) => {
     }
   };
 
-  // Separate tokens into owned and held categories
-  const ownedTokens = displayedTokens.filter(token => token.isDeployer);
-  const heldTokens = displayedTokens.filter(token => !token.isDeployer);
-
   return (
     <PageContainer embedded={embedded.toString()}>
       <PageTitle embedded={embedded.toString()}>Transfer Your Universal Tokens</PageTitle>
@@ -1256,10 +1262,10 @@ const TransferTokens = ({ embedded = false }) => {
                 onSortChange={handleSortChange}
               />
               
-              {/* Token lists using the enhanced design */}
-              {filter !== 'holdings' && ownedTokens.length > 0 && (
+              {/* Display tokens based on selected filter */}
+              {filter === 'owned' && (
                 <TokenSectionContainer title="Tokens You Deployed" isOwner>
-                  {ownedTokens.map(token => (
+                  {displayedTokens.map(token => (
                     <EnhancedTokenCard
                       key={token.id}
                       token={token}
@@ -1271,14 +1277,15 @@ const TransferTokens = ({ embedded = false }) => {
                 </TokenSectionContainer>
               )}
               
-              {filter !== 'owned' && heldTokens.length > 0 && (
+              {filter === 'holdings' && (
                 <TokenSectionContainer title="Tokens You Hold">
-                  {heldTokens.map(token => (
+                  {displayedTokens.map(token => (
                     <EnhancedTokenCard
                       key={token.id}
                       token={token}
-                      isOwner={false}
+                      isOwner={token.isDeployer}
                       onTransfer={handleTokenTransfer}
+                      onMint={token.isDeployer ? handleTokenMint : undefined}
                     />
                   ))}
                 </TokenSectionContainer>

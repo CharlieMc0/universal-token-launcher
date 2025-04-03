@@ -1039,34 +1039,44 @@ const StepTitle = styled.div` /* Small text below icon */ `;
 
 1. **Layout Consistency**
    - All form sections must use the standard FormContainer component with 24px padding
-   - Each form container should have exactly one SectionTitle
+   - Each form container should have exactly one SectionTitle with 24px margin-bottom
    - Maintain 32px spacing between form sections
-   - Maintain 16px spacing between form rows
+   - Maintain 24px spacing between form rows
 
 2. **Component Consistency**
    - Form inputs should be arranged in rows with two inputs per row where possible
-   - All buttons should have the same height and similar padding (Primary: 14px 32px)
-   - Fee sections should always use the blue-tinted background with consistent 16px padding
+   - All buttons should have the same height (48px) and similar padding (Primary: 14px 32px)
+   - Fee sections should always use the blue-tinted background with consistent 24px padding
+   - All toggle buttons should be 48px in height with 12px 24px padding
 
 3. **Styling Consistency**
    - Only use colors from the defined palette
    - Maintain consistent border-radius (8px for buttons/inputs, 12px for containers)
    - Use the same blue accent color for all interactive elements
+   - Apply 1px border with var(--border) color to all container elements
+   - Form containers should have box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15)
 
 4. **Content Structure**
-   - Page titles should be centered
-   - Section titles should always be left-aligned
-   - Descriptions should use the --text-secondary color
-   - Error messages should be displayed in a consistent way across components
+   - Page titles should be centered, 32px font size, font-weight 700
+   - Section titles should always be left-aligned, 24px font size, font-weight 600
+   - Descriptions should use the --text-secondary color, 16px font size
+   - Error messages should have consistent padding (16px) and background color (rgba(255, 82, 82, 0.1))
 
-5. **Cross-Component Verification**
-   - When adding new components or modifying existing ones, verify the styling against other similar components
-   - If one component (e.g., Create Token) is modified, make the same changes to related components (e.g., Create NFT)
+5. **Cross-Page Consistency**
+   - Ensure the Create/Launch page and Transfer page use identical styling for common elements
+   - Both pages should maintain the same padding, spacing, font sizes, and component dimensions
+   - Element heights should be consistent across all pages (buttons: 48px, inputs: 48px, toggles: 48px)
+   - Maintain consistent form element spacing (margin-bottom: 24px between rows)
 
 6. **Contextual UI Elements**
    - Floating elements like the transfer box should follow consistent positioning and styling
    - Ensure responsive behavior is consistent across all contextual elements
    - Use the same interaction patterns for showing/hiding contextual elements
+
+7. **Page Structure**
+   - All primary pages should use `PageContainer` with max-width: 800px and padding: 40px 20px
+   - Page titles should always use `PageTitle` component with text-align: center and margin-bottom: 32px
+   - Content containers should use `FormContainer` with background-color: var(--card-bg), border-radius: 12px, and padding: 24px
 
 ---
 
