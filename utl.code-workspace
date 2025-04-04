@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"name": "utl",
+			"path": "."
+		},
+		{
+			"path": "../zeta-universal-forge"
+		}
+	],
+	"settings": {}
+}

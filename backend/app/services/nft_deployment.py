@@ -14,6 +14,7 @@ from app.utils.web3_helper import (
     ZC_UNIVERSAL_NFT_ABI, 
     ZC_UNIVERSAL_NFT_BYTECODE
 )
+from app.config import Config  # Import Config for chain ID
 
 
 class NFTDeploymentService:
@@ -81,8 +82,8 @@ class NFTDeploymentService:
         }
         
         # First deploy to ZetaChain (required for cross-chain functionality)
-        zeta_chain_id = 7001  # ZetaChain Testnet
-        if "7001" in selected_chains or "zeta_testnet" in selected_chains:
+        zeta_chain_id = int(Config.ZETA_CHAIN_ID)  # Use Config value
+        if Config.ZETA_CHAIN_ID in selected_chains or "zeta_testnet" in selected_chains:
             logger.info("Deploying ZetaChain NFT collection...")
             
             # Connect to ZetaChain
@@ -150,8 +151,8 @@ class NFTDeploymentService:
         
         # Deploy to other EVM chains
         for chain_id in selected_chains:
-            if chain_id == "7001" or chain_id == "zeta_testnet":
-                continue  # Already handled ZetaChain above
+            if chain_id == Config.ZETA_CHAIN_ID or chain_id == "zeta_testnet":
+                continue  # Already deployed to ZetaChain above
             
             logger.info(f"Deploying NFT collection to chain {chain_id}...")
             

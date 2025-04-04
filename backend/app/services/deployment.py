@@ -19,6 +19,7 @@ from app.utils.web3_helper import (
 # from app.utils.chain_config import get_chain_config # Imported but unused
 from web3 import Web3 # Import Web3 directly for to_checksum_address
 from sqlalchemy.orm.attributes import flag_modified
+from app.config import Config  # Import Config for chain ID
 
 
 class DeploymentService:
@@ -88,15 +89,15 @@ class DeploymentService:
         deployment_result = {
             "deploymentId": deployment.id,
             "zetaChain": {"status": "pending"},
-            "evmChains": {cid: {"status": "pending"} for cid in selected_chains if cid != "7001"}
+            "evmChains": {cid: {"status": "pending"} for cid in selected_chains if cid != Config.ZETA_CHAIN_ID}
         }
         
         zc_contract_address = None
         zc_web3 = None
         
-        # --- Step 1: Deploy to ZetaChain (Hardcoded ID 7001) ---
-        zeta_chain_id_str = "7001"
-        zeta_chain_id_int = 7001
+        # --- Step 1: Deploy to ZetaChain (Using Config value) ---
+        zeta_chain_id_str = Config.ZETA_CHAIN_ID
+        zeta_chain_id_int = int(Config.ZETA_CHAIN_ID)
         if zeta_chain_id_str in selected_chains:
             logger.info("Deploying ZetaChain contract...")
             zc_web3 = get_web3(zeta_chain_id_int)

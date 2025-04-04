@@ -1,0 +1,13 @@
+{
+  "module": "contract",
+  "action": "verifysourcecode",
+  "contractaddress": "0xb8C48A9cE16Edd68D0a36984794B5fcAA6667dF3",
+  "contractname": "ZetaChainUniversalToken",
+  "compilerversion": "v0.8.26+commit.8a97fa7a",
+  "optimizationUsed": "1",
+  "runs": "200",
+  "sourceCode": "[Source code length: 4462 chars]",
+  "evmversion": "paris",
+  "constructorArguments": "",
+  "codeformat": "solidity-single-file"
+}

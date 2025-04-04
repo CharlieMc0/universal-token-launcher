@@ -134,6 +134,10 @@ class TokenVerifySchema(BaseModel):
         ...,
         description="Type of contract (zetachain or evm)"
     )
+    contract_args: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional constructor arguments for verification"
+    )
 
     @field_validator("contract_address")
     def validate_contract_address(cls, v):

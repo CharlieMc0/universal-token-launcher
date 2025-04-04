@@ -13,6 +13,7 @@ from app.services.explorer import explorer_service
 from app.db import get_db
 from app.utils.logger import logger
 from app.utils.chain_config import get_chain_config
+from app.config import Config  # Import Config for consistent chain IDs
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -67,7 +68,7 @@ async def get_user_tokens(
         chain_balances = {}
         
         # First, process tokens from ZetaChain
-        zeta_chain_id = "7001"  # ZetaChain testnet
+        zeta_chain_id = Config.ZETA_CHAIN_ID  # Use Config value
         zetachain_tokens = all_balances.get(zeta_chain_id, [])
         
         # Process each token the user has on ZetaChain
@@ -188,7 +189,7 @@ async def get_user_tokens(
             balances = []
             
             # Add ZetaChain balance (check if we found it in all_balances)
-            zeta_chain_id = "7001"  # ZetaChain testnet
+            zeta_chain_id = Config.ZETA_CHAIN_ID  # Use Config value
             zeta_chain_config = get_chain_config(int(zeta_chain_id))
             
             # Default to 0 if no balance found

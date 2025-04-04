@@ -20,6 +20,7 @@ from app.utils.chain_config import (
 from app.utils.web3_helper import (
     get_web3, ZC_UNIVERSAL_TOKEN_ABI, UNIVERSAL_TOKEN_ABI
 )
+from app.config import Config  # Import Config for consistent chain IDs
 
 router = APIRouter(prefix="/api", tags=["deployment"])
 
@@ -68,10 +69,10 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
                 if not found:
                     raise ValueError(f"Unsupported or disabled chain name: {chain_id}")
 
-        # Ensure ZetaChain (7001) is included if EVM chains are selected
-        if any(cid != "7001" for cid in numeric_chain_ids) and \
-           "7001" not in numeric_chain_ids:
-            raise ValueError("ZetaChain (7001) must be included for cross-chain deployment.")
+        # Ensure ZetaChain (testnet) is included if EVM chains are selected
+        if any(cid != Config.ZETA_CHAIN_ID for cid in numeric_chain_ids) and \
+           Config.ZETA_CHAIN_ID not in numeric_chain_ids:
+            raise ValueError(f"ZetaChain ({Config.ZETA_CHAIN_ID}) must be included for cross-chain deployment.")
         
         if not numeric_chain_ids:
             raise ValueError("No valid chains selected")
@@ -115,7 +116,6 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
         verification_status = "pending" # Default status after deployment
 
         # Analyze ZetaChain result (using deployment_result for initial call outcome, db_deployment for final state)
-        zeta_chain_id_str = "7001" # Define zeta chain id str for use later
         zc_result = deployment_result.get("zetaChain", {}) # Keep using result for call details
         zc_ownership_status = zc_result.get("ownership_status") 
         # Check DB state for final success
@@ -132,7 +132,7 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
 
 
         # Analyze EVM chain results (using connected_chains_data from DB for final state)
-        requested_evm_chains = [cid for cid in numeric_chain_ids if cid != zeta_chain_id_str]
+        requested_evm_chains = [cid for cid in numeric_chain_ids if cid != Config.ZETA_CHAIN_ID]
         for chain_id in requested_evm_chains:
              chain_db_info = connected_chains_data.get(chain_id, {})
              final_setup_status = chain_db_info.get("setup_status")
@@ -161,6 +161,71 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
             overall_message = "Deployment completed successfully."
             success_bool = True
 
+        # Automatically trigger verification for all successfully deployed contracts
+        verification_results = []
+        
+        # Verify ZetaChain contract if it was deployed successfully
+        if db_deployment.zc_contract_address and final_status_summary["zetaChain"].get("status") == "completed":
+            logger.info(f"Automatically verifying ZetaChain contract: {db_deployment.zc_contract_address}")
+            try:
+                zc_verification = await verification_service.verify_contract(
+                    contract_address=db_deployment.zc_contract_address,
+                    chain_id=Config.ZETA_CHAIN_ID,
+                    contract_type="zetachain",
+                    db=db
+                )
+                verification_results.append({
+                    "chain": "ZetaChain",
+                    "status": zc_verification.get("status", "unknown"),
+                    "message": zc_verification.get("message", "")
+                })
+                logger.info(f"ZetaChain verification result: {zc_verification.get('status')}")
+            except Exception as e:
+                logger.error(f"Error triggering verification for ZetaChain contract: {e}")
+        
+        # Verify EVM contracts if they were deployed successfully
+        for chain_id, chain_info in connected_chains_data.items():
+            if chain_info.get("contract_address") and chain_info.get("setup_status") == "completed":
+                logger.info(f"Automatically verifying EVM contract on chain {chain_id}: {chain_info['contract_address']}")
+                try:
+                    # Create constructor args for EVM contracts
+                    contract_args = {
+                        "name": db_deployment.token_name,
+                        "symbol": db_deployment.token_symbol,
+                        "decimals": db_deployment.decimals,
+                        "supply": 0,  # EVM tokens have 0 initial supply
+                        "owner": db_deployment.deployer_address
+                    }
+                    
+                    evm_verification = await verification_service.verify_contract(
+                        contract_address=chain_info["contract_address"],
+                        chain_id=chain_id,
+                        contract_type="evm",
+                        contract_args=contract_args,
+                        db=db
+                    )
+                    verification_results.append({
+                        "chain": chain_id,
+                        "status": evm_verification.get("status", "unknown"),
+                        "message": evm_verification.get("message", "")
+                    })
+                    logger.info(f"Chain {chain_id} verification result: {evm_verification.get('status')}")
+                except Exception as e:
+                    logger.error(f"Error triggering verification for chain {chain_id}: {e}")
+        
+        # Update verification status from results
+        if verification_results:
+            # Find the most common status
+            statuses = [r["status"] for r in verification_results]
+            if "pending" in statuses:
+                verification_status = "pending"
+            elif "success" in statuses:
+                verification_status = "success"
+            elif "failed" in statuses:
+                verification_status = "failed"
+            
+            logger.info(f"Automatic verification triggered for {len(verification_results)} contracts. Status: {verification_status}")
+        
         # Construct the final response safely using db_deployment where needed
         response_data = {
              "success": success_bool,
@@ -222,14 +287,55 @@ async def verify_contract(verify_data: TokenVerifySchema, db: Session = Depends(
             f"{verify_data.contract_address} on chain {verify_data.chain_id}"
         )
         
-        # Determine contract name based on type
+        # Determine contract type
         contract_type = verify_data.contract_type.lower()
+        is_zetachain = (contract_type == "zetachain")
+        
+        # For EVM contracts, we need constructor arguments
+        contract_args = None
+        numeric_chain_id = int(verify_data.chain_id)
+        
+        if not is_zetachain and verify_data.contract_args:
+            # Use provided constructor args if available
+            contract_args = verify_data.contract_args
+            logger.info(f"Using provided constructor args: {contract_args}")
+        elif not is_zetachain:
+            # Try to find token in database to get constructor args
+            token = None
+            try:
+                # Look through connected chains to find the token
+                tokens = db.query(TokenModel).filter(
+                    TokenModel.connected_chains_json.contains({verify_data.chain_id: {}})
+                ).all()
+                
+                for t in tokens:
+                    chain_data = t.connected_chains_json.get(verify_data.chain_id, {})
+                    if (chain_data.get("contract_address") == 
+                            verify_data.contract_address):
+                        token = t
+                        break
+                
+                if token:
+                    logger.info(f"Found token {token.token_name} for verification")
+                    # Create constructor args from token data
+                    contract_args = {
+                        "name": token.token_name,
+                        "symbol": token.token_symbol,
+                        "decimals": token.decimals,
+                        "supply": 0,  # EVM tokens have 0 initial supply
+                        "owner": token.deployer_address
+                    }
+                    logger.info(f"Generated constructor args: {contract_args}")
+            except Exception as e:
+                logger.warning(f"Error finding token for constructor args: {e}")
+                # Continue without args
         
         # Verify contract
         verification_result = await verification_service.verify_contract(
             contract_address=verify_data.contract_address,
             chain_id=verify_data.chain_id,
             contract_type=contract_type,
+            contract_args=contract_args,
             db=db,
             is_token=True
         )

@@ -49,15 +49,43 @@ def get_chain_config(chain_id: int) -> Optional[Dict[str, Any]]:
     
     # Check if the chain ID exists in the configuration
     if chain_id_str in _chain_configs:
-        chain_config = _chain_configs[chain_id_str]
+        chain_config = _chain_configs[chain_id_str].copy()  # Create a copy to avoid modifying the original
         
         # Check for environment variable override for RPC URL
-        env_var_name = f"{chain_config['name'].replace(' ', '_').upper()}_RPC_URL"
-        custom_rpc_url = os.getenv(env_var_name)
+        chain_name_upper = chain_config['name'].replace(' ', '_').upper()
+        
+        # Check for RPC URL override
+        rpc_env_var = f"{chain_name_upper}_RPC_URL"
+        custom_rpc_url = os.getenv(rpc_env_var)
         if custom_rpc_url:
-            logger.info(f"Using custom RPC URL for {chain_config['name']} from {env_var_name}")
-            chain_config = chain_config.copy()  # Create a copy to avoid modifying the original
+            logger.info(f"Using custom RPC URL for {chain_config['name']} from {rpc_env_var}")
             chain_config['rpc_url'] = custom_rpc_url
+        
+        # Check for API key (for Etherscan-like explorers)
+        # First try chain-specific API key env var
+        api_key_env_vars = [
+            f"{chain_name_upper}_API_KEY",  # e.g., SEPOLIA_TESTNET_API_KEY
+            f"{chain_name_upper.split('_')[0]}_API_KEY"  # e.g., SEPOLIA_API_KEY
+        ]
+        
+        # Add explorer-specific env var if explorer_url exists
+        if chain_config.get('explorer_url'):
+            explorer_domain = chain_config['explorer_url'].split('//')[1].split('.')[0].upper()
+            api_key_env_vars.append(f"{explorer_domain}_API_KEY")  # e.g., ETHERSCAN_API_KEY
+        
+        # Check all possible env var names
+        for env_var in api_key_env_vars:
+            api_key = os.getenv(env_var)
+            if api_key:
+                logger.info(f"Using API key for {chain_config['name']} from {env_var}")
+                chain_config['api_key'] = api_key
+                break
+                
+        # Set the API URL for Etherscan-like explorers
+        if chain_config.get('explorer_url') and not chain_config.get('api_url'):
+            explorer_base = chain_config['explorer_url'].rstrip('/')
+            chain_config['api_url'] = f"{explorer_base}/api"
+            logger.info(f"Set API URL for {chain_config['name']}: {chain_config['api_url']}")
         
         return chain_config
     

@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 from app.models import TokenModel
 from app.utils.logger import logger
 from app.utils.chain_config import get_chain_config
+from app.config import Config  # Import Config for chain ID
 
 
 class TokenService:
@@ -93,7 +94,7 @@ class TokenService:
             
         # Get ZetaChain info if available
         if token_data.get("zc_contract_address"):
-            zc_chain_id = "7001"  # ZetaChain Testnet
+            zc_chain_id = Config.ZETA_CHAIN_ID  # Use Config value
             zc_config = get_chain_config(int(zc_chain_id))
             
             # Create zeta_chain_info if it doesn't exist

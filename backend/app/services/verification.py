@@ -60,12 +60,31 @@ class VerificationService:
             
         logger.info(f"Using contract name: {contract_name} for verification")
         
+        # Prepare constructor arguments list if provided
+        constructor_arg_list = None
+        if contract_args and not is_zetachain:
+            logger.info(f"Processing constructor arguments: {contract_args}")
+            if contract_name == "EVMUniversalToken":
+                constructor_arg_list = [
+                    contract_args.get("name", ""),
+                    contract_args.get("symbol", ""),
+                    int(contract_args.get("decimals", 18)),
+                    int(contract_args.get("supply", 0)),
+                    int(chain_id),
+                    contract_args.get("owner", "0x0000000000000000000000000000000000000000")
+                ]
+                logger.info(f"Prepared constructor args: {constructor_arg_list}")
+            elif contract_name == "EVMUniversalNFT":
+                # Handle NFT constructor args if needed
+                pass
+        
         # Submit verification request to block explorer
         verification_result = verify_contract_submission(
             chain_id=numeric_chain_id,
             contract_address=contract_address,
             contract_name=contract_name,
-            is_zetachain=is_zetachain
+            is_zetachain=is_zetachain,
+            constructor_args=constructor_arg_list
         )
         
         # Update database if session provided

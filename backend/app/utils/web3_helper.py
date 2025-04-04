@@ -453,41 +453,57 @@ def extract_compiler_version(source_code: str) -> str:
     if match:
         version_pragma = match.group(1)
         logger.info(f"Found pragma version: {version_pragma}")
-        # This is a simplification. Blockscout needs a specific version like
-        # v0.8.19+commit.7dd6d404. This usually comes from the compiler output,
-        # not just the pragma. We'll use a common recent version as a placeholder
-        # if the exact format isn't easily derived.
-        # TODO: Enhance this to use the exact compiler version used for deployment
-        # For now, try to format common versions
+        
+        # Known compiler version mappings for common versions
+        compiler_versions = {
+            "0.8.19": "v0.8.19+commit.7dd6d404",
+            "0.8.20": "v0.8.20+commit.a1b79de6",
+            "0.8.26": "v0.8.26+commit.8a97fa7a"  # Updated commit hash for 0.8.26
+        }
+        
+        # Extract the base version (without ^ or other modifiers)
+        base_version = None
         if version_pragma.startswith("^") or version_pragma.startswith(">="):
+            # Handle ^0.8.26 or >=0.8.26 format
             base_version = version_pragma[1:].split("<")[0].strip()
-            # Use a known recent commit for a common version - adjust as needed
-            if base_version == "0.8.19":
-                return "v0.8.19+commit.7dd6d404"
-            if base_version == "0.8.20":
-                 return "v0.8.20+commit.a1b79de6"
-            if base_version == "0.8.26":
-                 return "v0.8.26+commit.8a97fa7a"
-            # Fallback if specific commit isn't known
-            return f"v{base_version}" # Blockscout might accept this, needs testing
-            
-        # If it's an exact version (e.g., 0.8.19)
-        return f"v{version_pragma}+commit.7dd6d404" # Assume a common commit
+        else:
+            # Handle exact version like 0.8.26
+            base_version = version_pragma
+        
+        logger.info(f"Using base compiler version: {base_version}")
+        
+        # Look up known version or use fallback format
+        if base_version in compiler_versions:
+            return compiler_versions[base_version]
+        else:
+            # For unknown versions, try a standard format
+            return f"v{base_version}+commit.unknown"
 
     logger.warning("Could not extract compiler version from source code.")
     # Return a default version if not found - adjust as needed
-    return "v0.8.19+commit.7dd6d404"
+    return "v0.8.26+commit.8a97fa7a"  # Updated default to 0.8.26
 
 
 def verify_contract_submission(
     chain_id: int,
     contract_address: str,
     contract_name: str,
-    is_zetachain: bool = False
+    is_zetachain: bool = False,
+    constructor_args: list = None
 ) -> Dict[str, Any]:
     """
     Submit contract verification to the appropriate block explorer API.
     Handles both Etherscan-like APIs and Blockscout.
+    
+    Args:
+        chain_id: The chain ID where the contract is deployed
+        contract_address: The address of the deployed contract
+        contract_name: The name of the contract
+        is_zetachain: Flag to indicate if this is deployed on ZetaChain
+        constructor_args: Optional list of constructor arguments
+        
+    Returns:
+        Dict with verification results
     """
     chain_config = get_chain_config(chain_id)
     if not chain_config:
@@ -495,7 +511,7 @@ def verify_contract_submission(
 
     api_url = None
     api_key = None
-    explorer_type = "etherscan" # Default
+    explorer_type = "etherscan"  # Default
 
     if is_zetachain:
         if chain_config.get("blockscout_url"):
@@ -515,13 +531,12 @@ def verify_contract_submission(
             api_url = chain_config["api_url"]
             api_key = chain_config.get("api_key")
             if not api_key:
-                 logger.warning(f"API key not found for Etherscan-like explorer on chain {chain_id}")
-                 # Allow proceeding without API key for some explorers, but log warning
-                 # return {"success": False, "message": f"API key not found for chain {chain_id}", "status": "failed"}
+                logger.warning(f"API key not found for Etherscan-like explorer on chain {chain_id}")
+                return {"success": False, "message": f"API key not found for chain {chain_id}", "status": "failed"}
             logger.info(f"Using Etherscan-like API for EVM chain {chain_id}: {api_url}")
         else:
-             logger.error(f"No API URL configured for chain {chain_id}")
-             return {"success": False, "message": f"No API URL configured for chain {chain_id}", "status": "failed"}
+            logger.error(f"No API URL configured for chain {chain_id}")
+            return {"success": False, "message": f"No API URL configured for chain {chain_id}", "status": "failed"}
 
     if not api_url:
         return {"success": False, "message": "Could not determine API URL", "status": "failed"}
@@ -546,6 +561,41 @@ def verify_contract_submission(
 
     compiler_version = extract_compiler_version(source_code)
     logger.info(f"Using compiler version for verification: {compiler_version}")
+    
+    # Encode constructor arguments if provided
+    encoded_constructor_args = ""
+    if constructor_args:
+        try:
+            if contract_name == "EVMUniversalToken":
+                # Expected args for EVMUniversalToken constructor:
+                # string name, string symbol, uint8 decimals, uint256 initialSupply, 
+                # uint256 currentChainId, address initialOwner
+                from web3 import Web3
+                # Only include non-empty args
+                if len(constructor_args) >= 6:
+                    try:
+                        web3 = Web3()
+                        abi_types = ["string", "string", "uint8", "uint256", "uint256", "address"]
+                        
+                        # Fix for Web3.py v6 which has a different API for ABI encoding
+                        try:
+                            # Try Web3 v6 style encoding
+                            from eth_abi import encode
+                            encoded_args = encode(abi_types, constructor_args).hex()
+                        except (ImportError, AttributeError):
+                            # Fallback to older style
+                            encoded_args = web3.eth.abi.encode_abi(abi_types, constructor_args).hex()
+                            
+                        encoded_constructor_args = encoded_args[2:] if encoded_args.startswith('0x') else encoded_args
+                        logger.info(f"Encoded constructor args: {encoded_constructor_args}")
+                    except Exception as e:
+                        logger.error(f"Failed to encode constructor arguments: {e}")
+                        # Continue without constructor args rather than failing completely
+            else:
+                logger.warning(f"No constructor encoding logic for {contract_name}")
+        except Exception as e:
+            logger.error(f"Failed to encode constructor arguments: {e}")
+            # Continue without constructor args rather than failing completely
 
     # --- Verification Payload and Request ---
     payload = {}
@@ -564,7 +614,7 @@ def verify_contract_submission(
             "runs": "200",  # Standard optimization runs
             "sourceCode": source_code,
             "evmversion": "paris",  # Default or check based on compiler version if needed
-            "constructorArguments": "",  # Keep empty, let Blockscout handle if possible
+            "constructorArguments": encoded_constructor_args,
             "codeformat": "solidity-single-file"  # Key setting for Blockscout
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -576,7 +626,9 @@ def verify_contract_submission(
             safe_contract_name = re.sub(r'[\\/*?"<>|]', "_", contract_name)
             data_filename = f"{safe_contract_name}_verification_data.json"
             with open(data_filename, 'w') as f:
-                json.dump(payload, f, indent=2)
+                payload_copy = payload.copy()
+                payload_copy["sourceCode"] = f"[Source code length: {len(source_code)} chars]"
+                json.dump(payload_copy, f, indent=2)
             logger.info(f"Saved Blockscout verification data to {data_filename}")
         except Exception as e:
             logger.warning(f"Could not save verification data: {e}")
@@ -590,14 +642,27 @@ def verify_contract_submission(
             "contractaddress": contract_address,
             "sourceCode": source_code,
             "contractname": contract_name,
-            "compilerversion": compiler_version,  # Ensure format matches (e.g., v0.8.19+commit...)
-            "optimizationUsed": 1,  # 1 for true, 0 for false
-            "runs": 200,  # Optimization runs
-            # Add other fields like constructor arguments if needed
+            "compilerversion": compiler_version,
+            "optimizationUsed": 1,
+            "runs": 200,
+            "evmversion": "paris",
+            "constructorArguments": encoded_constructor_args
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         # Etherscan also uses POST with form data
 
+        # Save verification data for debugging
+        try:
+            safe_contract_name = re.sub(r'[\\/*?"<>|]', "_", contract_name)
+            data_filename = f"{safe_contract_name}_etherscan_verification_data.json"
+            with open(data_filename, 'w') as f:
+                payload_copy = payload.copy()
+                payload_copy["sourceCode"] = f"[Source code length: {len(source_code)} chars]"
+                payload_copy["apikey"] = "[REDACTED]"  # Don't save actual API key
+                json.dump(payload_copy, f, indent=2)
+            logger.info(f"Saved Etherscan verification data to {data_filename}")
+        except Exception as e:
+            logger.warning(f"Could not save verification data: {e}")
     else:
         return {"success": False, "message": f"Unsupported explorer type: {explorer_type}", "status": "failed"}
 
@@ -606,6 +671,8 @@ def verify_contract_submission(
         logger.info(f"Sending verification request to {api_url}")
         # Log payload without source code for brevity
         log_payload = {k: (v if k != 'sourceCode' else f'<source code {len(v)} chars>') for k, v in payload.items()}
+        if 'apikey' in log_payload:
+            log_payload['apikey'] = '[REDACTED]'
         logger.debug(f"Payload: {json.dumps(log_payload)}")
 
         response = requests.request(

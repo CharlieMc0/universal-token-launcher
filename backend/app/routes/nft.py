@@ -1,8 +1,8 @@
 """API routes for NFT collections."""
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from app.db import get_db
 from app.models.nft import (
@@ -15,6 +15,7 @@ from app.services.nft_deployment import NFTDeploymentService
 from app.services.verification import VerificationService
 from app.utils.logger import logger
 from app.utils.chain_config import get_chain_config, get_enabled_chains
+from app.config import Config  # Import Config for chain ID
 
 # Create router
 router = APIRouter(prefix="/api/nft", tags=["nft"])
@@ -47,12 +48,11 @@ async def deploy_nft_collection(
                     errors=[f"Unsupported chain ID: {chain_id}"]
                 )
         
-        # Ensure ZetaChain is included
-        if "7001" not in collection.selected_chains and "zeta_testnet" not in collection.selected_chains:
-            return NFTCollectionResponse(
-                success=False,
-                message="ZetaChain (ID: 7001) must be included in selected chains",
-                errors=["ZetaChain is required for cross-chain functionality"]
+        # Validate that ZetaChain is included in selected chains (required for cross-chain functionality)
+        if Config.ZETA_CHAIN_ID not in collection.selected_chains and "zeta_testnet" not in collection.selected_chains:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message=f"ZetaChain (ID: {Config.ZETA_CHAIN_ID}) must be included in selected chains",
             )
         
         # Deploy collection
@@ -143,13 +143,13 @@ async def get_nft_collection(
         # Add ZetaChain information in a more structured way
         if collection.zc_contract_address:
             zeta_chain_info = {
-                "chain_id": "7001",
+                "chain_id": Config.ZETA_CHAIN_ID,
                 "contract_address": collection.zc_contract_address,
                 "status": "completed",
             }
             
             # Add explorer URLs
-            chain_config = get_chain_config(7001)
+            chain_config = get_chain_config(int(Config.ZETA_CHAIN_ID))
             if chain_config:
                 zeta_chain_info["explorer_url"] = chain_config.get("explorer_url")
                 zeta_chain_info["blockscout_url"] = chain_config.get("blockscout_url")

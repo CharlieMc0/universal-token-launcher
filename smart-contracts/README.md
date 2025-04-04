@@ -183,7 +183,7 @@ This works on networks like Ethereum, BSC, and others that have Etherscan-compat
 For manual verification, you can use the following prepared files from this project:
 
 - **ABI**: `ZetaChainUniversalToken_abi.json`
-- **Flattened Source Code**: `flat` or `code-flatten` 
+- **Flattened Source Code**: `code-flattened` 
 
 ### Verification Troubleshooting
 
