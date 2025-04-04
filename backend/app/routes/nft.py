@@ -166,8 +166,12 @@ async def get_nft_collection(
                         f"{collection.zc_contract_address}"
                     )
                 
-                # Add verification status
-                zeta_chain_info["verification_status"] = "unknown"
+                # Add verification status from connected_chains_json.zetachain if available
+                if "zetachain" in collection.connected_chains_json:
+                    zeta_chain_info["verification_status"] = collection.connected_chains_json["zetachain"].get("verification_status", "unknown")
+                    zeta_chain_info["verification_message"] = collection.connected_chains_json["zetachain"].get("verification_message", "")
+                else:
+                    zeta_chain_info["verification_status"] = "unknown"
             
             collection_data["zeta_chain_info"] = zeta_chain_info
         

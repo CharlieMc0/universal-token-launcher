@@ -74,7 +74,13 @@ This allows for granular tracking and reporting of verification progress across 
 - **Key Endpoint Categories:**
     - **Deployment:** (`/api/deploy`, `/api/nft/deploy`) Handles the full workflow for creating, deploying, connecting, and configuring tokens and NFTs.
     - **Verification:** (`/api/verify`, `/api/nft/verify`) Triggers contract verification on block explorers.
-    - **Information Retrieval:** (`/api/chains`, `/api/token/{id}`, `/api/nft/collection/{id}`, `/api/users/{address}`) Provides data about supported chains, specific deployments, and user-associated assets.
+    - **Information Retrieval:** (`/api/chains`, `/api/token/{id}`, `/api/nft/collection/{id}`) Provides data about supported chains and specific deployments.
+    - **User Assets:** (`/api/users/{address}`) Retrieves comprehensive information about a user's token holdings with balances across all chains.
+- **Multi-Chain Balance Retrieval:**
+    - The `/api/users/{address}` endpoint queries multiple block explorers to gather token balances.
+    - The system supports both Blockscout APIs (used by ZetaChain) and Etherscan-compatible APIs (used by most EVM chains).
+    - Balances for Universal Tokens are consolidated across chains to provide a unified view.
+    - The implementation automatically identifies Universal Tokens both from the local database and from external explorers.
 - **Data Format:** Expects and returns JSON payloads. Uses **snake_case** for field names, consistent with Python conventions.
 - **Error Handling:** Uses standard HTTP status codes and returns JSON error responses with a `detail` field for specific error messages or validation issues.
 - **Authentication Header:** Requires the `X-Wallet-Address` header for most requests.
@@ -94,7 +100,12 @@ This allows for granular tracking and reporting of verification progress across 
 
 - **Modular Architecture:** The codebase is organized into distinct layers and modules:
     - **`app/routes/`**: API endpoint definitions.
-    - **`app/services/`**: Core business logic (deployment orchestration, verification).
+    - **`app/services/`**: Core business logic:
+        - **`deployment.py`**: Token and NFT deployment orchestration.
+        - **`verification.py`**: Contract verification on block explorers.
+        - **`blockscout.py`**: Interactions with Blockscout API.
+        - **`explorer.py`**: Unified interactions with multiple block explorer APIs.
+        - **`token.py`**: Token-related business logic.
     - **`app/models/`**: Database models (SQLAlchemy) and API schemas (Pydantic).
     - **`app/utils/`**: Reusable helper functions (Web3 interaction, logging, chain configuration).
     - **`app/db.py` & `app/config.py`**: Database connection and application configuration setup.
@@ -117,12 +128,24 @@ This allows for granular tracking and reporting of verification progress across 
 
 ---
 
+## 8. External API Integration
+
+- **Block Explorer APIs:** The system interacts with multiple block explorer APIs to retrieve token balances and other on-chain data:
+    - **Blockscout API:** Used for ZetaChain and other chains that use Blockscout as their explorer.
+    - **Etherscan-compatible APIs:** Used for most EVM chains (Etherscan, BscScan, Polygonscan, etc.).
+- **Explorer Service:** The `explorer_service` (`app/services/explorer.py`) provides a unified interface for querying different explorer APIs, abstracting away their differences.
+- **Configuration:** Explorer URLs are specified in `rpc_config.json` under the `explorer_url` (for Etherscan-compatible APIs) and `blockscout_url` (for Blockscout APIs) fields.
+- **API Keys:** Explorer API keys can be configured in the `.env` file for chains that require them.
+
+---
+
 ## Summary
 
 - **Framework:** FastAPI (Python 3.11 Required)
 - **Database:** PostgreSQL with SQLAlchemy & Alembic
 - **Core Logic:** Handles deployment and configuration of Universal Tokens/NFTs across ZetaChain and EVM chains via a service account (`DEPLOYER_PRIVATE_KEY`).
 - **API:** RESTful, specified via live `/docs` endpoint, requires `X-Wallet-Address` header.
-- **Key Dependencies:** Web3.py, Pydantic.
+- **External Integrations:** Multiple block explorer APIs for retrieving token balances across chains.
+- **Key Dependencies:** Web3.py, Pydantic, httpx (for HTTP requests to explorer APIs).
 - **Configuration:** `.env` for secrets, `rpc_config.json` for chain details.
 - **Structure:** Modular design separating routes, services, models, and utilities.

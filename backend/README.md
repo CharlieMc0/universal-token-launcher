@@ -61,7 +61,7 @@ curl http://localhost:8000/        # Should return service info
 - Track deployment status and contract addresses
 - Verify contracts on blockchain explorers (Blockscout, Etherscan-compatible)
 - View supported chains and their configurations
-- Retrieve user token and NFT balances across chains
+- Retrieve comprehensive user token and NFT balances across all chains
 
 ## Project Structure
 
@@ -77,15 +77,14 @@ backend/
 │   ├── rpc_config.json     # Chain configuration data
 │   ├── models/             # Data models and schemas (DB models + API schemas combined)
 │   ├── routes/             # API routes (deployment, users, NFTs)
-│   ├── services/           # Business logic (deployment, verification)
+│   ├── services/           # Business logic (deployment, verification, explorer)
 │   └── utils/              # Utility functions (chain config, logger, web3 helper)
 ├── artifacts/              # Contract artifacts for deployment
 ├── migrations/             # Alembic migrations
+├── tests/                  # Test files - all tests should be placed here
 ├── Dockerfile              # Docker configuration file
 ├── .dockerignore           # Docker ignore file listing files to exclude
 ├── docker-build.sh         # Script for building and pushing Docker images
-├── test_*.py               # Various test scripts
-├── DEPLOYMENT_FIXES.md     # (Consider archiving or integrating relevant info elsewhere)
 ├── alembic.ini             # Alembic configuration
 ├── requirements.txt        # Project dependencies
 ├── run_app.py              # Simple script to run the application
@@ -101,7 +100,8 @@ backend/
 4.  **Configuration:** Relies heavily on `.env` for sensitive keys and `app/rpc_config.json` for chain details (RPC URLs, explorer info, `gateway_address`).
 5.  **Database:** PostgreSQL stores deployment configuration, status, contract addresses, and verification details. Migrations managed by Alembic.
 6.  **Verification:** Supports Blockscout (for ZetaChain) and Etherscan-compatible explorers. Verification is attempted automatically post-deployment.
-7.  **Error Handling:** Includes specific handling for common issues like binary data in transaction receipts during NFT deployments.
+7.  **Multi-Chain Balance Retrieval:** The `/api/users/{address}` endpoint combines token balance data from all supported chains via explorer APIs, providing a comprehensive view of a user's Universal Token holdings.
+8.  **Error Handling:** Includes specific handling for common issues like binary data in transaction receipts during NFT deployments.
 
 ## For Future Developers
 
@@ -126,16 +126,93 @@ If you're working on this codebase, please note these important points:
 5.  **Chain Configuration (`app/rpc_config.json`)**:
     *   Must contain accurate RPC URLs and chain IDs.
     *   Crucially, for *all target EVM chains*, the `gateway_address` field **MUST** be populated with the correct ZetaChain Gateway contract address for that specific EVM network. Deployments will fail for chains missing this.
+    *   Explorer URLs (`explorer_url` and `blockscout_url`) are used for token balance queries and should be correctly configured for all chains.
 
-6.  **ZRC-20 Address Lookup (`app/utils/web3_helper.py`)**:
+6.  **Explorer Service**:
+    *   The `explorer_service` (`app/services/explorer.py`) queries token balances from multiple block explorers.
+    *   It supports both Blockscout API (ZetaChain) and Etherscan-compatible APIs (most EVM chains).
+    *   If explorer APIs change their format or endpoints, update the corresponding methods in this service.
+
+7.  **ZRC-20 Address Lookup (`app/utils/web3_helper.py`)**:
     *   The `get_zrc20_address` function currently uses a hardcoded dictionary for *testnet* ZRC-20 gas token addresses on ZetaChain.
     *   This **needs updating** or replacement with a dynamic lookup for mainnet or additional testnets.
 
-7.  **Model Export Pattern**: When adding new SQLAlchemy/Pydantic model classes, ensure they are exported in `app/models/__init__.py`.
+8.  **Model Export Pattern**: When adding new SQLAlchemy/Pydantic model classes, ensure they are exported in `app/models/__init__.py`.
 
-8.  **Configuration Access**: Use the centralized `Config` class in `app/config.py` to access configuration settings. Avoid direct `os.getenv` calls elsewhere.
+9.  **Configuration Access**: Use the centralized `Config` class in `app/config.py` to access configuration settings. Avoid direct `os.getenv` calls elsewhere.
 
-9.  **Testing Changes**: After making modifications, run the relevant test scripts (`test_*.py`) to ensure core functionality remains intact.
+10. **Testing Changes**: After making modifications, run the test suite using pytest to ensure core functionality remains intact:
+    ```bash
+    source venv_311/bin/activate
+    pytest tests/
+    ```
+    The tests in the `tests/` directory validate core functionality like deployment, verification, and API endpoints.
+
+## Testing
+
+### Testing Guidelines
+
+When working with the test suite for this project, follow these best practices:
+
+1. **Test Location**: All tests should be placed in the `backend/tests/` directory, not in the root directory.
+
+2. **Using pytest**: All tests should use the pytest framework. Run tests with:
+   ```bash
+   source venv_311/bin/activate
+   pytest tests/
+   ```
+
+3. **Fixtures**: Use pytest fixtures for test parameters rather than hardcoded values or command line arguments:
+   ```python
+   import pytest
+   
+   @pytest.fixture
+   def contract_address():
+       """Fixture providing a test contract address."""
+       return "0x9A8f92a830A5cB89a3816e3D267CB7791c16b04D"
+   
+   def test_verification(contract_address):
+       # Test using the fixture value
+       assert contract_address.startswith("0x")
+   ```
+
+4. **Async Tests**: For asynchronous test functions, always add the `pytest.mark.asyncio` decorator:
+   ```python
+   import pytest
+   
+   @pytest.mark.asyncio
+   async def test_api_call():
+       # Async test code
+       result = await some_async_function()
+       assert result is not None
+   ```
+
+5. **Use Assertions**: Use pytest assertions within tests rather than returning boolean values:
+   ```python
+   # Good: Using assertions
+   def test_function():
+       result = calculate_value()
+       assert result == expected_value
+       
+   # Avoid: Using return values
+   def test_function():
+       result = calculate_value()
+       return result == expected_value  # Don't do this
+   ```
+
+6. **Proper Teardown**: Clean up resources in tests, especially database connections:
+   ```python
+   def test_database_operation():
+       db = next(get_db())
+       try:
+           # Test using database
+           result = db.query(Model).first()
+           assert result is not None
+       finally:
+           db.close()  # Always close the database connection
+   ```
+
+Following these practices ensures consistent test behavior and makes the test suite easier to maintain and extend.
 
 ## Getting Started
 
@@ -224,7 +301,8 @@ If you're working on this codebase, please note these important points:
 The API provides endpoints for managing token and NFT deployments, verification, and information retrieval.
 
 -   **Core Actions:** Deploying assets (`/api/deploy`, `/api/nft/deploy`), verifying contracts (`/api/verify`, `/api/nft/verify`).
--   **Information:** Getting chain info (`/api/chains`), retrieving deployment details (`/api/token/{id}`, `/api/nft/collection/{id}`), getting user-associated assets (`/api/users/{address}`).
+-   **Information:** Getting chain info (`/api/chains`), retrieving deployment details (`/api/token/{id}`, `/api/nft/collection/{id}`).
+-   **User Data:** Getting user-associated assets and balances across all chains (`/api/users/{address}`).
 
 **Refer to the live interactive documentation at `/docs` on the running server for detailed endpoint specifications, request/response schemas, and testing.**
 

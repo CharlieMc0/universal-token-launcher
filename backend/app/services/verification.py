@@ -166,19 +166,24 @@ class VerificationService:
                     f"ZetaChain {asset_type} contract {contract_address} "
                     f"verification status update: {status}. Message: {message}"
                 )
-                # TODO: Add dedicated zc_verification_status fields to models
-                # Temporary: Log for Token, Update metadata for NFT (if field exists)
-                if not is_token:
-                    # Assuming NFTCollectionModel has or will have a metadata field
-                    if hasattr(record, 'metadata'): 
-                        if not record.metadata: record.metadata = {}
-                        record.metadata["verification_status"] = status
-                        record.metadata["verification_message"] = message
-                        flag_modified(record, "metadata")
-                        logger.info(f"Updated NFT metadata verification status to {status}")
-                    else:
-                         logger.warning("NFTCollectionModel has no 'metadata' field for ZC status.")
-
+                
+                if is_token:
+                    # For tokens, use the existing logic (which might just log without DB update)
+                    pass
+                else:
+                    # For NFTs, use connected_chains_json instead of metadata for ZetaChain
+                    # since NFTCollectionModel doesn't have a metadata field
+                    if not record.connected_chains_json:
+                        record.connected_chains_json = {}
+                    
+                    # Use a special "zetachain" key in connected_chains_json for ZetaChain verification
+                    if "zetachain" not in record.connected_chains_json:
+                        record.connected_chains_json["zetachain"] = {}
+                    
+                    record.connected_chains_json["zetachain"]["verification_status"] = status
+                    record.connected_chains_json["zetachain"]["verification_message"] = message
+                    flag_modified(record, "connected_chains_json")
+                    logger.info(f"Updated NFT ZetaChain verification status to {status}")
             else: # EVM chain
                 await self._update_evm_verification_status(
                     model_instance=record,
