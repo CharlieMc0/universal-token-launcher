@@ -1,6 +1,6 @@
 ---
 description: 
-globs: documentation/**
+globs: **.md
 alwaysApply: false
 ---
 # Documentation Directory

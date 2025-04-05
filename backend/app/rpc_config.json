@@ -36,7 +36,7 @@
     "blockscout_url": null,
     "currency_symbol": "BNB",
     "testnet": true,
-    "enabled": true,
+    "enabled": false,
     "gateway_address": "0x0c487a766110c85d301d96e33579c5b317fa4995"
   },
   "7000": {
@@ -57,7 +57,8 @@
     "currency_symbol": "ZETA",
     "testnet": true,
     "enabled": true,
-    "gateway_address": null
+    "gateway_address": "0x2ca7d64A7EFE2D62A725E2B35Cf7230D6677FfEe",
+    "uniswap_router_address": "0x2ca7d64A7EFE2D62A725E2B35Cf7230D6677FfEe"
   },
   "11155111": {
     "name": "Sepolia Testnet",
@@ -67,7 +68,8 @@
     "currency_symbol": "ETH",
     "testnet": true,
     "enabled": true,
-    "gateway_address": "0x6c533f7fe93fae114d0954697069df33c9b74fd7"
+    "gateway_address": "0x0c487a766110c85d301d96e33579c5b317fa4995",
+    "zrc20_gas_token_address": "0x05BA149A7bd6dC1F937fA9046A9e05C05f3b18b0"
   },
   "42161": {
     "name": "Arbitrum One",

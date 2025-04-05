@@ -10,6 +10,7 @@ from app.routes.deployment import router as deployment_router
 from app.routes.users import router as users_router
 from app.routes.nft import router as nft_router
 from app.models.base import engine, Base
+from app.utils import web3_helper, chain_config
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -97,17 +98,26 @@ app.include_router(nft_router)
 # Startup event
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services on application startup."""
-    try:
-        # Create database tables if they don't exist
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created or confirmed to exist")
-        
-        # Log application startup
-        logger.info(f"{Config.APP_NAME} started in {Config.ENVIRONMENT} environment")
-    except Exception as e:
-        logger.error(f"Error during application startup: {str(e)}")
-        # Let the application start anyway, as the database might be created separately
+    """Initialize service on startup."""
+    # Logger is already configured when imported
+    
+    # Load chain configuration
+    chain_config.load_chain_configs()
+    
+    # Load contract ABIs and bytecode
+    contract_data_loaded = web3_helper.load_contract_data()
+    if not contract_data_loaded:
+        logger.error("Failed to load required contract artifacts. Service cannot continue without artifacts.")
+        # Force exit with error since we can't operate without contract artifacts
+        import sys
+        sys.exit(1)
+    
+    # Initialize database and create tables if needed
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created or confirmed to exist")
+    
+    # Startup message
+    logger.info(f"Universal Token Contract Deployment Service started in {Config.ENVIRONMENT} environment")
 
 # Shutdown event
 @app.on_event("shutdown")

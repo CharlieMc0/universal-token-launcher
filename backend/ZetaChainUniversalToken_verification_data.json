@@ -1,7 +1,7 @@
 {
   "module": "contract",
   "action": "verifysourcecode",
-  "contractaddress": "0xb8C48A9cE16Edd68D0a36984794B5fcAA6667dF3",
+  "contractaddress": "0x349758130c0D036607642B7c473f2be3d17b18eA",
   "contractname": "ZetaChainUniversalToken",
   "compilerversion": "v0.8.26+commit.8a97fa7a",
   "optimizationUsed": "1",

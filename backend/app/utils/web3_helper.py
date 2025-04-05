@@ -1,103 +1,97 @@
 """Web3 helper utilities for interacting with blockchain networks."""
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union, Tuple
 from web3 import Web3
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 import json
 import os
-import requests
-import re
 import time
 from web3.exceptions import TransactionNotFound
 
-from app.config import Config
 from app.utils.logger import logger
 from app.utils.chain_config import get_chain_config
+from app.config import Config
 
-# Universal Token contract data - will be loaded from ABIs
+# --- Token contract data ---
 UNIVERSAL_TOKEN_ABI = None
 UNIVERSAL_TOKEN_BYTECODE = None
 ZC_UNIVERSAL_TOKEN_ABI = None
 ZC_UNIVERSAL_TOKEN_BYTECODE = None
 
-# Universal NFT contract data - will be loaded from ABIs
-UNIVERSAL_NFT_ABI = None
-UNIVERSAL_NFT_BYTECODE = None
-ZC_UNIVERSAL_NFT_ABI = None
-ZC_UNIVERSAL_NFT_BYTECODE = None
+# --- ERC1967 Proxy contract data ---
+ERC1967_PROXY_ABI = None
+ERC1967_PROXY_BYTECODE = None
 
-# Path to contract artifacts - relative to the workspace root
-SMART_CONTRACTS_DIR = os.path.abspath(os.path.join(
+# Path to artifacts - relative to the backend directory
+ARTIFACTS_DIR = os.path.abspath(os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-    "..", 
-    "smart-contracts"
+    "artifacts"
 ))
 
-# Token contract paths
-EVM_TOKEN_PATH = os.path.join(
-    SMART_CONTRACTS_DIR, 
-    "artifacts", 
-    "contracts", 
-    "EVMUniversalToken.sol", 
-    "EVMUniversalToken.json"
-)
-ZC_TOKEN_PATH = os.path.join(
-    SMART_CONTRACTS_DIR, 
-    "artifacts", 
-    "contracts", 
-    "ZetaChainUniversalToken.sol", 
-    "ZetaChainUniversalToken.json"
-)
+# --- Token contract paths ---
+EVM_TOKEN_PATH = os.path.join(ARTIFACTS_DIR, "EVMUniversalToken.json")
+ZC_TOKEN_PATH = os.path.join(ARTIFACTS_DIR, "ZetaChainUniversalToken.json")
 
-# NFT contract paths
-EVM_NFT_PATH = os.path.join(
-    SMART_CONTRACTS_DIR, 
-    "artifacts", 
-    "contracts", 
-    "EVMUniversalNFT.sol", 
-    "EVMUniversalNFT.json"
-)
-ZC_NFT_PATH = os.path.join(
-    SMART_CONTRACTS_DIR, 
-    "artifacts", 
-    "contracts", 
-    "ZetaChainUniversalNFT.sol", 
-    "ZetaChainUniversalNFT.json"
-)
+# --- ERC1967 Proxy path ---
+ERC1967_PROXY_PATH = os.path.join(ARTIFACTS_DIR, "ERC1967Proxy.json")
 
 # TODO: Replace with a dynamic lookup or configuration
 # Addresses of ZRC-20 gas tokens on ZetaChain Testnet (7001)
-ZRC20_GAS_TOKEN_ADDRESSES = {
-    11155111: "0x48f80608B672DC30DC7e3dbBd0343c5F02C738Eb",  # Sepolia ETH (gETH)
-    80001: "0x99e4Ab14cBC175B89BC7d151C50B9769477b9111",  # Mumbai MATIC
-    97: "0x66c9bd2f316539f881311c7f8b7c761498631f5c",     # BSC Testnet BNB
-    421614: "0x08d9D2C4759E9a18F4A5915c9f848Ab1E2188f73", # Arbitrum Sepolia ETH
-    11155420: "0x2F4Baf06533A60Ae8e3132F011aF126656102918", # Optimism Sepolia ETH
-    84532: "0xFA7ab9A9976aFa523B61F602E33988f17ECD3583",    # Base Sepolia ETH
-    43113: "0x9fd402f8981564FB789785C5442100A67771ea84",    # Fuji AVAX
-    # Add other relevant chain IDs and their ZRC-20 addresses here
-}
+# REMOVED Hardcoded dictionary: ZRC20_GAS_TOKEN_ADDRESSES = {...}
 
 async def get_zrc20_address(chain_id: int) -> str | None:
-    """Get ZRC-20 gas token address for a given EVM chain ID on ZetaChain Testnet."""
-    address = ZRC20_GAS_TOKEN_ADDRESSES.get(chain_id)
-    if not address:
-        logger.warning(f"ZRC-20 gas token address not found for chain ID: {chain_id}")
-    return address
+    """Get ZRC-20 gas token address for a given EVM chain ID from chain config."""
+    try:
+        # Use get_chain_config which should handle looking up by ID
+        chain_config = get_chain_config(str(chain_id))
+        if not chain_config:
+            logger.warning(f"Chain config not found for chain ID: {chain_id}")
+            return None
+            
+        # The key name might need adjustment based on actual rpc_config.json structure
+        address = chain_config.get(
+            "zrc20_gas_token_address"
+        ) or chain_config.get(
+            "zrc20_address"
+        )
+        
+        if not address:
+            logger.warning(
+                f"ZRC-20 gas token address not found in config "
+                f"for chain ID: {chain_id}"
+            )
+            return None
+            
+        # Validate address format (basic check)
+        if not Web3.is_address(address):
+            logger.warning(
+                f"Invalid ZRC-20 address format found in config "
+                f"for chain ID {chain_id}: {address}"
+            )
+            return None
+             
+        logger.info(
+            f"Found ZRC-20 address {address} for chain {chain_id} in config."
+        )
+        return address
+        
+    except Exception as e:
+        logger.error(f"Error retrieving ZRC-20 address for chain {chain_id} from config: {e}", exc_info=True)
+        return None
 
 
 async def call_contract_method(
     web3: Web3,
-    account,
+    account: LocalAccount,
     contract_address: str,
-    contract_abi: List[Dict],
+    contract_abi: List,
     method_name: str,
-    args: tuple = (),
-    value: int = 0,           # Optional value for payable functions
-    gas_limit: int = 1_000_000, # Default gas limit, adjust as needed
+    args: List = None,
+    value: int = 0,
+    gas_limit: int = 1000000,
     max_retries: int = 3,
-    retry_delay: int = 5,     # seconds
+    retry_delay: int = 5
 ) -> Dict[str, Any]:
     """Builds, signs, and sends a transaction to call a contract method."""
     try:
@@ -105,16 +99,24 @@ async def call_contract_method(
         contract = web3.eth.contract(address=contract_address, abi=contract_abi)
         
         # Get nonce
-        nonce = web3.eth.get_transaction_count(account.address)
+        try:
+            nonce = web3.eth.get_transaction_count(account.address)
+        except Exception as e:
+            logger.error(f"Failed to get nonce: {e}")
+            return {"success": False, "error": True, "message": f"Failed to get nonce: {e}"}
         
         # Prepare the transaction dictionary
-        tx_params = {
-            'from': account.address,
-            'nonce': nonce,
-            'value': value,
-            'gasPrice': web3.eth.gas_price,  # Use current gas price
-            # 'gas': gas_limit  # Gas estimation can be tricky, use build_transaction
-        }
+        try:
+            gas_price = web3.eth.gas_price
+            tx_params = {
+                'from': account.address,
+                'nonce': nonce,
+                'value': value,
+                'gasPrice': gas_price,  # Use current gas price
+            }
+        except Exception as e:
+            logger.error(f"Failed to prepare transaction parameters: {e}")
+            return {"success": False, "error": True, "message": f"Failed to prepare parameters: {e}"}
 
         logger.info(
             f"Calling method '{method_name}' on {contract_address} with args {args}"
@@ -136,11 +138,48 @@ async def call_contract_method(
                 return {"success": False, "error": True, "message": f"Failed to build transaction: {build_err_fixed}"}
 
         # Sign transaction
-        signed_tx = web3.eth.account.sign_transaction(transaction, private_key=account.key)
+        try:
+            signed_tx = account.sign_transaction(transaction)
+        except Exception as e:
+            logger.error(f"Failed to sign transaction: {e}")
+            return {"success": False, "error": True, "message": f"Failed to sign transaction: {e}"}
 
-        # Send transaction using the CORRECT attribute name
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        logger.info(f"Transaction sent for {method_name}. Hash: {web3.to_hex(tx_hash)}")
+        # Send transaction using the correct attribute access
+        logger.info(f"Transaction sent for {method_name}. Hash: {web3.to_hex(signed_tx.hash)}")
+        
+        # Access the raw transaction based on web3.py version
+        try:
+            # Try different attribute names for raw transaction
+            raw_tx = None
+            if hasattr(signed_tx, 'rawTransaction'):
+                raw_tx = signed_tx.rawTransaction
+            elif hasattr(signed_tx, 'raw_transaction'):
+                raw_tx = signed_tx.raw_transaction
+            else:
+                # Try direct inspection for newer versions
+                for attr_name in dir(signed_tx):
+                    if 'raw' in attr_name.lower() and isinstance(getattr(signed_tx, attr_name), bytes):
+                        raw_tx = getattr(signed_tx, attr_name)
+                        logger.info(f"Found raw transaction at attribute: {attr_name}")
+                        break
+            
+            # Try dictionary access if attributes don't work
+            if not raw_tx and isinstance(signed_tx, dict):
+                if 'rawTransaction' in signed_tx:
+                    raw_tx = signed_tx['rawTransaction']
+                elif 'raw_transaction' in signed_tx:
+                    raw_tx = signed_tx['raw_transaction']
+            
+            if not raw_tx:
+                logger.error(f"Could not find raw transaction. SignedTx type: {type(signed_tx)}")
+                logger.error(f"SignedTx attributes: {dir(signed_tx)}")
+                raise ValueError("Could not access raw transaction data from signed transaction")
+                
+            tx_hash = web3.eth.send_raw_transaction(raw_tx)
+            logger.info(f"Transaction {web3.to_hex(tx_hash)} sent")
+        except Exception as e:
+            logger.error(f"Failed to send transaction: {e}")
+            return {"success": False, "error": True, "message": f"Failed to send transaction: {e}"}
         
         # Wait for transaction receipt with retries
         receipt = None
@@ -149,12 +188,6 @@ async def call_contract_method(
                 receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)  # Increased timeout
                 logger.info(f"Transaction {web3.to_hex(tx_hash)} confirmed in block {receipt.blockNumber}")
                 break  # Success, exit retry loop
-            except TransactionNotFound:
-                logger.warning(
-                    f"Tx {web3.to_hex(tx_hash)} not found, attempt {attempt + 1}/" 
-                    f"{max_retries}. Retrying in {retry_delay}s..."
-                )
-                time.sleep(retry_delay)
             except Exception as wait_err:  # Catch other potential wait errors
                 logger.error(f"Error waiting for receipt for {web3.to_hex(tx_hash)}: {wait_err}")
                 # Decide if this error is retryable or fatal
@@ -192,614 +225,647 @@ async def call_contract_method(
         return {"success": False, "error": True, "message": f"Error calling contract method: {str(e)}"}
 
 
-def load_contract_data():
-    """Load contract ABIs and bytecode."""
+def load_contract_data() -> bool:
+    """Load contract ABIs and bytecode from filesystem (artifact files)."""
     global UNIVERSAL_TOKEN_ABI, UNIVERSAL_TOKEN_BYTECODE
     global ZC_UNIVERSAL_TOKEN_ABI, ZC_UNIVERSAL_TOKEN_BYTECODE
-    global UNIVERSAL_NFT_ABI, UNIVERSAL_NFT_BYTECODE
-    global ZC_UNIVERSAL_NFT_ABI, ZC_UNIVERSAL_NFT_BYTECODE
-
-    # Define fallback ABIs (minimal structure)
-    fallback_zc_token_abi = [
-        {"inputs": [{"internalType": "string", "name": "name_", "type": "string"}, {"internalType": "string", "name": "symbol_", "type": "string"}, {"internalType": "uint8", "name": "decimals_", "type": "uint8"}, {"internalType": "uint256", "name": "initialSupply", "type": "uint256"}, {"internalType": "address", "name": "initialOwner", "type": "address"}], "stateMutability": "nonpayable", "type": "constructor"},
-        {"inputs": [{"internalType": "address", "name": "to", "type": "address"}, {"internalType": "uint256", "name": "amount", "type": "uint256"}], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"},
-        {"inputs": [{"internalType": "uint256", "name": "_chainId", "type": "uint256"}, {"internalType": "address", "name": "_contractAddress", "type": "address"}], "name": "setConnectedContract", "outputs": [], "stateMutability": "nonpayable", "type": "function"} # Added ZC specific method
-    ]
-    fallback_evm_token_abi = [
-        {"inputs": [{"internalType": "string", "name": "name_", "type": "string"}, {"internalType": "string", "name": "symbol_", "type": "string"}, {"internalType": "uint8", "name": "decimals_", "type": "uint8"}, {"internalType": "address", "name": "initialOwner", "type": "address"}], "stateMutability": "nonpayable", "type": "constructor"},
-        {"inputs": [{"internalType": "address", "name": "to", "type": "address"}, {"internalType": "uint256", "name": "amount", "type": "uint256"}], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"},
-        {"inputs": [{"internalType": "address", "name": "_zetaChainContract", "type": "address"}], "name": "setZetaChainContract", "outputs": [], "stateMutability": "nonpayable", "type": "function"} # Added EVM specific method
-    ]
-    fallback_bytecode = "0x"
-    
-    fallback_zc_nft_abi = [
-        {"inputs": [{"internalType": "string", "name": "name_", "type": "string"}, {"internalType": "string", "name": "symbol_", "type": "string"}, {"internalType": "string", "name": "baseURI_", "type": "string"}, {"internalType": "uint256", "name": "maxSupply_", "type": "uint256"}, {"internalType": "address", "name": "initialOwner", "type": "address"}], "stateMutability": "nonpayable", "type": "constructor"},
-        {"inputs": [{"internalType": "address", "name": "to", "type": "address"}], "name": "mint", "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}], "stateMutability": "nonpayable", "type": "function"}
-    ]
-    fallback_evm_nft_abi = [
-        {"inputs": [{"internalType": "string", "name": "name_", "type": "string"}, {"internalType": "string", "name": "symbol_", "type": "string"}, {"internalType": "string", "name": "baseURI_", "type": "string"}, {"internalType": "uint256", "name": "maxSupply_", "type": "uint256"}, {"internalType": "address", "name": "initialOwner", "type": "address"}], "stateMutability": "nonpayable", "type": "constructor"},
-        {"inputs": [{"internalType": "address", "name": "to", "type": "address"}], "name": "mint", "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}], "stateMutability": "nonpayable", "type": "function"}
-        # Add setZetaChainContract if applicable to EVM NFT
-    ]
+    global ERC1967_PROXY_ABI, ERC1967_PROXY_BYTECODE
 
     try:
-        # --- Load ZetaChain Token Artifact ---
-        if os.path.exists(ZC_TOKEN_PATH):
-            with open(ZC_TOKEN_PATH, 'r') as f:
-                zc_token_artifact = json.load(f)
-                ZC_UNIVERSAL_TOKEN_ABI = zc_token_artifact.get('abi')
-                ZC_UNIVERSAL_TOKEN_BYTECODE = zc_token_artifact.get('bytecode')
-                if not ZC_UNIVERSAL_TOKEN_ABI or not ZC_UNIVERSAL_TOKEN_BYTECODE:
-                    logger.warning(f"ZC token artifact at {ZC_TOKEN_PATH} missing ABI/bytecode, using fallback")
-                    ZC_UNIVERSAL_TOKEN_ABI = fallback_zc_token_abi
-                    ZC_UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
-                else:
-                    logger.info(f"Loaded ZetaChain token artifact from {ZC_TOKEN_PATH}")
-        else:
-            logger.warning(f"ZetaChain token artifact not found at {ZC_TOKEN_PATH}, using fallback")
-            ZC_UNIVERSAL_TOKEN_ABI = fallback_zc_token_abi
-            ZC_UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
-
         # --- Load EVM Token Artifact ---
-        if os.path.exists(EVM_TOKEN_PATH):
-            with open(EVM_TOKEN_PATH, 'r') as f:
-                evm_token_artifact = json.load(f)
-                UNIVERSAL_TOKEN_ABI = evm_token_artifact.get('abi')
-                UNIVERSAL_TOKEN_BYTECODE = evm_token_artifact.get('bytecode')
-                if not UNIVERSAL_TOKEN_ABI or not UNIVERSAL_TOKEN_BYTECODE:
-                    logger.warning(f"EVM token artifact at {EVM_TOKEN_PATH} missing ABI/bytecode, using fallback")
-                    UNIVERSAL_TOKEN_ABI = fallback_evm_token_abi
-                    UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
-                else:
-                     logger.info(f"Loaded EVM token artifact from {EVM_TOKEN_PATH}")
-        else:
-            logger.warning(f"EVM token artifact not found at {EVM_TOKEN_PATH}, using fallback")
-            UNIVERSAL_TOKEN_ABI = fallback_evm_token_abi
-            UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
-
-        # --- Load ZetaChain NFT Artifact ---
-        if os.path.exists(ZC_NFT_PATH):
-            with open(ZC_NFT_PATH, 'r') as f:
-                zc_nft_artifact = json.load(f)
-                ZC_UNIVERSAL_NFT_ABI = zc_nft_artifact.get('abi')
-                ZC_UNIVERSAL_NFT_BYTECODE = zc_nft_artifact.get('bytecode')
-                if not ZC_UNIVERSAL_NFT_ABI or not ZC_UNIVERSAL_NFT_BYTECODE:
-                    logger.warning(f"ZC NFT artifact at {ZC_NFT_PATH} missing ABI/bytecode, using fallback")
-                    ZC_UNIVERSAL_NFT_ABI = fallback_zc_nft_abi
-                    ZC_UNIVERSAL_NFT_BYTECODE = fallback_bytecode
-                else:
-                    logger.info(f"Loaded ZetaChain NFT artifact from {ZC_NFT_PATH}")
-        else:
-            logger.warning(f"ZetaChain NFT artifact not found at {ZC_NFT_PATH}, using fallback")
-            ZC_UNIVERSAL_NFT_ABI = fallback_zc_nft_abi
-            ZC_UNIVERSAL_NFT_BYTECODE = fallback_bytecode
+        if not os.path.exists(EVM_TOKEN_PATH):
+            logger.error(f"EVM token artifact not found at {EVM_TOKEN_PATH}")
+            return False
             
-        # --- Load EVM NFT Artifact ---
-        if os.path.exists(EVM_NFT_PATH):
-            with open(EVM_NFT_PATH, 'r') as f:
-                evm_nft_artifact = json.load(f)
-                UNIVERSAL_NFT_ABI = evm_nft_artifact.get('abi') # EVM NFT ABI
-                UNIVERSAL_NFT_BYTECODE = evm_nft_artifact.get('bytecode') # EVM NFT Bytecode
-                if not UNIVERSAL_NFT_ABI or not UNIVERSAL_NFT_BYTECODE:
-                    logger.warning(f"EVM NFT artifact at {EVM_NFT_PATH} missing ABI/bytecode, using fallback")
-                    UNIVERSAL_NFT_ABI = fallback_evm_nft_abi
-                    UNIVERSAL_NFT_BYTECODE = fallback_bytecode
-                else:
-                     logger.info(f"Loaded EVM NFT artifact from {EVM_NFT_PATH}")
-        else:
-            logger.warning(f"EVM NFT artifact not found at {EVM_NFT_PATH}, using fallback")
-            UNIVERSAL_NFT_ABI = fallback_evm_nft_abi
-            UNIVERSAL_NFT_BYTECODE = fallback_bytecode
+        with open(EVM_TOKEN_PATH, 'r') as f:
+            evm_token_artifact = json.load(f)
+            UNIVERSAL_TOKEN_ABI = evm_token_artifact.get('abi')
+            UNIVERSAL_TOKEN_BYTECODE = evm_token_artifact.get('bytecode')
+            
+            if not UNIVERSAL_TOKEN_ABI or not UNIVERSAL_TOKEN_BYTECODE:
+                logger.error(f"EVM token artifact at {EVM_TOKEN_PATH} missing ABI/bytecode")
+                return False
+                
+            logger.info(f"Loaded EVM token artifact from {EVM_TOKEN_PATH}")
+            logger.info(f"EVM bytecode length: {len(UNIVERSAL_TOKEN_BYTECODE) if UNIVERSAL_TOKEN_BYTECODE else 0}")
+            logger.info(f"EVM ABI has initialize: {any(m.get('name') == 'initialize' for m in UNIVERSAL_TOKEN_ABI if isinstance(m, dict) and 'name' in m)}")
+
+        # --- Load ZetaChain Token Artifact ---
+        if not os.path.exists(ZC_TOKEN_PATH):
+            logger.error(f"ZetaChain token artifact not found at {ZC_TOKEN_PATH}")
+            return False
+            
+        with open(ZC_TOKEN_PATH, 'r') as f:
+            zc_token_artifact = json.load(f)
+            ZC_UNIVERSAL_TOKEN_ABI = zc_token_artifact.get('abi')
+            ZC_UNIVERSAL_TOKEN_BYTECODE = zc_token_artifact.get('bytecode')
+            
+            if not ZC_UNIVERSAL_TOKEN_ABI or not ZC_UNIVERSAL_TOKEN_BYTECODE:
+                logger.error(f"ZetaChain token artifact at {ZC_TOKEN_PATH} missing ABI/bytecode")
+                return False
+                
+            logger.info(f"Loaded ZetaChain token artifact from {ZC_TOKEN_PATH}")
+            logger.info(f"ZetaChain bytecode length: {len(ZC_UNIVERSAL_TOKEN_BYTECODE) if ZC_UNIVERSAL_TOKEN_BYTECODE else 0}")
+            logger.info(f"ZetaChain ABI has initialize: {any(m.get('name') == 'initialize' for m in ZC_UNIVERSAL_TOKEN_ABI if isinstance(m, dict) and 'name' in m)}")
+            
+        # --- Load ERC1967 Proxy Artifact ---
+        if not os.path.exists(ERC1967_PROXY_PATH):
+            logger.error(f"ERC1967 Proxy artifact not found at {ERC1967_PROXY_PATH}")
+            return False
+            
+        with open(ERC1967_PROXY_PATH, 'r') as f:
+            proxy_artifact = json.load(f)
+            ERC1967_PROXY_ABI = proxy_artifact.get('abi')
+            ERC1967_PROXY_BYTECODE = proxy_artifact.get('bytecode')
+            if not ERC1967_PROXY_ABI or not ERC1967_PROXY_BYTECODE:
+                logger.error(f"ERC1967 Proxy artifact at {ERC1967_PROXY_PATH} missing ABI/bytecode")
+                return False
+            logger.info(f"Loaded ERC1967 Proxy artifact from {ERC1967_PROXY_PATH}")
+            logger.info(f"Proxy bytecode length: {len(ERC1967_PROXY_BYTECODE) if ERC1967_PROXY_BYTECODE else 0}")
 
         logger.info("Contract data loaded successfully")
         return True
 
     except Exception as e:
         logger.error(f"Error loading contract data: {e}", exc_info=True)
-        # Set fallback minimal data if any exception occurs during loading
-        logger.warning("Critical error loading contract data, using minimal fallbacks for all types!")
-        ZC_UNIVERSAL_TOKEN_ABI = fallback_zc_token_abi
-        ZC_UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
-        UNIVERSAL_TOKEN_ABI = fallback_evm_token_abi
-        UNIVERSAL_TOKEN_BYTECODE = fallback_bytecode
-        ZC_UNIVERSAL_NFT_ABI = fallback_zc_nft_abi
-        ZC_UNIVERSAL_NFT_BYTECODE = fallback_bytecode
-        UNIVERSAL_NFT_ABI = fallback_evm_nft_abi
-        UNIVERSAL_NFT_BYTECODE = fallback_bytecode
-        
         return False
 
+# Load contract data when this module is imported
+load_contract_data()
 
-# Initialize Web3 connection for a specific chain
-def get_web3(chain_id: int) -> Optional[Web3]:
-    """Get Web3 instance for the specified chain."""
+async def get_web3(chain_id: Union[int, str]) -> Web3:
+    """
+    Get a Web3 instance connected to the specified chain.
+
+    Args:
+        chain_id: Chain ID or name of the chain to connect to
+
+    Returns:
+        Web3 instance connected to the specified chain
+    """
+    # Convert chain_id to string if it's an integer
+    if isinstance(chain_id, int):
+        chain_id = str(chain_id)
+    
+    # Get chain config
     chain_config = get_chain_config(chain_id)
     if not chain_config:
-        logger.error(f"Chain ID {chain_id} not supported")
+        logger.error(f"Chain config not found for chain ID: {chain_id}")
+        raise ValueError(f"Chain config not found for chain ID: {chain_id}")
+    
+    rpc_url = chain_config.get("rpc_url")
+    
+    if not rpc_url:
+        logger.error(f"RPC URL not found for chain ID: {chain_id}")
+        raise ValueError(f"RPC URL not found for chain ID: {chain_id}")
+    
+    # Initialize web3 instance
+    web3 = Web3(Web3.HTTPProvider(rpc_url))
+    
+    logger.info(f"Connected to chain ID {chain_id} at {rpc_url}")
+    
+    return web3
+
+def get_account():
+    """Get a local account from private key."""
+    private_key = os.environ.get('DEPLOYER_PRIVATE_KEY')
+    if not private_key:
+        logger.error("No DEPLOYER_PRIVATE_KEY found in environment variables")
         return None
     
-    try:
-        web3 = Web3(Web3.HTTPProvider(chain_config["rpc_url"]))
-        if not web3.is_connected():
-            logger.error(f"Failed to connect to RPC for chain {chain_id}")
-            return None
+    if not private_key.startswith('0x'):
+        private_key = '0x' + private_key
+    
+    return Account.from_key(private_key)
+
+async def deploy_contract(
+    web3: Web3,
+    account: LocalAccount,
+    contract_abi: List,
+    contract_bytecode: str,
+    constructor_args: List = None,
+    gas_limit_override: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Deploy a contract to the blockchain.
+    
+    Args:
+        web3: Web3 instance
+        account: Account to deploy from
+        contract_abi: Contract ABI
+        contract_bytecode: Contract bytecode
+        constructor_args: Constructor arguments
+        gas_limit_override: Gas limit override
         
-        logger.info(f"Connected to {chain_config['name']} (Chain ID: {chain_id})")
-        return web3
-    except Exception as e:
-        logger.error(f"Error initializing Web3 for chain {chain_id}: {str(e)}")
-        return None
-
-
-def get_account() -> Optional[LocalAccount]:
-    """Get the deployer account from the environment variable."""
-    private_key = Config.DEPLOYER_PRIVATE_KEY
-    if not private_key:
-        logger.error("DEPLOYER_PRIVATE_KEY not set in environment.")
-        return None
+    Returns:
+        Dict with deployment result
+    """
     try:
-        account: LocalAccount = Account.from_key(private_key)
-        logger.info(f"Loaded deployer account: {account.address}")
-        return account
-    except Exception as e:
-        logger.error(f"Failed to load account from private key: {e}")
-        return None
-
-
-def deploy_contract(web3: Web3, account, contract_abi: List, contract_bytecode: str, constructor_args: List = [], gas_limit_override: Optional[int] = None) -> Dict[str, Any]:
-    """Deploy a contract to the blockchain."""
-    try:
-        Contract = web3.eth.contract(abi=contract_abi, bytecode=contract_bytecode)
+        contract = web3.eth.contract(abi=contract_abi, bytecode=contract_bytecode)
         
         # Get nonce
         nonce = web3.eth.get_transaction_count(account.address)
-        logger.info(f"Using nonce: {nonce}")
-
-        # Set a higher default gas limit for deployment
-        deploy_gas_limit = gas_limit_override if gas_limit_override else 3_000_000
-
-        # Prepare transaction
+        
+        # Prepare transaction dictionary
         tx_params = {
             'from': account.address,
             'nonce': nonce,
-            'gas': deploy_gas_limit, # Use a higher fixed limit initially
-            'gasPrice': web3.eth.gas_price 
+            'gasPrice': web3.eth.gas_price
         }
         
-        # Build transaction
-        logger.info(f"Building deployment transaction with args: {constructor_args}")
-        try:
-             # estimate_gas might fail if limit is too low, but we set a high one above
-             # For deployment, build transaction is part of the Contract object constructor call
-             transaction = Contract.constructor(*constructor_args).build_transaction(tx_params)
-        except Exception as build_err:
-             logger.error(f"Failed to build deployment transaction: {build_err}", exc_info=True)
-             # Fallback if needed, maybe try gas estimation again? Less likely needed now.
-             return {"success": False, "error": True, "message": f"Failed to build deployment transaction: {build_err}"}
-
-
+        if gas_limit_override:
+            tx_params['gas'] = gas_limit_override
+        
+        # Build constructor transaction
+        if constructor_args:
+            constructor_tx = contract.constructor(*constructor_args).build_transaction(tx_params)
+        else:
+            constructor_tx = contract.constructor().build_transaction(tx_params)
+        
         # Sign transaction
-        signed_tx = web3.eth.account.sign_transaction(transaction, private_key=account.key)
+        signed_tx = account.sign_transaction(constructor_tx)
         
-        # Send transaction
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        # Send signed transaction
+        # Access the raw transaction attribute - different web3.py versions use different names
+        raw_tx = None
+        if hasattr(signed_tx, 'rawTransaction'):
+            raw_tx = signed_tx.rawTransaction
+        elif hasattr(signed_tx, 'raw_transaction'):
+            raw_tx = signed_tx.raw_transaction
+        else:
+            # Try direct inspection for newer versions
+            for attr_name in dir(signed_tx):
+                if 'raw' in attr_name.lower() and isinstance(getattr(signed_tx, attr_name), bytes):
+                    raw_tx = getattr(signed_tx, attr_name)
+                    logger.info(f"Found raw transaction at attribute: {attr_name}")
+                    break
         
-        # --- Log TX Hash Immediately ---
-        hex_tx_hash = web3.to_hex(tx_hash)
-        logger.info(f"Deployment transaction sent. Hash: {hex_tx_hash}")
-        # --- End Log ---
-
+        if not raw_tx:
+            # If still not found, try to access as dictionary
+            if isinstance(signed_tx, dict) and 'rawTransaction' in signed_tx:
+                raw_tx = signed_tx['rawTransaction']
+            elif isinstance(signed_tx, dict) and 'raw_transaction' in signed_tx:
+                raw_tx = signed_tx['raw_transaction']
+        
+        if not raw_tx:
+            # Last resort - print the signed transaction structure for debugging
+            logger.error(f"Could not find raw transaction. SignedTx type: {type(signed_tx)}")
+            logger.error(f"SignedTx attributes: {dir(signed_tx)}")
+            logger.error(f"SignedTx repr: {repr(signed_tx)}")
+            raise ValueError("Could not access raw transaction data from signed transaction")
+        
+        tx_hash = web3.eth.send_raw_transaction(raw_tx)
+        logger.info(f"Transaction sent. Hash: {web3.to_hex(tx_hash)}")
+        
         # Wait for transaction receipt
-        logger.info("Waiting for transaction receipt...")
-        try:
-            # Increased timeout to 300 seconds (5 minutes)
-            receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=300) 
-            
-            if receipt.status == 1:
-                contract_address = receipt.contractAddress
-                logger.info(f"Contract deployed at: {contract_address}")
-                
-                # Convert receipt to a serializable dictionary with primitive Python types
-                receipt_dict = {}
-                try:
-                    # Extract only the essential receipt data
-                    receipt_dict = {
-                        "blockHash": web3.to_hex(receipt.blockHash) if receipt.blockHash else None,
-                        "blockNumber": receipt.blockNumber,
-                        "gasUsed": receipt.gasUsed,
-                        "status": receipt.status
-                    }
-                except Exception as e:
-                    logger.warning(f"Could not fully convert receipt to dict: {str(e)}")
-                
-                return {
-                    "success": True, 
-                    "error": False,
-                    "contract_address": contract_address,
-                    "transaction_hash": hex_tx_hash,
-                    "receipt": receipt_dict
-                }
-            else:
-                logger.error(f"Contract deployment failed (reverted). Tx: {hex_tx_hash}")
-                return {
-                    "success": False, 
-                    "error": True,
-                    "transaction_hash": hex_tx_hash, 
-                    "message": "Deployment transaction reverted"
-                }
-        except Exception as e: # Catch timeout errors etc.
-            logger.error(f"Error waiting for deployment receipt for {hex_tx_hash}: {e}", exc_info=True)
-            return {
-                "success": False, 
-                "error": True,
-                "transaction_hash": hex_tx_hash, 
-                "message": f"Error or timeout waiting for receipt: {e}"
-            }
-
-    except Exception as e:
-        logger.error(f"Contract deployment failed: {str(e)}", exc_info=True)
-        return {"success": False, "error": True, "message": f"Contract deployment failed: {str(e)}"}
-
-
-def extract_compiler_version(source_code: str) -> str:
-    """Extract Solidity compiler version from source code using regex."""
-    # Regex to find pragma solidity line (flexible for different spacings)
-    # Example: pragma solidity ^0.8.0; pragma solidity >=0.8.0 <0.9.0;
-    # We need the exact version, often found in artifacts or compiled output,
-    # but the pragma gives a clue. Blockscout requires a specific version format.
-    # Example: v0.8.19+commit.7dd6d404
-    
-    match = re.search(r"pragma\s+solidity\s+([\^<>=]*\d+\.\d+\.\d+)", source_code)
-    if match:
-        version_pragma = match.group(1)
-        logger.info(f"Found pragma version: {version_pragma}")
+        receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
         
-        # Known compiler version mappings for common versions
-        compiler_versions = {
-            "0.8.19": "v0.8.19+commit.7dd6d404",
-            "0.8.20": "v0.8.20+commit.a1b79de6",
-            "0.8.26": "v0.8.26+commit.8a97fa7a"  # Updated commit hash for 0.8.26
+        if receipt.status != 1:
+            logger.error(f"Contract deployment failed. Transaction reverted.")
+            return {"success": False, "error": True, "message": "Transaction reverted"}
+        
+        contract_address = receipt.contractAddress
+        logger.info(f"Contract deployed at: {contract_address}")
+        
+        return {
+            "success": True, 
+            "error": False, 
+            "contract_address": contract_address,
+            "transaction_hash": web3.to_hex(tx_hash)
         }
         
-        # Extract the base version (without ^ or other modifiers)
-        base_version = None
-        if version_pragma.startswith("^") or version_pragma.startswith(">="):
-            # Handle ^0.8.26 or >=0.8.26 format
-            base_version = version_pragma[1:].split("<")[0].strip()
-        else:
-            # Handle exact version like 0.8.26
-            base_version = version_pragma
-        
-        logger.info(f"Using base compiler version: {base_version}")
-        
-        # Look up known version or use fallback format
-        if base_version in compiler_versions:
-            return compiler_versions[base_version]
-        else:
-            # For unknown versions, try a standard format
-            return f"v{base_version}+commit.unknown"
+    except Exception as e:
+        logger.error(f"Error deploying contract: {e}", exc_info=True)
+        return {"success": False, "error": True, "message": f"Error deploying contract: {e}"}
 
-    logger.warning("Could not extract compiler version from source code.")
-    # Return a default version if not found - adjust as needed
-    return "v0.8.26+commit.8a97fa7a"  # Updated default to 0.8.26
-
-
-def verify_contract_submission(
-    chain_id: int,
-    contract_address: str,
-    contract_name: str,
-    is_zetachain: bool = False,
-    constructor_args: list = None
+async def deploy_implementation(
+    web3: Web3,
+    account: LocalAccount,
+    contract_abi: List,
+    contract_bytecode: str,
+    constructor_args: List = None,
+    gas_limit_override: Optional[int] = None
 ) -> Dict[str, Any]:
     """
-    Submit contract verification to the appropriate block explorer API.
-    Handles both Etherscan-like APIs and Blockscout.
+    Deploy an implementation contract for use with a proxy.
+    Simply a wrapper around deploy_contract with better logging.
+    """
+    logger.info(f"Deploying implementation contract...")
+    result = await deploy_contract(
+        web3=web3,
+        account=account,
+        contract_abi=contract_abi,
+        contract_bytecode=contract_bytecode,
+        constructor_args=constructor_args,
+        gas_limit_override=gas_limit_override
+    )
+    
+    if result.get("success"):
+        logger.info(f"Implementation contract successfully deployed at: {result['contract_address']}")
+    else:
+        logger.error(f"Implementation contract deployment failed: {result.get('message')}")
+        
+    return result
+
+async def deploy_erc1967_proxy(
+    web3: Web3,
+    account: LocalAccount,
+    implementation_address: str,
+    init_data: bytes = b'',  # Usually encode_function_data for initializer
+    gas_limit_override: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Deploy an ERC1967 proxy contract pointing to an implementation.
     
     Args:
-        chain_id: The chain ID where the contract is deployed
-        contract_address: The address of the deployed contract
-        contract_name: The name of the contract
-        is_zetachain: Flag to indicate if this is deployed on ZetaChain
-        constructor_args: Optional list of constructor arguments
+        web3: Web3 instance
+        account: Account to deploy from
+        implementation_address: Address of the implementation contract
+        init_data: Initialization data (encoded initialize function call) 
+        gas_limit_override: Optional gas limit override
+        
+    Returns:
+        Dict with deployment result
+    """
+    if not ERC1967_PROXY_ABI or not ERC1967_PROXY_BYTECODE:
+        logger.error("ERC1967 Proxy ABI or bytecode not loaded")
+        return {"success": False, "error": True, "message": "ERC1967 Proxy ABI or bytecode not loaded"}
+    
+    try:
+        # ERC1967Proxy constructor takes implementation address and initialization data
+        constructor_args = [
+            web3.to_checksum_address(implementation_address),
+            init_data
+        ]
+        
+        logger.info(f"Deploying ERC1967 Proxy pointing to implementation: {implementation_address}")
+        logger.info(f"Initialization data length: {len(init_data)}")
+        
+        result = await deploy_contract(
+            web3=web3,
+            account=account,
+            contract_abi=ERC1967_PROXY_ABI,
+            contract_bytecode=ERC1967_PROXY_BYTECODE,
+            constructor_args=constructor_args,
+            gas_limit_override=gas_limit_override or 3000000  # Higher gas limit for proxy deployment
+        )
+        
+        if result.get("success"):
+            logger.info(f"ERC1967 Proxy successfully deployed at: {result['contract_address']}")
+        else:
+            logger.error(f"ERC1967 Proxy deployment failed: {result.get('message')}")
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error deploying ERC1967 Proxy: {e}", exc_info=True)
+        return {"success": False, "error": True, "message": f"Error deploying ERC1967 Proxy: {e}"}
+
+def encode_initialize_data(web3: Web3, contract_abi: List, name: str, symbol: str, gateway_address: str, owner_address: str, gas: int = 3000000, uniswap_router_address: str = None) -> bytes:
+    """
+    Encode initialize function call data for token contracts.
+    Determines argument list based on ABI signature.
+    
+    Args:
+        web3: Web3 instance
+        contract_abi: Contract ABI
+        name: Token name
+        symbol: Token symbol
+        gateway_address: Gateway address
+        owner_address: Initial owner address
+        gas: Gas limit (used in initialize signature)
+        uniswap_router_address: Optional Uniswap router address (for ZetaChain token)
+        
+    Returns:
+        Encoded function call data
+    """
+    # Create a contract without an address (needed for data encoding)
+    contract = web3.eth.contract(abi=contract_abi)
+    
+    try:
+        # Find the initialize function in the ABI
+        initialize_abi = None
+        for item in contract_abi:
+            if isinstance(item, dict) and item.get('type') == 'function' and item.get('name') == 'initialize':
+                initialize_abi = item
+                break
+        
+        if not initialize_abi:
+            raise ValueError("Initialize function not found in ABI")
+        
+        # Log the function signature to help with debugging
+        inputs = initialize_abi.get('inputs', [])
+        num_params = len(inputs)
+        signature = f"initialize({','.join(inp.get('type', '') for inp in inputs)})"
+        logger.info(f"Found initialize function signature: {signature} with {num_params} parameters.")
+        
+        args_list = []
+        
+        # Determine arguments based on the number of parameters found in the ABI
+        if num_params == 6: # Assumed ZetaChain version
+            if not uniswap_router_address:
+                 raise ValueError("Uniswap router address is required for 6-parameter initialize function (ZetaChain)")
+                 
+            logger.info("Using 6-parameter initialize (assumed ZetaChain)")
+            args_list = [
+                web3.to_checksum_address(owner_address),
+                name,
+                symbol,
+                web3.to_checksum_address(gateway_address),
+                gas, # gas parameter expected by ZC token
+                web3.to_checksum_address(uniswap_router_address)
+            ]
+            
+        elif num_params == 5: # Assumed EVM version
+            logger.info("Using 5-parameter initialize (assumed EVM)")
+            # Order needs to match the EVMUniversalToken.sol initialize signature
+            # Example: initialize(address _owner, string memory _name, string memory _symbol, address _gatewayAddress, uint256 _gas)
+            args_list = [
+                web3.to_checksum_address(owner_address),
+                name,
+                symbol,
+                web3.to_checksum_address(gateway_address),
+                gas # gas parameter also expected by EVM token
+            ]
+        else:
+            raise ValueError(f"Unsupported initialize function signature: Expected 5 or 6 parameters, found {num_params}")
+            
+        # Encode the function call using web3.py's built-in method
+        # Use encodeABI which is preferred for getting call data
+        encoded_data = contract.encodeABI(fn_name="initialize", args=args_list)
+        
+        logger.info(f"Successfully generated initialization data ({len(encoded_data)} bytes) using ABI encoding.")
+        return bytes.fromhex(encoded_data[2:]) # Return bytes, remove 0x prefix
+
+    except Exception as e:
+        logger.error(f"Fatal error encoding initialize data using ABI: {e}", exc_info=True)
+        # Do NOT use fallback. Raise the error so the root cause can be fixed.
+        raise ValueError(f"Failed to encode initialize data: {e}")
+
+def get_chain_details(chain_id: int):
+    """Get chain details from configuration."""
+    chain_config = get_chain_config(str(chain_id))
+    if not chain_config:
+        return None
+    return chain_config
+
+def extract_compiler_version(contract_path: str) -> str:
+    """Extract compiler version from contract json file."""
+    if not os.path.exists(contract_path):
+        logger.error(f"Contract file not found: {contract_path}")
+        return "v0.8.17+commit.8df45f5f"  # Default version
+
+    try:
+        with open(contract_path, 'r') as f:
+            data = json.load(f)
+            metadata = json.loads(data.get('metadata', '{}'))
+            compiler = metadata.get('compiler', {})
+            version = compiler.get('version', '')
+            
+            if version:
+                # Normalize version string to match what verification APIs expect
+                if version.startswith('v'):
+                    return version
+                else:
+                    return f"v{version}"
+            
+            # Fallback to default version
+            return "v0.8.17+commit.8df45f5f"
+    except Exception as e:
+        logger.error(f"Error extracting compiler version: {e}")
+        return "v0.8.17+commit.8df45f5f"  # Default version
+
+
+async def verify_contract_submission(
+    explorer_base_url: str,
+    api_key: str,
+    contract_address: str,
+    contract_name: str,
+    compiler_version: str,
+    optimization_used: bool = True,
+    optimization_runs: int = 200,
+    source_code: str = "",
+    contract_path: str = "",
+    constructor_args: str = "",
+    is_blockscout: bool = False,
+) -> Dict[str, Any]:
+    """
+    Submit a contract for verification on a block explorer (Etherscan, Blockscout, etc.).
+    
+    Args:
+        explorer_base_url: Base URL of the explorer API
+        api_key: API key for the explorer
+        contract_address: Address of the deployed contract to verify
+        contract_name: Name of the contract
+        compiler_version: Solidity compiler version
+        optimization_used: Whether optimization was used for compilation
+        optimization_runs: Number of optimization runs
+        source_code: Source code of the contract
+        contract_path: Path to the contract file
+        constructor_args: ABI-encoded constructor arguments
+        is_blockscout: Whether the explorer is Blockscout
         
     Returns:
         Dict with verification results
     """
-    chain_config = get_chain_config(chain_id)
-    if not chain_config:
-        return {"success": False, "message": f"Chain ID {chain_id} not configured", "status": "failed"}
-
-    api_url = None
-    api_key = None
-    explorer_type = "etherscan"  # Default
-
-    if is_zetachain:
-        if chain_config.get("blockscout_url"):
-            api_url = f"{chain_config['blockscout_url'].rstrip('/')}/api"
-            explorer_type = "blockscout"
-            logger.info(f"Using Blockscout API for ZetaChain: {api_url}")
-        else:
-            logger.error(f"Blockscout URL not configured for ZetaChain ID {chain_id}")
-            return {"success": False, "message": "Blockscout URL not configured for ZetaChain", "status": "failed"}
-    else:
-        # For EVM chains, prioritize Blockscout if configured, else use Etherscan
-        if chain_config.get("blockscout_url"):
-            api_url = f"{chain_config['blockscout_url'].rstrip('/')}/api"
-            explorer_type = "blockscout"
-            logger.info(f"Using Blockscout API for EVM chain {chain_id}: {api_url}")
-        elif chain_config.get("api_url"):
-            api_url = chain_config["api_url"]
-            api_key = chain_config.get("api_key")
-            if not api_key:
-                logger.warning(f"API key not found for Etherscan-like explorer on chain {chain_id}")
-                return {"success": False, "message": f"API key not found for chain {chain_id}", "status": "failed"}
-            logger.info(f"Using Etherscan-like API for EVM chain {chain_id}: {api_url}")
-        else:
-            logger.error(f"No API URL configured for chain {chain_id}")
-            return {"success": False, "message": f"No API URL configured for chain {chain_id}", "status": "failed"}
-
-    if not api_url:
-        return {"success": False, "message": "Could not determine API URL", "status": "failed"}
-
-    # Determine contract source file path
-    contract_file = f"{contract_name}.sol"
-    contract_path = os.path.join(SMART_CONTRACTS_DIR, "contracts", contract_file)
-
-    if not os.path.exists(contract_path):
-        logger.error(f"Contract source file not found at {contract_path}")
-        # Check if the parent directory exists and list files for debugging
-        parent_dir = os.path.dirname(contract_path)
-        if not os.path.exists(parent_dir):
-            logger.error(f"Parent directory not found: {parent_dir}")
-        else:
-            logger.info(f"Parent directory exists: {parent_dir}. Files: {os.listdir(parent_dir)}")
-        return {"success": False, "message": f"Contract source file not found: {contract_file}", "status": "failed"}
-
-    logger.info(f"Reading contract source from {contract_path}")
-    with open(contract_path, 'r') as f:
-        source_code = f.read()
-
-    compiler_version = extract_compiler_version(source_code)
-    logger.info(f"Using compiler version for verification: {compiler_version}")
-    
-    # Encode constructor arguments if provided
-    encoded_constructor_args = ""
-    if constructor_args:
-        try:
-            if contract_name == "EVMUniversalToken":
-                # Expected args for EVMUniversalToken constructor:
-                # string name, string symbol, uint8 decimals, uint256 initialSupply, 
-                # uint256 currentChainId, address initialOwner
-                from web3 import Web3
-                # Only include non-empty args
-                if len(constructor_args) >= 6:
-                    try:
-                        web3 = Web3()
-                        abi_types = ["string", "string", "uint8", "uint256", "uint256", "address"]
-                        
-                        # Fix for Web3.py v6 which has a different API for ABI encoding
-                        try:
-                            # Try Web3 v6 style encoding
-                            from eth_abi import encode
-                            encoded_args = encode(abi_types, constructor_args).hex()
-                        except (ImportError, AttributeError):
-                            # Fallback to older style
-                            encoded_args = web3.eth.abi.encode_abi(abi_types, constructor_args).hex()
-                            
-                        encoded_constructor_args = encoded_args[2:] if encoded_args.startswith('0x') else encoded_args
-                        logger.info(f"Encoded constructor args: {encoded_constructor_args}")
-                    except Exception as e:
-                        logger.error(f"Failed to encode constructor arguments: {e}")
-                        # Continue without constructor args rather than failing completely
-            else:
-                logger.warning(f"No constructor encoding logic for {contract_name}")
-        except Exception as e:
-            logger.error(f"Failed to encode constructor arguments: {e}")
-            # Continue without constructor args rather than failing completely
-
-    # --- Verification Payload and Request ---
-    payload = {}
-    headers = {}
-    request_method = "POST"
-
-    if explorer_type == "blockscout":
-        logger.info(f"Preparing Blockscout verification payload for {contract_name}")
-        payload = {
-            "module": "contract",
-            "action": "verifysourcecode",
-            "contractaddress": contract_address,
-            "contractname": contract_name,
-            "compilerversion": compiler_version,
-            "optimizationUsed": "1",  # Assuming optimization is always used (common practice)
-            "runs": "200",  # Standard optimization runs
-            "sourceCode": source_code,
-            "evmversion": "paris",  # Default or check based on compiler version if needed
-            "constructorArguments": encoded_constructor_args,
-            "codeformat": "solidity-single-file"  # Key setting for Blockscout
-        }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        # Blockscout uses POST with form data
-
-        # Save verification data locally for debugging
-        try:
-            # Ensure filename is safe
-            safe_contract_name = re.sub(r'[\\/*?"<>|]', "_", contract_name)
-            data_filename = f"{safe_contract_name}_verification_data.json"
-            with open(data_filename, 'w') as f:
-                payload_copy = payload.copy()
-                payload_copy["sourceCode"] = f"[Source code length: {len(source_code)} chars]"
-                json.dump(payload_copy, f, indent=2)
-            logger.info(f"Saved Blockscout verification data to {data_filename}")
-        except Exception as e:
-            logger.warning(f"Could not save verification data: {e}")
-
-    elif explorer_type == "etherscan":
-        logger.info(f"Preparing Etherscan-like verification payload for {contract_name}")
-        payload = {
-            "apikey": api_key,
-            "module": "contract",
-            "action": "verifysourcecode",
-            "contractaddress": contract_address,
-            "sourceCode": source_code,
-            "contractname": contract_name,
-            "compilerversion": compiler_version,
-            "optimizationUsed": 1,
-            "runs": 200,
-            "evmversion": "paris",
-            "constructorArguments": encoded_constructor_args
-        }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        # Etherscan also uses POST with form data
-
-        # Save verification data for debugging
-        try:
-            safe_contract_name = re.sub(r'[\\/*?"<>|]', "_", contract_name)
-            data_filename = f"{safe_contract_name}_etherscan_verification_data.json"
-            with open(data_filename, 'w') as f:
-                payload_copy = payload.copy()
-                payload_copy["sourceCode"] = f"[Source code length: {len(source_code)} chars]"
-                payload_copy["apikey"] = "[REDACTED]"  # Don't save actual API key
-                json.dump(payload_copy, f, indent=2)
-            logger.info(f"Saved Etherscan verification data to {data_filename}")
-        except Exception as e:
-            logger.warning(f"Could not save verification data: {e}")
-    else:
-        return {"success": False, "message": f"Unsupported explorer type: {explorer_type}", "status": "failed"}
-
-    # Make the API request
     try:
-        logger.info(f"Sending verification request to {api_url}")
-        # Log payload without source code for brevity
-        log_payload = {k: (v if k != 'sourceCode' else f'<source code {len(v)} chars>') for k, v in payload.items()}
-        if 'apikey' in log_payload:
-            log_payload['apikey'] = '[REDACTED]'
-        logger.debug(f"Payload: {json.dumps(log_payload)}")
-
-        response = requests.request(
-            method=request_method,
-            url=api_url,
-            data=payload, # Use data for form-urlencoded
-            headers=headers,
-            timeout=60 # Increased timeout for verification
-        )
-
-        logger.info(f"Verification response status code: {response.status_code}")
-        logger.debug(f"Verification response text: {response.text[:500]}...") # Log beginning of response
-
-        # Save response locally for debugging
-        try:
-            response_filename = f"{contract_name}_verification_response.json"
-            with open(response_filename, 'w') as f:
-                try:
-                    # Try saving as JSON if possible
-                    json.dump(response.json(), f, indent=2)
-                except json.JSONDecodeError:
-                    # Save as text if not JSON
-                    f.write(response.text)
-            logger.info(f"Saved verification response to {response_filename}")
-        except Exception as e:
-            logger.warning(f"Could not save verification response: {e}")
-
-
-        if response.status_code == 200:
-            try:
-                response_data = response.json()
-                # Check response format (varies between Etherscan and Blockscout)
-                if explorer_type == "blockscout":
-                    # Blockscout success: status="1", result=guid OR status="0", result=error message
-                    if response_data.get("status") == "1":
-                        logger.info(f"Blockscout verification submitted successfully. GUID: {response_data.get('result')}")
-                        # Blockscout submission doesn't mean instant verification
-                        return {"success": True, "message": f"Verification submitted: {response_data.get('result')}", "status": "pending"}
-                    else:
-                        error_message = response_data.get("result", "Unknown Blockscout error")
-                        logger.error(f"Blockscout verification submission failed: {error_message}")
-                        return {"success": False, "message": error_message, "status": "failed"}
+        # If source code not provided but contract path is, read from file
+        if not source_code and contract_path:
+            if os.path.exists(contract_path):
+                with open(contract_path, 'r') as f:
+                    source_code = f.read()
+            else:
+                logger.error(f"Contract file not found: {contract_path}")
+                return {
+                    "success": False,
+                    "error": True,
+                    "message": f"Contract file not found: {contract_path}"
+                }
                 
-                elif explorer_type == "etherscan":
-                    # Etherscan success: status="1", result=guid | status="0", result=error
-                    if response_data.get("status") == "1":
-                        guid = response_data.get("result")
-                        logger.info(f"Etherscan verification submitted successfully. GUID: {guid}")
-                        # Start checking status using the GUID
-                        # For simplicity now, return pending. A separate check status function is better.
-                        return {"success": True, "message": f"Verification submitted: {guid}", "status": "pending"}
-                    else:
-                        error_message = response_data.get("result", "Unknown Etherscan error")
-                        logger.error(f"Etherscan verification submission failed: {error_message}")
-                        return {"success": False, "message": error_message, "status": "failed"}
-
-            except json.JSONDecodeError:
-                logger.error("Failed to decode JSON response from explorer API")
-                return {"success": False, "message": "Invalid JSON response from API", "status": "failed"}
+        if not source_code:
+            logger.error("No source code provided for verification")
+            return {
+                "success": False,
+                "error": True,
+                "message": "No source code provided for verification"
+            }
+        
+        # Extract compiler version from source if not provided
+        if not compiler_version and contract_path:
+            compiler_version = extract_compiler_version(contract_path)
+        
+        # Prepare parameters based on explorer type
+        if is_blockscout:
+            # Blockscout format
+            url = f"{explorer_base_url.rstrip('/')}/api"
+            params = {
+                "module": "contract",
+                "action": "verify",
+                "addressHash": contract_address,
+                "name": contract_name,
+                "compilerVersion": f"v{compiler_version}",
+                "optimization": "true" if optimization_used else "false",
+                "optimizationRuns": optimization_runs,
+                "contractSourceCode": source_code
+            }
+            if constructor_args:
+                params["constructorArguments"] = constructor_args
         else:
-            logger.error(f"Explorer API request failed with status {response.status_code}")
-            return {"success": False, "message": f"API request failed with status {response.status_code}: {response.text[:200]}", "status": "failed"}
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error sending verification request: {e}", exc_info=True)
-        return {"success": False, "message": f"Network error during verification: {e}", "status": "failed"}
-    except Exception as e:
-        logger.error(f"Unexpected error during verification submission: {e}", exc_info=True)
-        return {"success": False, "message": f"Unexpected error: {e}", "status": "failed"}
-
-
-async def check_verification_status(chain_id: int, guid: str) -> Dict[str, Any]:
-    """Check the verification status using the GUID provided by the explorer API."""
-    chain_config = get_chain_config(chain_id)
-    if not chain_config:
-        return {"success": False, "message": f"Chain ID {chain_id} not configured"}
-
-    # Determine API URL and type (assuming Etherscan-like for status check for now)
-    # Blockscout might require different handling or may not have a separate
-    # status check API easily usable
-    api_url = chain_config.get("api_url")
-    api_key = chain_config.get("api_key")
-    is_blockscout = chain_config.get("blockscout_url") and not api_url
-    # Assume Blockscout if only blockscout_url exists
-
-    if is_blockscout:
-         logger.warning("Automatic status check for Blockscout GUID not implemented, returning pending.")
-         # Blockscout verification often happens quickly or might require manual check
-         # For now, assume it's still pending or succeeded if submission was ok.
-         # A more robust solution might involve polling the contract page or a
-         # specific API if available.
-         return {"success": True, "status": "pending", "message": "Blockscout status check not implemented"}
-
-
-    if not api_url:
-        return {"success": False, "message": f"API URL not configured for chain {chain_id}"}
-
-    params = {
-        "apikey": api_key,
-        "module": "contract",
-        "action": "checkverifystatus",
-        "guid": guid
-    }
-
-    try:
-        response = requests.get(api_url, params=params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            result_message = data.get("result", "")
+            # Etherscan-compatible format
+            url = f"{explorer_base_url.rstrip('/')}/api"
+            params = {
+                "module": "contract",
+                "action": "verifysourcecode",
+                "contractaddress": contract_address,
+                "sourceCode": source_code,
+                "codeformat": "solidity-single-file",
+                "contractname": contract_name,
+                "compilerversion": f"v{compiler_version}",
+                "optimizationUsed": "1" if optimization_used else "0",
+                "runs": optimization_runs,
+                "apikey": api_key
+            }
+            if constructor_args:
+                params["constructorArguements"] = constructor_args  # Note: Etherscan's misspelling
+        
+        logger.info(f"Submitting verification request to {url} for contract {contract_address}")
+        
+        # Send verification request
+        import httpx
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, data=params)
             
-            if data.get("status") == "1": # Etherscan success status
-                logger.info(f"Verification status for GUID {guid}: Success")
-                return {"success": True, "status": "success", "message": result_message}
-            elif data.get("status") == "0" and "Pending" in result_message:
-                logger.info(f"Verification status for GUID {guid}: Pending")
-                return {"success": True, "status": "pending", "message": result_message}
+            if response.status_code != 200:
+                logger.error(f"HTTP error {response.status_code} from verification endpoint")
+                return {
+                    "success": False,
+                    "error": True,
+                    "message": f"HTTP error {response.status_code} from verification endpoint: {response.text}"
+                }
+                
+            result = response.json()
+            logger.info(f"Verification submission response: {result}")
+            
+            # Handle different response formats
+            if is_blockscout:
+                if result.get("status") == "1":
+                    return {
+                        "success": True,
+                        "error": False,
+                        "guid": result.get("message", ""),
+                        "result": result,
+                        "is_blockscout": True
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": True,
+                        "message": result.get("message", "Unknown error"),
+                        "result": result,
+                        "is_blockscout": True
+                    }
             else:
-                 logger.error(f"Verification status check failed for GUID {guid}: {result_message}")
-                 return {"success": False, "status": "failed", "message": result_message}
-        else:
-             logger.error(f"API request for status check failed: {response.status_code}")
-             return {"success": False, "message": f"API Error: {response.status_code}"}
-
+                if result.get("status") == "1":
+                    return {
+                        "success": True,
+                        "error": False,
+                        "guid": result.get("result", ""),
+                        "result": result,
+                        "is_blockscout": False
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": True,
+                        "message": result.get("result", "Unknown error"),
+                        "result": result,
+                        "is_blockscout": False
+                    }
+                
     except Exception as e:
-        logger.error(f"Error checking verification status: {e}")
-        return {"success": False, "message": f"Error: {e}"}
+        logger.error(f"Error submitting contract verification: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": True,
+            "message": f"Error submitting contract verification: {str(e)}"
+        }
 
 
-# Ensure contract data is loaded when module is imported
-load_contract_data() 
+async def check_verification_status(
+    explorer_base_url: str,
+    guid: str,
+    api_key: str = "",
+    is_blockscout: bool = False
+) -> Dict[str, Any]:
+    """
+    Check the status of a contract verification request.
+    
+    Args:
+        explorer_base_url: Base URL of the explorer API
+        guid: Verification GUID from verification submission
+        api_key: API key for the explorer (for Etherscan-compatible)
+        is_blockscout: Whether the explorer is Blockscout
+        
+    Returns:
+        Dict with verification status
+    """
+    try:
+        # Prepare URL and parameters based on explorer type
+        url = f"{explorer_base_url.rstrip('/')}/api"
+        
+        if is_blockscout:
+            # For Blockscout, we don't need to check status as verification is synchronous
+            return {
+                "success": True,
+                "error": False,
+                "status": "Verified",
+                "is_complete": True,
+                "is_blockscout": True
+            }
+        else:
+            # Etherscan-compatible
+            params = {
+                "module": "contract",
+                "action": "checkverifystatus",
+                "guid": guid,
+                "apikey": api_key
+            }
+            
+            import httpx
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(url, params=params)
+                
+                if response.status_code != 200:
+                    logger.error(f"HTTP error {response.status_code} checking verification status")
+                    return {
+                        "success": False,
+                        "error": True,
+                        "message": f"HTTP error {response.status_code}: {response.text}",
+                        "is_complete": False
+                    }
+                    
+                result = response.json()
+                logger.info(f"Verification status response: {result}")
+                
+                is_complete = result.get("result", "").lower() == "pass"
+                is_error = "error" in result.get("result", "").lower() or "invalid" in result.get("result", "").lower()
+                
+                return {
+                    "success": is_complete,
+                    "error": is_error,
+                    "status": result.get("result", "Unknown"),
+                    "is_complete": is_complete or is_error,
+                    "message": result.get("result", ""),
+                    "is_blockscout": False
+                }
+                
+    except Exception as e:
+        logger.error(f"Error checking verification status: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": True,
+            "message": f"Error checking verification status: {str(e)}",
+            "is_complete": False
+        }
+
+# ... (existing functions: extract_compiler_version, verify_contract_submission, check_verification_status, etc.) ... 

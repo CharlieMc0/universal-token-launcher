@@ -1,12 +1,16 @@
 """Verification service for token contracts."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
+import json
+import asyncio
+import sys
+import re
 
 from app.utils.logger import logger
-from app.config import get_chain_config
-from app.utils.web3_helper import verify_contract_submission
+from app.utils.chain_config import get_chain_config
+from app.utils.web3_helper import verify_contract_submission, get_web3
 from app.models import TokenModel
 from app.models.nft import NFTCollectionModel
 

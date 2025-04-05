@@ -22,6 +22,7 @@ class TokenModel(Base):
     decimals = Column(Integer, nullable=False, default=18)
     total_supply = Column(String, nullable=False)
     zc_contract_address = Column(String, nullable=True)
+    zc_implementation_address = Column(String, nullable=True)  # Address of the ZetaChain implementation contract
     deployer_address = Column(String, nullable=False)
     connected_chains_json = Column(JSONB, nullable=False, default={})
     deployment_status = Column(String, nullable=False, default='starting')
@@ -48,6 +49,7 @@ class TokenModel(Base):
             "decimals": self.decimals,
             "total_supply": self.total_supply,
             "zc_contract_address": self.zc_contract_address,
+            "zc_implementation_address": self.zc_implementation_address,
             "deployer_address": self.deployer_address,
             "connected_chains_json": self.connected_chains_json,
             "deployment_status": self.deployment_status,

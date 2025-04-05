@@ -102,6 +102,7 @@ backend/
 6.  **Verification:** Supports Blockscout (for ZetaChain) and Etherscan-compatible explorers. Verification is attempted automatically post-deployment.
 7.  **Multi-Chain Balance Retrieval:** The `/api/users/{address}` endpoint combines token balance data from all supported chains via explorer APIs, providing a comprehensive view of a user's Universal Token holdings.
 8.  **Error Handling:** Includes specific handling for common issues like binary data in transaction receipts during NFT deployments.
+9.  **Recent Fixes:** Added proper implementation of `Config.get_chain_config()` class method and fixed missing `owner_address` parameter in `encode_initialize_data()` calls to resolve circular import and initialization errors.
 
 ## For Future Developers
 

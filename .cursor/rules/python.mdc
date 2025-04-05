@@ -1,6 +1,6 @@
 ---
 description: 
-globs: backend/**
+globs: **.py
 alwaysApply: false
 ---
 # Python Guidelines and Rules for Backend

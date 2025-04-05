@@ -94,6 +94,19 @@ def get_chain_config(chain_id: int) -> Optional[Dict[str, Any]]:
     return None
 
 
+def get_chain_details(chain_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Alias for get_chain_config for backward compatibility.
+    
+    Args:
+        chain_id: The chain ID as an integer
+        
+    Returns:
+        The chain configuration dictionary, or None if not found
+    """
+    return get_chain_config(chain_id)
+
+
 def get_supported_chains(testnet_only=False, mainnet_only=False) -> Dict[str, Dict[str, Any]]:
     """
     Get all supported chains, with optional filtering.
