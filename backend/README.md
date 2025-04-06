@@ -120,8 +120,8 @@ If you're working on this codebase, please note these important points:
 
 4.  **Contract Connection Function Names**:
     *   The connection logic (`app/services/deployment.py`) relies on specific function names:
-        *   `setConnectedContract(chainId, contractAddress)` on the ZetaChain contract.
-        *   `setZetaChainContract(zetaChainContractAddress)` on the EVM contract.
+        *   `setConnected(zrc20, contractAddress)` on the ZetaChain contract.
+        *   `setUniversal(universalAddress)` on the EVM contract.
     *   If these names change in future contract versions, update the `method_name` arguments in the `call_contract_method` calls.
 
 5.  **Chain Configuration (`app/rpc_config.json`)**:

@@ -2,17 +2,20 @@
 
 import os
 import json
+import functools
 from typing import Dict, Any, Optional
 
 from app.utils.logger import logger
 
 # Global variable to store chain configurations
 _chain_configs = {}
+# Cache for chain config with API keys/URLs added
+_processed_chain_configs = {}
 
 
 def load_chain_configs():
     """Load chain configurations from the rpc_config.json file."""
-    global _chain_configs
+    global _chain_configs, _processed_chain_configs
     
     # Path to config file relative to this module
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'rpc_config.json')
@@ -28,11 +31,16 @@ def load_chain_configs():
     except Exception as e:
         logger.error(f"Error loading chain configurations: {str(e)}")
         _chain_configs = {}
+    
+    # Clear the processed configs cache when loading new configs
+    _processed_chain_configs = {}
 
 
+@functools.lru_cache(maxsize=32)
 def get_chain_config(chain_id: int) -> Optional[Dict[str, Any]]:
     """
     Get the configuration for a specific chain.
+    Uses an LRU cache to store results and avoid repeated lookups.
     
     Args:
         chain_id: The chain ID as an integer
@@ -40,12 +48,18 @@ def get_chain_config(chain_id: int) -> Optional[Dict[str, Any]]:
     Returns:
         The chain configuration as a dictionary, or None if not found
     """
+    global _processed_chain_configs
+    
+    # Convert chain_id to string for dictionary lookup
+    chain_id_str = str(chain_id)
+    
+    # Check if we have a cached processed config
+    if chain_id_str in _processed_chain_configs:
+        return _processed_chain_configs[chain_id_str]
+    
     # Ensure configs are loaded
     if not _chain_configs:
         load_chain_configs()
-    
-    # Convert chain_id to string for JSON dictionary lookup
-    chain_id_str = str(chain_id)
     
     # Check if the chain ID exists in the configuration
     if chain_id_str in _chain_configs:
@@ -58,7 +72,7 @@ def get_chain_config(chain_id: int) -> Optional[Dict[str, Any]]:
         rpc_env_var = f"{chain_name_upper}_RPC_URL"
         custom_rpc_url = os.getenv(rpc_env_var)
         if custom_rpc_url:
-            logger.info(f"Using custom RPC URL for {chain_config['name']} from {rpc_env_var}")
+            logger.debug(f"Using custom RPC URL for {chain_config['name']} from {rpc_env_var}")
             chain_config['rpc_url'] = custom_rpc_url
         
         # Check for API key (for Etherscan-like explorers)
@@ -77,7 +91,7 @@ def get_chain_config(chain_id: int) -> Optional[Dict[str, Any]]:
         for env_var in api_key_env_vars:
             api_key = os.getenv(env_var)
             if api_key:
-                logger.info(f"Using API key for {chain_config['name']} from {env_var}")
+                logger.debug(f"Using API key for {chain_config['name']} from {env_var}")
                 chain_config['api_key'] = api_key
                 break
                 
@@ -85,8 +99,10 @@ def get_chain_config(chain_id: int) -> Optional[Dict[str, Any]]:
         if chain_config.get('explorer_url') and not chain_config.get('api_url'):
             explorer_base = chain_config['explorer_url'].rstrip('/')
             chain_config['api_url'] = f"{explorer_base}/api"
-            logger.info(f"Set API URL for {chain_config['name']}: {chain_config['api_url']}")
+            logger.debug(f"Set API URL for {chain_config['name']}: {chain_config['api_url']}")
         
+        # Cache the processed config
+        _processed_chain_configs[chain_id_str] = chain_config
         return chain_config
     
     # Chain ID not found
@@ -152,7 +168,7 @@ def get_enabled_chains(testnet_only=False, mainnet_only=False) -> Dict[str, Dict
     # Filter to only include enabled chains
     enabled_chains = {k: v for k, v in chains.items() if v.get('enabled', True)}
     
-    logger.info(f"Found {len(enabled_chains)} enabled chains")
+    logger.debug(f"Found {len(enabled_chains)} enabled chains")
     return enabled_chains
 
 

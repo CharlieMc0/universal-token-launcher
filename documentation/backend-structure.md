@@ -121,7 +121,7 @@ This allows for granular tracking and reporting of verification progress across 
 - **Interaction:** The `app/services/deployment.py` and `app/utils/web3_helper.py` modules handle interactions using the `web3.py` library.
 - **Key Interactions:**
     - Deploying contracts using `Contract.constructor().transact()`.
-    - Calling contract methods (`setConnectedContract`, `setZetaChainContract`, `transfer`, `transferOwnership`) using `Contract.functions.METHOD().transact()`.
+    - Calling contract methods (`setConnectedContract`, `setUniversal`, `transfer`, `transferOwnership`) using `Contract.functions.METHOD().transact()`.
     - Estimating gas before transactions.
     - Waiting for transaction receipts.
 - **Configuration:** Relies on `rpc_config.json` for chain RPC URLs and crucial addresses like the ZetaChain `gateway_address` on EVM chains.

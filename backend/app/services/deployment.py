@@ -428,62 +428,82 @@ class DeploymentService:
         db.commit()
         db.refresh(deployment)
 
-        # --- Step 4: Connect ZetaChain Proxy back to EVM Proxies (setZetaChainContract) ---
-        logger.info("Connecting ZetaChain proxy back to EVM proxies via setZetaChainContract...")
-        set_zeta_contract_success_count = 0
-        set_zeta_contract_failure_count = 0
-
-        for chain_id_str, evm_proxy_addr in deployed_evm_proxies.items():
-            current_status = deployment.connected_chains_json.get(chain_id_str, {})
-            if current_status.get("connection_status") != "connected":
-                logger.warning(f"Skipping setZetaChainContract for {chain_id_str}, connection failed.")
+        # --- Step 4: Connect ZetaChain Proxy back to EVM Proxies (setUniversal) ---
+        logger.info("Connecting ZetaChain proxy back to EVM proxies via setUniversal...")
+        evm_connection_failures = 0
+        
+        for chain_id_str, contract_data in deployed_evm_proxies.items():
+            # Handle both dictionary and direct string address cases
+            evm_proxy_addr = None
+            if isinstance(contract_data, dict):
+                evm_proxy_addr = contract_data.get("proxy_address")
+            elif isinstance(contract_data, str):
+                evm_proxy_addr = contract_data
+                
+            if not evm_proxy_addr:
+                logger.warning(f"Skipping setUniversal for {chain_id_str}, connection failed.")
                 continue
 
-            logger.info(f"Calling setZetaChainContract on {chain_id_str} ({evm_proxy_addr})")
-            status_update = {}
             try:
+                logger.info(f"Calling setUniversal on {chain_id_str} ({evm_proxy_addr})")
+                
+                # Get the Web3 instance for this chain
                 numeric_chain_id = int(chain_id_str)
                 evm_web3 = await get_web3(numeric_chain_id)
-                if not evm_web3:
-                    raise ConnectionError(f"Failed to get web3 for chain {chain_id_str}")
-
-                # Call the setZetaChainContract method
-                args = [Web3.to_checksum_address(zc_proxy_address)]
+                
+                # Set the ZetaChain contract address on the EVM contract
                 logger.info(f"Setting ZetaChain contract address to {zc_proxy_address}")
-
-                set_zeta_contract_result = await call_contract_method(
+                
+                # Call the setUniversal method
+                result = await call_contract_method(
                     web3=evm_web3,
                     account=service_account,
-                    contract_address=evm_proxy_addr, # EVM PROXY address
-                    contract_abi=UNIVERSAL_TOKEN_ABI, # EVM ABI
-                    method_name="setZetaChainContract", 
-                    args=args,
-                    gas_limit=1000000 # Use sufficient gas
+                    contract_address=evm_proxy_addr,
+                    contract_abi=UNIVERSAL_TOKEN_ABI,
+                    method_name="setUniversal",
+                    args=[zc_proxy_address],
+                    gas_limit=1000000
                 )
-                if set_zeta_contract_result.get("success"):
-                    set_zeta_contract_success_count += 1
-                    logger.info(f"Successfully setZetaChainContract on chain {chain_id_str}")
-                    status_update = {"setup_status": "completed"}
+                
+                if result.get("success"):
+                    logger.info(f"Successfully setUniversal on chain {chain_id_str}")
+                    # Update chain status in database
+                    if chain_id_str in deployment.connected_chains_json:
+                        deployment.connected_chains_json[chain_id_str]["setup_status"] = "completed"
+                        flag_modified(deployment, "connected_chains_json")
                 else:
-                    set_zeta_contract_failure_count += 1
-                    error_msg = set_zeta_contract_result.get("message", "Unknown error")
-                    logger.error(f"Failed setZetaChainContract on {chain_id_str}: {error_msg}")
-                    status_update = {"setup_status": "setZetaChainContract_failed",
-                                       "setup_error": error_msg}
+                    error_msg = result.get("message", "Unknown error")
+                    logger.error(f"Failed setUniversal on {chain_id_str}: {error_msg}")
+                    status_update = {"setup_status": "setUniversal_failed",
+                                    "setup_error": error_msg}
+                    evm_connection_failures += 1
+                    
+                    # Update status in database
+                    if chain_id_str in deployment.connected_chains_json:
+                        if len(error_msg) > 500: # truncate very long error messages
+                            error_to_report = error_msg[:497] + "..."
+                        else:
+                            error_to_report = error_msg
+                        status_update = {"setup_status": "setUniversal_failed", "setup_error": error_to_report}
+                        deployment.connected_chains_json[chain_id_str].update(status_update)
+                        flag_modified(deployment, "connected_chains_json")
+                    else:
+                        logger.warning(f"Chain {chain_id_str} missing in JSON during setUniversal update.")
 
             except Exception as e:
-                set_zeta_contract_failure_count += 1
-                error_to_report = f"Exception setting ZetaChainContract: {type(e).__name__} - {e}"
-                logger.error(f"Exception setting ZetaChainContract on {chain_id_str}: {error_to_report}", exc_info=True)
-                status_update = {"setup_status": "setZetaChainContract_failed", "setup_error": error_to_report}
-            
-            if chain_id_str in deployment.connected_chains_json:
-                deployment.connected_chains_json[chain_id_str].update(status_update)
-            else:
-                 logger.warning(f"Chain {chain_id_str} missing in JSON during setZetaChainContract update.")
-                 if not deployment.connected_chains_json: deployment.connected_chains_json = {}
-                 deployment.connected_chains_json[chain_id_str] = status_update
-            flag_modified(deployment, "connected_chains_json")
+                evm_connection_failures += 1
+                error_to_report = f"Exception during setUniversal: {type(e).__name__} - {e}"
+                logger.error(f"Exception during setUniversal on {chain_id_str}: {error_to_report}", exc_info=True)
+                status_update = {"setup_status": "setUniversal_failed", "setup_error": error_to_report}
+                
+                # Update status in database
+                if chain_id_str in deployment.connected_chains_json:
+                    if len(error_to_report) > 500: # truncate very long error messages
+                        error_to_report = error_to_report[:497] + "..."
+                    deployment.connected_chains_json[chain_id_str].update(status_update)
+                    flag_modified(deployment, "connected_chains_json")
+                else:
+                    logger.warning(f"Chain {chain_id_str} missing in JSON during setUniversal update.")
 
         # Commit setup status updates after the loop
         db.add(deployment)
