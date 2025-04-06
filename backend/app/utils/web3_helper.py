@@ -565,6 +565,10 @@ def encode_initialize_data(web3: Web3, contract_abi: List, name: str, symbol: st
         if num_params == 6: # Assumed ZetaChain version
             if not uniswap_router_address:
                  raise ValueError("Uniswap router address is required for 6-parameter initialize function (ZetaChain)")
+            
+            # Validate the uniswap_router_address is a valid address
+            if not web3.is_address(uniswap_router_address):
+                raise ValueError(f"Invalid Uniswap router address format: {uniswap_router_address}")
                  
             logger.info("Using 6-parameter initialize (assumed ZetaChain)")
             args_list = [

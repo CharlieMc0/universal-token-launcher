@@ -57,7 +57,7 @@
     "currency_symbol": "ZETA",
     "testnet": true,
     "enabled": true,
-    "gateway_address": "0x2ca7d64A7EFE2D62A725E2B35Cf7230D6677FfEe",
+    "gateway_address": "0x6c533f7fe93fae114d0954697069df33c9b74fd7",
     "uniswap_router_address": "0x2ca7d64A7EFE2D62A725E2B35Cf7230D6677FfEe"
   },
   "11155111": {

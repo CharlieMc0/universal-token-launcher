@@ -1,0 +1,17 @@
+# Universal Token Deployment Testing
+
+## Option 1: Direct Deployment + Separate Initialize (Still has issues)
+# Example test run output for two-step approach
+python ./test_direct_deployment.py
+
+## Option 2: One-Step Deployment (Has constructor issues)
+# Attempts to perform deployment and initialization in a single transaction
+python ./test_one_step_deployment.py
+
+## Option 3: Fixed Deployment Script (RECOMMENDED)
+# Fixed deployment that handles the known issues and provides detailed logging
+python ./deploy_token_fixed.py
+
+# To deploy on a specific chain, provide the chain ID as an argument:
+# python ./deploy_token_fixed.py 11155111   # Sepolia
+# python ./deploy_token_fixed.py 7001       # ZetaChain

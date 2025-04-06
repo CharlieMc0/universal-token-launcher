@@ -1,0 +1,12 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+venv/
+venv*/
+venv_311/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+.pytest_cache/

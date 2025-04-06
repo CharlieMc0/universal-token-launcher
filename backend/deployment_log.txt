@@ -1,0 +1,39 @@
+[32m2025-04-05 16:50:17[0m | [1mINFO    [0m | [36mapp.utils.logger[0m:[36m<module>[0m:[36m47[0m - [1mLogger initialized with level: DEBUG[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.chain_config[0m:[36mload_chain_configs[0m:[36m24[0m - [1mLoaded chain configurations for 18 chains[0m
+================================================================================
+================================================================================
+====================== Universal Token Deployment Service ======================
+================================================================================
+Environment: development
+Port: 8000
+Database: universal_token_registry
+================================================================================
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36mload_contract_data[0m:[36m234[0m - [1mLoading contract artifacts from directory: %s[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m283[0m - [1mSuccessfully loaded ABI and bytecode from /Users/charlie/git/zeta/utl/backend/artifacts/EVMUniversalToken.json[0m
+[32m2025-04-05 16:50:18[0m | [34m[1mDEBUG   [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m285[0m - [34m[1mLoaded bytecode preview: 0x60a06040523060805234801561001457600080fd5b5061001d610022565b6100...4d09c935db7047f4ddc5c98dcaf6d65dfa73fd853664736f6c634300081a0033 (Length: 18720)[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m283[0m - [1mSuccessfully loaded ABI and bytecode from /Users/charlie/git/zeta/utl/backend/artifacts/ZetaChainUniversalToken.json[0m
+[32m2025-04-05 16:50:18[0m | [34m[1mDEBUG   [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m285[0m - [34m[1mLoaded bytecode preview: 0x60a06040523060805234801561001457600080fd5b5061001d610022565b6100...e72db2fc59c18507b8edf423e3be9a39d21ce4d4aa64736f6c634300081a0033 (Length: 31406)[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m283[0m - [1mSuccessfully loaded ABI and bytecode from /Users/charlie/git/zeta/utl/backend/artifacts/ERC1967Proxy.json[0m
+[32m2025-04-05 16:50:18[0m | [34m[1mDEBUG   [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m285[0m - [34m[1mLoaded bytecode preview: 0x60566037600b82828239805160001a607314602a57634e487b7160e01b600052...0f8821b34a4c2c38b734278367c32a81d21022ad3b64736f6c634300081a0033 (Length: 284)[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36mload_contract_data[0m:[36m255[0m - [1mSuccessfully loaded all contract artifacts[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36m__main__[0m:[36msetup_database[0m:[36m46[0m - [1mDatabase tables created or confirmed to exist[0m
+Starting the Universal Token Deployment Service API...
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36m__main__[0m:[36mstart_api_server[0m:[36m64[0m - [1mStarting API server on http://%s:%d[0m
+INFO:     Started server process [3391]
+INFO:     Waiting for application startup.
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.chain_config[0m:[36mload_chain_configs[0m:[36m24[0m - [1mLoaded chain configurations for 18 chains[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36mload_contract_data[0m:[36m234[0m - [1mLoading contract artifacts from directory: %s[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m283[0m - [1mSuccessfully loaded ABI and bytecode from /Users/charlie/git/zeta/utl/backend/artifacts/EVMUniversalToken.json[0m
+[32m2025-04-05 16:50:18[0m | [34m[1mDEBUG   [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m285[0m - [34m[1mLoaded bytecode preview: 0x60a06040523060805234801561001457600080fd5b5061001d610022565b6100...4d09c935db7047f4ddc5c98dcaf6d65dfa73fd853664736f6c634300081a0033 (Length: 18720)[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m283[0m - [1mSuccessfully loaded ABI and bytecode from /Users/charlie/git/zeta/utl/backend/artifacts/ZetaChainUniversalToken.json[0m
+[32m2025-04-05 16:50:18[0m | [34m[1mDEBUG   [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m285[0m - [34m[1mLoaded bytecode preview: 0x60a06040523060805234801561001457600080fd5b5061001d610022565b6100...e72db2fc59c18507b8edf423e3be9a39d21ce4d4aa64736f6c634300081a0033 (Length: 31406)[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m283[0m - [1mSuccessfully loaded ABI and bytecode from /Users/charlie/git/zeta/utl/backend/artifacts/ERC1967Proxy.json[0m
+[32m2025-04-05 16:50:18[0m | [34m[1mDEBUG   [0m | [36mapp.utils.web3_helper[0m:[36m_load_artifact[0m:[36m285[0m - [34m[1mLoaded bytecode preview: 0x60566037600b82828239805160001a607314602a57634e487b7160e01b600052...0f8821b34a4c2c38b734278367c32a81d21022ad3b64736f6c634300081a0033 (Length: 284)[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.utils.web3_helper[0m:[36mload_contract_data[0m:[36m255[0m - [1mSuccessfully loaded all contract artifacts[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.app[0m:[36mstartup_event[0m:[36m117[0m - [1mDatabase tables created or confirmed to exist[0m
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.app[0m:[36mstartup_event[0m:[36m120[0m - [1mUniversal Token Contract Deployment Service started in development environment[0m
+INFO:     Application startup complete.
+ERROR:    [Errno 48] error while attempting to bind on address ('0.0.0.0', 8000): address already in use
+INFO:     Waiting for application shutdown.
+[32m2025-04-05 16:50:18[0m | [1mINFO    [0m | [36mapp.app[0m:[36mshutdown_event[0m:[36m126[0m - [1mUniversal Token Contract Deployment Service shutting down[0m
+INFO:     Application shutdown complete.

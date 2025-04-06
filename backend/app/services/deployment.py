@@ -145,14 +145,17 @@ class DeploymentService:
                     raise ValueError(f"Chain config not found for ZetaChain: {zeta_chain_id_str}")
                 
                 gateway_address = chain_config.get("gateway_address")
-                uniswap_router_address = chain_config.get("uniswap_router_address")
-                
                 if not gateway_address:
-                    raise ValueError(f"Gateway address not found for ZetaChain: {zeta_chain_id_str}")
+                    raise ValueError(f"Gateway address not found for ZetaChain")
                 
+                # Ensure we have a uniswap router address for ZetaChain
+                uniswap_router_address = chain_config.get("uniswap_router_address")
                 if not uniswap_router_address:
-                    uniswap_router_address = "0x2ca7d64A7EFE2D62A725E2B35Cf7230D6677FfEe"  # Default for testnet
-                    logger.warning(f"Using default Uniswap router address: {uniswap_router_address}")
+                    # This is a critical issue - the ZetaChain token requires a valid Uniswap router
+                    # Don't use gateway_address as a fallback as they serve different purposes
+                    raise ValueError("Uniswap router address not found in ZetaChain config")
+                
+                logger.info(f"Using Uniswap router address for ZetaChain: {uniswap_router_address}")
                 
                 init_data = encode_initialize_data(
                     web3=zc_web3,
