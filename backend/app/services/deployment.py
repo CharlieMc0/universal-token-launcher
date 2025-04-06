@@ -18,7 +18,8 @@ from app.utils.web3_helper import (
     ERC1967_PROXY_BYTECODE,
     deploy_implementation,
     deploy_erc1967_proxy,
-    encode_initialize_data
+    encode_initialize_data,
+    get_chain_config
 )
 from web3 import Web3
 from sqlalchemy.orm.attributes import flag_modified
@@ -156,7 +157,7 @@ class DeploymentService:
                     raise ValueError("Uniswap router address not found in ZetaChain config")
                 
                 logger.info(f"Using Uniswap router address for ZetaChain: {uniswap_router_address}")
-                
+                logger.info(f"Using gateway address for ZetaChain: {gateway_address}")
                 init_data = encode_initialize_data(
                     web3=zc_web3,
                     contract_abi=ZC_UNIVERSAL_TOKEN_ABI,
@@ -190,6 +191,49 @@ class DeploymentService:
                 deployment_result["zetaChain"]["proxy_address"] = zc_proxy_address
                 deployment_result["zetaChain"]["status"] = "deployed"
                 logger.info(f"ZetaChain proxy deployed and initialized: {zc_proxy_address}")
+                
+                # --- Direct initialization as a fallback in case proxy constructor didn't execute init data ---
+                try:
+                    logger.info("Executing direct initialize call as a fallback...")
+                    chain_config = get_chain_config(zeta_chain_id_str)
+                    gateway_address = chain_config.get("gateway_address")
+                    uniswap_router_address = chain_config.get("uniswap_router_address")
+                    
+                    # Call the initialize method directly on the proxy
+                    init_result = await call_contract_method(
+                        web3=zc_web3,
+                        account=service_account,
+                        contract_address=zc_proxy_address,
+                        contract_abi=ZC_UNIVERSAL_TOKEN_ABI,
+                        method_name="initialize",
+                        args=[
+                            service_account.address,  # initialOwner
+                            token_config["token_name"],  # name
+                            token_config["token_symbol"],  # symbol
+                            gateway_address,  # gatewayAddress
+                            3000000,  # gas
+                            uniswap_router_address  # uniswapRouterAddress
+                        ],
+                        gas_limit=5000000
+                    )
+                    
+                    if init_result.get("success"):
+                        logger.info("✅ Direct initialize call succeeded!")
+                        
+                        # Verify router address was set correctly
+                        zc_contract = zc_web3.eth.contract(address=zc_proxy_address, abi=ZC_UNIVERSAL_TOKEN_ABI)
+                        if hasattr(zc_contract.functions, 'uniswapRouter'):
+                            router_address = zc_contract.functions.uniswapRouter().call()
+                            logger.info(f"ZetaChain contract uniswapRouter value: {router_address}")
+                            if router_address.lower() != uniswap_router_address.lower():
+                                logger.warning(f"⚠️ UniswapRouter address mismatch: Expected {uniswap_router_address}, Got {router_address}")
+                            else:
+                                logger.info(f"✅ UniswapRouter address correctly set: {router_address}")
+                    else:
+                        logger.warning(f"⚠️ Direct initialize call failed: {init_result.get('message')}")
+                except Exception as init_error:
+                    logger.warning(f"⚠️ Error in direct initialize call: {init_error}")
+                    # Don't fail the deployment if this fallback initialization fails
                 
                 db.add(deployment)
                 db.commit()
