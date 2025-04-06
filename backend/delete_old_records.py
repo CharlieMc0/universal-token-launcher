@@ -41,7 +41,7 @@ WHERE id NOT IN (
     SELECT id 
     FROM token_deployments 
     ORDER BY created_at DESC, id DESC 
-    LIMIT 5
+    LIMIT 1
 );
 """
 
