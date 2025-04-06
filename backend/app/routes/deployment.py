@@ -429,14 +429,17 @@ async def get_chains(testnet_only: bool = False, mainnet_only: bool = False):
     # Format the response to be more frontend-friendly
     formatted_chains = []
     for chain_id, chain_info in chains.items():
-        formatted_chains.append({
+        chain_data = {
             "id": chain_id,
             "name": chain_info["name"],
             "currency": chain_info["currency_symbol"],
             "testnet": chain_info["testnet"],
             "isZetaChain": "ZetaChain" in chain_info["name"],
-            "enabled": chain_info.get("enabled", True)
-        })
+            "enabled": chain_info.get("enabled", True),
+            "zrc20GasTokenAddress": chain_info.get("zrc20_gas_token_address", None)
+        }
+        
+        formatted_chains.append(chain_data)
     
     return {
         "success": True,

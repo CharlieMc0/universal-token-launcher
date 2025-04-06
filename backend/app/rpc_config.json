@@ -37,7 +37,8 @@
     "currency_symbol": "BNB",
     "testnet": true,
     "enabled": false,
-    "gateway_address": "0x0c487a766110c85d301d96e33579c5b317fa4995"
+    "gateway_address": "0x0c487a766110c85d301d96e33579c5b317fa4995",
+    "zrc20_gas_token_address": "0xd97B1de3619ed2c6BEb3860147E30cA8A7dC9891"
   },
   "7000": {
     "name": "ZetaChain",
