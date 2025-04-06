@@ -178,7 +178,8 @@ class DeploymentService:
                     account=service_account,
                     implementation_address=zc_impl_address,
                     init_data=init_data,
-                    gas_limit_override=5000000
+                    gas_limit_override=5000000,
+                    is_zetachain=True  # This is a ZetaChain deployment
                 )
                 
                 if not proxy_deploy_result.get("success"):
@@ -316,7 +317,8 @@ class DeploymentService:
                     account=service_account,
                     implementation_address=evm_impl_address,
                     init_data=init_data,
-                    gas_limit_override=5000000
+                    gas_limit_override=5000000,
+                    is_zetachain=False  # This is an EVM chain deployment
                 )
                 
                 if not proxy_deploy_result.get("success"):

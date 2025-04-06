@@ -23,6 +23,9 @@ ZC_UNIVERSAL_TOKEN_BYTECODE = None
 ERC1967_PROXY_ABI = None
 ERC1967_PROXY_BYTECODE = None
 
+# Compatible bytecode (compiled with Solidity 0.8.19) for chains without PUSH0 support
+COMPATIBLE_ERC1967_PROXY_BYTECODE = "0x60806040523661001357610011610017565b005b6100115b610027610022610067565b61009f565b565b606061004e8383604051806060016040528060278152602001610268602791396100c3565b9392505050565b6001600160a01b03163b151590565b90565b600061009a7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc546001600160a01b031690565b905090565b3660008037600080366000845af43d6000803e8080156100be573d6000f35b3d6000fd5b6060600080856001600160a01b0316856040516100e09190610218565b600060405180830381855af49150503d806000811461011b576040519150601f19603f3d011682016040523d82523d6000602084013e610120565b606091505b50915091506101318683838761013b565b9695505050505050565b606083156101ac5782516101a5576001600160a01b0385163b6101a55760405162461bcd60e51b815260206004820152601d60248201527f416464726573733a2063616c6c20746f206e6f6e2d636f6e747261637400000060448201526064015b60405180910390fd5b50816101b6565b6101b683836101be565b949350505050565b8151156101ce5781518083602001fd5b8060405162461bcd60e51b815260040161019c9190610234565b60005b838110156102035781810151838201526020016101eb565b83811115610212576000848401525b50505050565b6000825161022a8184602087016101e8565b9190910192915050565b60208152600082518060208401526102538160408501602087016101e8565b601f01601f1916919091016040019291505056fe416464726573733a206c6f772d6c6576656c2064656c65676174652063616c6c206661696c6564a2646970667358221220ff8e6f2d761d58b3bd984933269e01a7ff1f70a460b808056daa4cff1ee8ab6964736f6c63430008090033"
+
 # Path to artifacts - relative to the backend directory
 ARTIFACTS_DIR = os.path.abspath(os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
@@ -378,10 +381,18 @@ async def deploy_contract(
         
         # Build constructor transaction
         if constructor_args:
+            logger.info(f"Building constructor transaction with args: {constructor_args}")
             constructor_tx = contract.constructor(*constructor_args).build_transaction(tx_params)
         else:
+            logger.info("Building constructor transaction with no args")
             constructor_tx = contract.constructor().build_transaction(tx_params)
         
+        # Log transaction details for debugging
+        if 'gas' in constructor_tx:
+            logger.info(f"Estimated gas for deployment: {constructor_tx['gas']}")
+        if 'value' in constructor_tx:
+            logger.info(f"ETH value for deployment: {constructor_tx['value']}")
+                
         # Sign transaction
         signed_tx = account.sign_transaction(constructor_tx)
         
@@ -422,8 +433,42 @@ async def deploy_contract(
         
         if receipt.status != 1:
             logger.error(f"Contract deployment failed. Transaction reverted.")
-            return {"success": False, "error": True, "message": "Transaction reverted"}
-        
+            
+            # Try to get more detailed error information
+            try:
+                # Get transaction data
+                tx_data = web3.eth.get_transaction(tx_hash)
+                logger.error(f"Reverted transaction details: gas={tx_data.get('gas')}, gas price={tx_data.get('gasPrice')}")
+                
+                # Check if we have enough gas
+                if gas_limit_override and tx_data.get('gas') >= gas_limit_override:
+                    logger.error(f"Transaction may have run out of gas. Used all available gas: {gas_limit_override}")
+                
+                # Try to get revert reason (works on some chains)
+                try:
+                    # Replay the transaction to get the revert reason
+                    result = web3.eth.call(
+                        {
+                            'from': tx_data.get('from', account.address),
+                            'to': tx_data.get('to'),
+                            'data': tx_data.get('input'),
+                            'value': tx_data.get('value', 0),
+                            'gas': tx_data.get('gas'),
+                            'gasPrice': tx_data.get('gasPrice')
+                        },
+                        receipt.blockNumber
+                    )
+                    logger.error(f"Unexpected: call succeeded but transaction reverted. Result: {result.hex()}")
+                except Exception as call_error:
+                    # Here might be the revert reason
+                    error_str = str(call_error)
+                    logger.error(f"Revert reason: {error_str}")
+                    return {"success": False, "error": True, "message": f"Transaction reverted: {error_str}", "transaction_hash": web3.to_hex(tx_hash)}
+            except Exception as debug_error:
+                logger.error(f"Failed to debug transaction revert: {debug_error}")
+            
+            return {"success": False, "error": True, "message": "Transaction reverted", "transaction_hash": web3.to_hex(tx_hash)}
+            
         contract_address = receipt.contractAddress
         logger.info(f"Contract deployed at: {contract_address}")
         
@@ -467,12 +512,56 @@ async def deploy_implementation(
         
     return result
 
+def verify_init_data(web3: Web3, contract_abi: List, implementation_address: str, init_data: bytes) -> bool:
+    """
+    Verify that the initialization data is valid for the given implementation contract.
+    
+    Args:
+        web3: Web3 instance
+        contract_abi: Contract ABI
+        implementation_address: Address of the implementation contract
+        init_data: Initialization data to verify
+        
+    Returns:
+        bool: True if verification passes, False otherwise
+    """
+    if not init_data or len(init_data) == 0:
+        logger.warning("Empty initialization data - no initializer will be called")
+        return True  # Empty init data is valid, just no initialization will happen
+    
+    try:
+        # Create contract instance to decode function data
+        contract = web3.eth.contract(address=implementation_address, abi=contract_abi)
+        
+        # Convert bytes to hex string with 0x prefix for decoding
+        init_data_hex = '0x' + init_data.hex()
+        
+        # Try to decode the function call data
+        decoded = contract.decode_function_input(init_data_hex)
+        func_obj, params = decoded
+        
+        logger.info(f"Decoded initialization data as function call: {func_obj.fn_name}")
+        logger.info(f"Function parameters: {params}")
+        
+        # Check if this is an initialize function
+        if "initialize" not in func_obj.fn_name.lower():
+            logger.warning(f"Initialization data does not call an initialize function, but: {func_obj.fn_name}")
+            return False
+            
+        # Validation passed
+        return True
+    
+    except Exception as e:
+        logger.error(f"Failed to verify initialization data: {e}")
+        return False
+
 async def deploy_erc1967_proxy(
     web3: Web3,
     account: LocalAccount,
     implementation_address: str,
     init_data: bytes = b'',  # Usually encode_function_data for initializer
-    gas_limit_override: Optional[int] = None
+    gas_limit_override: Optional[int] = None,
+    is_zetachain: bool = False
 ) -> Dict[str, Any]:
     """
     Deploy an ERC1967 proxy contract pointing to an implementation.
@@ -483,15 +572,37 @@ async def deploy_erc1967_proxy(
         implementation_address: Address of the implementation contract
         init_data: Initialization data (encoded initialize function call) 
         gas_limit_override: Optional gas limit override
+        is_zetachain: Whether this is a ZetaChain deployment (affects ABI selection)
         
     Returns:
         Dict with deployment result
     """
+    # Force reload the ERC1967 Proxy ABI and bytecode from disk
+    reload_erc1967_proxy()
+    
     if not ERC1967_PROXY_ABI or not ERC1967_PROXY_BYTECODE:
         logger.error("ERC1967 Proxy ABI or bytecode not loaded")
         return {"success": False, "error": True, "message": "ERC1967 Proxy ABI or bytecode not loaded"}
     
     try:
+        # Log detailed bytecode info for debugging
+        bytecode_length = len(ERC1967_PROXY_BYTECODE) if ERC1967_PROXY_BYTECODE else 0
+        bytecode_prefix = ERC1967_PROXY_BYTECODE[:30] + "..." if ERC1967_PROXY_BYTECODE else "None"
+        logger.info(f"Using ERC1967 Proxy bytecode (length: {bytecode_length}, prefix: {bytecode_prefix})")
+        
+        # Verify the initialization data is valid - use the correct ABI based on chain
+        if init_data and len(init_data) > 0:
+            contract_abi = ZC_UNIVERSAL_TOKEN_ABI if is_zetachain else UNIVERSAL_TOKEN_ABI
+            abi_type = "ZetaChain" if is_zetachain else "EVM"
+            
+            logger.info(f"Verifying init data using {abi_type} ABI")
+            if not verify_init_data(web3, contract_abi, implementation_address, init_data):
+                logger.warning("Initialization data verification failed, but continuing with deployment")
+            
+            # Log the init data for debugging
+            init_data_hex = init_data.hex()
+            logger.info(f"Init data hex: 0x{init_data_hex[:60]}... (total length: {len(init_data_hex)})")
+        
         # ERC1967Proxy constructor takes implementation address and initialization data
         constructor_args = [
             web3.to_checksum_address(implementation_address),
@@ -501,13 +612,17 @@ async def deploy_erc1967_proxy(
         logger.info(f"Deploying ERC1967 Proxy pointing to implementation: {implementation_address}")
         logger.info(f"Initialization data length: {len(init_data)}")
         
+        # Increase gas limit significantly for proxy deployment with initialization
+        actual_gas_limit = gas_limit_override or 6000000  # Higher gas limit for proxy deployment
+        logger.info(f"Using gas limit of {actual_gas_limit} for proxy deployment")
+        
         result = await deploy_contract(
             web3=web3,
             account=account,
             contract_abi=ERC1967_PROXY_ABI,
             contract_bytecode=ERC1967_PROXY_BYTECODE,
             constructor_args=constructor_args,
-            gas_limit_override=gas_limit_override or 3000000  # Higher gas limit for proxy deployment
+            gas_limit_override=actual_gas_limit
         )
         
         if result.get("success"):
@@ -520,6 +635,40 @@ async def deploy_erc1967_proxy(
     except Exception as e:
         logger.error(f"Error deploying ERC1967 Proxy: {e}", exc_info=True)
         return {"success": False, "error": True, "message": f"Error deploying ERC1967 Proxy: {e}"}
+
+def reload_erc1967_proxy() -> bool:
+    """
+    Force reload the ERC1967 Proxy ABI and bytecode from the artifacts file.
+    This is useful if the file might have been updated since the service started.
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    global ERC1967_PROXY_ABI, ERC1967_PROXY_BYTECODE
+    
+    try:
+        if not os.path.exists(ERC1967_PROXY_PATH):
+            logger.error(f"ERC1967 Proxy artifact not found at {ERC1967_PROXY_PATH}")
+            return False
+        
+        with open(ERC1967_PROXY_PATH, 'r') as f:
+            proxy_artifact = json.load(f)
+            ERC1967_PROXY_ABI = proxy_artifact.get('abi')
+            ERC1967_PROXY_BYTECODE = proxy_artifact.get('bytecode')
+            
+            if not ERC1967_PROXY_ABI or not ERC1967_PROXY_BYTECODE:
+                logger.error(f"ERC1967 Proxy artifact at {ERC1967_PROXY_PATH} missing ABI/bytecode")
+                return False
+                
+            logger.info(f"Reloaded ERC1967 Proxy artifact from {ERC1967_PROXY_PATH}")
+            logger.info(f"Proxy bytecode length: {len(ERC1967_PROXY_BYTECODE) if ERC1967_PROXY_BYTECODE else 0}")
+            logger.info(f"Proxy bytecode first 20 chars: {ERC1967_PROXY_BYTECODE[:20]}...")
+            
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error reloading ERC1967 Proxy data: {e}", exc_info=True)
+        return False
 
 def encode_initialize_data(web3: Web3, contract_abi: List, name: str, symbol: str, gateway_address: str, owner_address: str, gas: int = 3000000, uniswap_router_address: str = None) -> bytes:
     """
