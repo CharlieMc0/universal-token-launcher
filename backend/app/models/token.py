@@ -2,7 +2,7 @@
 
 import re
 from typing import Dict, List, Optional, Any
-from sqlalchemy import Column, Integer, String, Text, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -28,6 +28,7 @@ class TokenModel(Base):
     deployment_status = Column(String, nullable=False, default='starting')
     verification_status = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
+    testnet = Column(Boolean, nullable=False, default=True)  # Default to testnet=True for safety
     created_at = Column(
         TIMESTAMP(timezone=True),
         nullable=False,
@@ -55,6 +56,7 @@ class TokenModel(Base):
             "deployment_status": self.deployment_status,
             "verification_status": self.verification_status,
             "error_message": self.error_message,
+            "testnet": self.testnet,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

@@ -78,10 +78,20 @@ async def log_requests(request: Request, call_next):
 @app.get("/")
 async def root():
     """Root endpoint to check if the service is running."""
+    # Get the wallet address without exposing the private key
+    wallet_address = None
+    try:
+        account = web3_helper.get_account()
+        if account:
+            wallet_address = account.address
+    except Exception as e:
+        logger.error(f"Error retrieving wallet address: {str(e)}")
+    
     return {
         "name": Config.APP_NAME,
         "status": "running",
-        "environment": Config.ENVIRONMENT
+        "environment": Config.ENVIRONMENT,
+        "wallet_address": wallet_address
     }
 
 # Health check endpoint for Docker

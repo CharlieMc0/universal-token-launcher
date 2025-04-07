@@ -24,6 +24,9 @@ from app.config import Config  # Import Config for consistent chain IDs
 
 router = APIRouter(prefix="/api", tags=["deployment"])
 
+# Define ZetaChain IDs for both mainnet and testnet
+ZETA_CHAIN_IDS = ["7000", "7001"]  # Mainnet and Testnet
+
 
 @router.post(
     "/deploy",
@@ -69,10 +72,13 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
                 if not found:
                     raise ValueError(f"Unsupported or disabled chain name: {chain_id}")
 
-        # Ensure ZetaChain (testnet) is included if EVM chains are selected
-        if any(cid != Config.ZETA_CHAIN_ID for cid in numeric_chain_ids) and \
-           Config.ZETA_CHAIN_ID not in numeric_chain_ids:
-            raise ValueError(f"ZetaChain ({Config.ZETA_CHAIN_ID}) must be included for cross-chain deployment.")
+        # Ensure ZetaChain (either mainnet or testnet) is included if EVM chains are selected
+        # Define both ZetaChain IDs - testnet (7001) and mainnet (7000)
+        has_zetachain = any(cid in ZETA_CHAIN_IDS for cid in numeric_chain_ids)
+        has_evm_chains = any(cid not in ZETA_CHAIN_IDS for cid in numeric_chain_ids)
+        
+        if has_evm_chains and not has_zetachain:
+            raise ValueError(f"ZetaChain (7000 or 7001) must be included for cross-chain deployment.")
         
         if not numeric_chain_ids:
             raise ValueError("No valid chains selected")
@@ -132,7 +138,7 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
 
 
         # Analyze EVM chain results (using connected_chains_data from DB for final state)
-        requested_evm_chains = [cid for cid in numeric_chain_ids if cid != Config.ZETA_CHAIN_ID]
+        requested_evm_chains = [cid for cid in numeric_chain_ids if cid not in ZETA_CHAIN_IDS]
         for chain_id in requested_evm_chains:
              chain_db_info = connected_chains_data.get(chain_id, {})
              final_setup_status = chain_db_info.get("setup_status")
@@ -170,7 +176,7 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
             try:
                 zc_verification = await verification_service.verify_contract(
                     contract_address=db_deployment.zc_contract_address,
-                    chain_id=Config.ZETA_CHAIN_ID,
+                    chain_id=db_deployment.testnet and "7001" or "7000",  # Use correct chain ID based on testnet flag
                     contract_type="zetachain",
                     db=db
                 )
@@ -241,7 +247,8 @@ async def deploy_token(token_data: TokenSchema, db: Session = Depends(get_db)):
                      chain_id: status_info["status"]
                      for chain_id, status_info in final_status_summary["evmChains"].items()
                  },
-                 "zeta_chain_status": final_status_summary["zetaChain"].get("status", "unknown")
+                 "zeta_chain_status": final_status_summary["zetaChain"].get("status", "unknown"),
+                 "testnet": db_deployment.testnet
              },
          }
 

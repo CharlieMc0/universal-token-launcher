@@ -97,12 +97,13 @@ backend/
 1.  **Deployment Orchestration:** The `/api/deploy` (for tokens) and `/api/nft/deploy` endpoints handle the entire process: deployment, cross-chain connection, initial allocations (tokens only), and ownership transfer.
 2.  **Service Account:** All blockchain transactions are performed by the account associated with the `DEPLOYER_PRIVATE_KEY` environment variable. This account requires funding on all target chains.
 3.  **Smart Contract Artifacts:** Uses ABIs and bytecode from the `artifacts/` directory. Assumes specific constructor patterns and function names (see "For Future Developers").
-4.  **Configuration:** Relies heavily on `.env` for sensitive keys and `app/rpc_config.json` for chain details (RPC URLs, explorer info, `gateway_address`).
+4.  **Configuration:** Relies heavily on `.env` for sensitive keys and `app/rpc_config.json` for chain details (RPC URLs, explorer info, `gateway_address`, `zrc20_gas_token_address`).
 5.  **Database:** PostgreSQL stores deployment configuration, status, contract addresses, and verification details. Migrations managed by Alembic.
 6.  **Verification:** Supports Blockscout (for ZetaChain) and Etherscan-compatible explorers. Verification is attempted automatically post-deployment.
 7.  **Multi-Chain Balance Retrieval:** The `/api/users/{address}` endpoint combines token balance data from all supported chains via explorer APIs, providing a comprehensive view of a user's Universal Token holdings.
 8.  **Error Handling:** Includes specific handling for common issues like binary data in transaction receipts during NFT deployments.
-9.  **Recent Fixes:** Added proper implementation of `Config.get_chain_config()` class method and fixed missing `owner_address` parameter in `encode_initialize_data()` calls to resolve circular import and initialization errors.
+9.  **Implementation Addresses:** The database stores both proxy and implementation addresses for deployed contracts, providing full transparency for verification and troubleshooting.
+10. **Recent Fixes:** Added proper implementation of `Config.get_chain_config()` class method and fixed missing `owner_address` parameter in `encode_initialize_data()` calls to resolve circular import and initialization errors.
 
 ## For Future Developers
 
@@ -127,6 +128,7 @@ If you're working on this codebase, please note these important points:
 5.  **Chain Configuration (`app/rpc_config.json`)**:
     *   Must contain accurate RPC URLs and chain IDs.
     *   Crucially, for *all target EVM chains*, the `gateway_address` field **MUST** be populated with the correct ZetaChain Gateway contract address for that specific EVM network. Deployments will fail for chains missing this.
+    *   The `zrc20_gas_token_address` field should contain the address of the ZRC-20 token that represents the gas token of each EVM chain on ZetaChain. This is used by the `/api/chains` endpoint.
     *   Explorer URLs (`explorer_url` and `blockscout_url`) are used for token balance queries and should be correctly configured for all chains.
 
 6.  **Explorer Service**:
@@ -135,8 +137,9 @@ If you're working on this codebase, please note these important points:
     *   If explorer APIs change their format or endpoints, update the corresponding methods in this service.
 
 7.  **ZRC-20 Address Lookup (`app/utils/web3_helper.py`)**:
-    *   The `get_zrc20_address` function currently uses a hardcoded dictionary for *testnet* ZRC-20 gas token addresses on ZetaChain.
-    *   This **needs updating** or replacement with a dynamic lookup for mainnet or additional testnets.
+    *   The `get_zrc20_address` function now pulls ZRC-20 gas token addresses from the `zrc20_gas_token_address` field in `app/rpc_config.json` for each chain.
+    *   This provides a single source of truth for ZRC-20 addresses and eliminates hardcoded values.
+    *   New chains should have their ZRC-20 gas token addresses added to `rpc_config.json` to ensure proper functionality.
 
 8.  **Model Export Pattern**: When adding new SQLAlchemy/Pydantic model classes, ensure they are exported in `app/models/__init__.py`.
 
@@ -271,6 +274,13 @@ Following these practices ensures consistent test behavior and makes the test su
     alembic upgrade head
     ```
 
+4.  If you encounter migration errors related to missing columns or tables:
+    ```bash
+    # Modify the migration files to check for column/table existence before attempting changes
+    # The migration files in migrations/versions/ have been updated to handle common issues
+    # You might need to edit specific migration files if errors persist
+    ```
+
 ### Running the Application
 
 > **Reminder**: Requires **Python 3.11**.
@@ -303,6 +313,7 @@ The API provides endpoints for managing token and NFT deployments, verification,
 
 -   **Core Actions:** Deploying assets (`/api/deploy`, `/api/nft/deploy`), verifying contracts (`/api/verify`, `/api/nft/verify`).
 -   **Information:** Getting chain info (`/api/chains`), retrieving deployment details (`/api/token/{id}`, `/api/nft/collection/{id}`).
+    - The `/api/chains` endpoint now includes the `zrc20_gas_token_address` field for each chain, enabling frontend integration with ZRC-20 tokens.
 -   **User Data:** Getting user-associated assets and balances across all chains (`/api/users/{address}`).
 
 **Refer to the live interactive documentation at `/docs` on the running server for detailed endpoint specifications, request/response schemas, and testing.**

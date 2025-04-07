@@ -89,6 +89,8 @@ class DeploymentService:
             connected_chains_json={},
             zc_implementation_address=None,
             # zc_contract_address will store the PROXY address
+            # Set testnet flag based on which ZetaChain ID is used
+            testnet="7001" in selected_chains  # True if using testnet chain ID 7001, False if using mainnet 7000
         )
         db.add(deployment)
         db.commit()
@@ -97,7 +99,7 @@ class DeploymentService:
         deployment_result = {
             "deploymentId": deployment.id,
             "zetaChain": {"status": "pending", "proxy_address": None, "implementation_address": None},
-            "evmChains": {cid: {"status": "pending", "proxy_address": None, "implementation_address": None} for cid in selected_chains if cid != Config.ZETA_CHAIN_ID}
+            "evmChains": {cid: {"status": "pending", "proxy_address": None, "implementation_address": None} for cid in selected_chains if cid not in ["7000", "7001"]}
         }
 
         zc_proxy_address = None
@@ -105,10 +107,16 @@ class DeploymentService:
         zc_web3 = None
 
         # --- Step 1: Deploy to ZetaChain (Standard Impl + Proxy + Initialize) ---
-        zeta_chain_id_str = Config.ZETA_CHAIN_ID
-        zeta_chain_id_int = int(Config.ZETA_CHAIN_ID)
-        if zeta_chain_id_str in selected_chains:
-            logger.info("Deploying ZetaChain standard implementation and proxy...")
+        # Use the ZetaChain ID from selected_chains
+        zeta_chain_id_str = None
+        if "7001" in selected_chains:
+            zeta_chain_id_str = "7001"
+        elif "7000" in selected_chains:
+            zeta_chain_id_str = "7000"
+            
+        if zeta_chain_id_str:
+            zeta_chain_id_int = int(zeta_chain_id_str)
+            logger.info(f"Deploying ZetaChain standard implementation and proxy to chain {zeta_chain_id_str}...")
             zc_web3 = await get_web3(zeta_chain_id_int)
             if not zc_web3:
                 deployment.deployment_status = "failed"
@@ -123,13 +131,16 @@ class DeploymentService:
                 # 1a. Deploy ZetaChain Implementation
                 logger.info("Deploying ZetaChain implementation contract...")
                 
+                # Use higher gas limit for mainnet (7000)
+                impl_gas_limit = 8000000 if zeta_chain_id_str == "7000" else 5000000
+                
                 impl_deploy_result = await deploy_implementation(
                     web3=zc_web3,
                     account=service_account,
                     contract_abi=ZC_UNIVERSAL_TOKEN_ABI,
                     contract_bytecode=ZC_UNIVERSAL_TOKEN_BYTECODE,
                     constructor_args=None,
-                    gas_limit_override=5000000
+                    gas_limit_override=impl_gas_limit
                 )
                 
                 if not impl_deploy_result.get("success"):
@@ -174,12 +185,15 @@ class DeploymentService:
                 # 1c. Deploy ERC1967 Proxy for ZetaChain
                 logger.info(f"Deploying ZetaChain ERC1967 proxy with initialization data...")
                 
+                # Use higher gas limit for mainnet (7000)
+                proxy_gas_limit = 8000000 if zeta_chain_id_str == "7000" else 5000000
+                
                 proxy_deploy_result = await deploy_erc1967_proxy(
                     web3=zc_web3,
                     account=service_account,
                     implementation_address=zc_impl_address,
                     init_data=init_data,
-                    gas_limit_override=5000000,
+                    gas_limit_override=proxy_gas_limit,
                     is_zetachain=True  # This is a ZetaChain deployment
                 )
                 
@@ -214,7 +228,7 @@ class DeploymentService:
                             3000000,  # gas
                             uniswap_router_address  # uniswapRouterAddress
                         ],
-                        gas_limit=5000000
+                        gas_limit=8000000 if zeta_chain_id_str == "7000" else 5000000
                     )
                     
                     if init_result.get("success"):
