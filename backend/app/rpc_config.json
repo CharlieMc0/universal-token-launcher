@@ -6,8 +6,9 @@
     "blockscout_url": null,
     "currency_symbol": "ETH",
     "testnet": false,
-    "enabled": false,
-    "gateway_address": null
+    "enabled": true,
+    "gateway_address": "0x48B9AACC350b20147001f88821d31731Ba4C30ed",
+    "zrc20_gas_token_address": "0xd97B1de3619ed2c6BEb3860147E30cA8A7dC9891"
   },
   "137": {
     "name": "Polygon Mainnet",
@@ -17,7 +18,8 @@
     "currency_symbol": "MATIC",
     "testnet": false,
     "enabled": false,
-    "gateway_address": "0x40a056A77a1A37014eA476496e7cC1a3964482Fb"
+    "gateway_address": "0x48B9AACC350b20147001f88821d31731Ba4C30ed",
+    "zrc20_gas_token_address": "0xADF73ebA3Ebaa7254E859549A44c74eF7cff7501"
   },
   "56": {
     "name": "Binance Smart Chain",
@@ -26,8 +28,9 @@
     "blockscout_url": null,
     "currency_symbol": "BNB",
     "testnet": false,
-    "enabled": false,
-    "gateway_address": "0xD6A724F516C76c76035B0b4C91bd850b5d35a8ef"
+    "enabled": true,
+    "gateway_address": "0x48B9AACC350b20147001f88821d31731Ba4C30ed",
+    "zrc20_gas_token_address": ""
   },
   "97": {
     "name": "BSC Testnet",
@@ -47,8 +50,9 @@
     "blockscout_url": "https://explorer.zetachain.com",
     "currency_symbol": "ZETA",
     "testnet": false,
-    "enabled": false,
-    "gateway_address": null
+    "enabled": true,
+    "gateway_address": "0xfEDD7A6e3Ef1cC470fbfbF955a22D793dDC0F44E",
+    "uniswap_router_address": "0x2ca7d64A7EFE2D62A725E2B35Cf7230D6677FfEe"
   },
   "7001": {
     "name": "ZetaChain Testnet",
@@ -80,7 +84,8 @@
     "currency_symbol": "ETH", 
     "testnet": false,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": "0x1C53e188Bc2E471f9D4A4762CFf843d32C2C8549",
+    "zrc20_gas_token_address": "0xA614Aebf7924A3Eb4D066aDCA5595E4980407f1d"
   },
   "421614": {
     "name": "Arbitrum Sepolia",
@@ -90,7 +95,8 @@
     "currency_symbol": "ETH",
     "testnet": true,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": "",
+    "zrc20_gas_token_address": ""
   },
   "8453": {
     "name": "Base",
@@ -100,7 +106,8 @@
     "currency_symbol": "ETH",
     "testnet": false,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": "0x48B9AACC350b20147001f88821d31731Ba4C30ed",
+    "zrc20_gas_token_address": "0x1de70f3e971B62A0707dA18100392af14f7fB677"
   },
   "84532": {
     "name": "Base Sepolia",
@@ -110,7 +117,8 @@
     "currency_symbol": "ETH",
     "testnet": true,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": null,
+    "zrc20_gas_token_address": ""
   },
   "43114": {
     "name": "Avalanche C-Chain",
@@ -120,7 +128,8 @@
     "currency_symbol": "AVAX",
     "testnet": false,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": "0x1C53e188Bc2E471f9D4A4762CFf843d32C2C8549",
+    "zrc20_gas_token_address": "0xE8d7796535F1cd63F0fe8D631E68eACe6839869B"
   },
   "43113": {
     "name": "Avalanche Fuji Testnet",
@@ -130,7 +139,8 @@
     "currency_symbol": "AVAX",
     "testnet": true,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": null,
+    "zrc20_gas_token_address": ""
   },
   "1399811149": {
     "name": "Solana",
@@ -140,7 +150,8 @@
     "currency_symbol": "SOL",
     "testnet": false,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": null,
+    "zrc20_gas_token_address": ""
   },
   "1399811148": {
     "name": "Solana Testnet",
@@ -150,7 +161,8 @@
     "currency_symbol": "SOL",
     "testnet": true,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": null,
+    "zrc20_gas_token_address": ""
   },
   "784": {
     "name": "SUI",
@@ -160,7 +172,8 @@
     "currency_symbol": "SUI",
     "testnet": false,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": null,
+    "zrc20_gas_token_address": ""
   },
   "7840": {
     "name": "SUI Testnet",
@@ -170,7 +183,8 @@
     "currency_symbol": "SUI",
     "testnet": true,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": null,
+    "zrc20_gas_token_address": ""
   },
   "0": {
     "name": "TON Testnet",
@@ -180,6 +194,7 @@
     "currency_symbol": "TON",
     "testnet": true,
     "enabled": false,
-    "gateway_address": null
+    "gateway_address": null,
+    "zrc20_gas_token_address": ""
   }
 }
