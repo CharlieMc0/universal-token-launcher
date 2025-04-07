@@ -187,6 +187,7 @@ class UserTokenInfo(BaseModel):
     token_symbol: str
     decimals: int
     is_deployer: bool
+    is_testnet_token: bool = True  # Default to true for safety
     zc_contract_address: Optional[str] = None
     created_at: Optional[str] = None
     balances: List[TokenBalanceInfo]

@@ -125,6 +125,7 @@ async def get_user_tokens(
                     is_deployer=(
                         db_token.deployer_address.lower() == address.lower()
                     ),
+                    is_testnet_token=db_token.testnet,
                     zc_contract_address=db_token.zc_contract_address,
                     created_at=token_info.get("created_at"),
                     balances=balances
@@ -249,12 +250,13 @@ async def get_user_tokens(
                         blockscout_url=chain_config.get("blockscout_url")
                     ))
             
-            # Create token info object
+            # Create user token object with balances
             user_token = UserTokenInfo(
                 token_name=token.token_name,
                 token_symbol=token.token_symbol,
                 decimals=token.decimals,
                 is_deployer=True,  # Definitely the deployer
+                is_testnet_token=token.testnet,
                 zc_contract_address=token.zc_contract_address,
                 created_at=token_info.get("created_at"),
                 balances=balances
@@ -330,6 +332,7 @@ async def get_user_tokens(
                             token_symbol=token_symbol,
                             decimals=int(token_obj.get("decimals", 18)),
                             is_deployer=False,  # Unknown, not in our DB
+                            is_testnet_token=False,  # Assuming not testnet
                             zc_contract_address=token_address if chain_id == zeta_chain_id else None,
                             balances=[TokenBalanceInfo(
                                 chain_id=chain_id,
