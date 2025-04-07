@@ -105,7 +105,7 @@
     "blockscout_url": null,
     "currency_symbol": "ETH",
     "testnet": false,
-    "enabled": false,
+    "enabled": true,
     "gateway_address": "0x48B9AACC350b20147001f88821d31731Ba4C30ed",
     "zrc20_gas_token_address": "0x1de70f3e971B62A0707dA18100392af14f7fB677"
   },
